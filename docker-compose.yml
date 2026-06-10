@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: kinlayer-postgres
+    environment:
+      POSTGRES_USER: kinlayer
+      POSTGRES_PASSWORD: kinlayer
+      POSTGRES_DB: kinlayer
+    ports:
+      - "127.0.0.1:15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kinlayer -d kinlayer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: kinlayer-api
+    environment:
+      KINLAYER_DATABASE_URL: postgresql+psycopg://kinlayer:kinlayer@postgres:5432/kinlayer
+      KINLAYER_BIND_HOST: 0.0.0.0
+      KINLAYER_API_PORT: 8765
+    ports:
+      - "127.0.0.1:8765:8765"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./frontend
+    container_name: kinlayer-web
+    environment:
+      VITE_KINLAYER_API_URL: http://127.0.0.1:8765
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      - api

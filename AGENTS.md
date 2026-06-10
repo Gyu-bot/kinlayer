@@ -1,0 +1,20 @@
+# Kinlayer Agent Instructions
+
+- When the user writes in Korean, respond in Korean unless they ask otherwise.
+- Before changing local services, Docker, network, or host settings, inspect the current state first and only change what is necessary.
+- Before starting test Docker containers, re-check the current honcho Docker ports and avoid conflicts with active host bindings: honcho-api `127.0.0.1:8000->8000/tcp`, honcho-redis `127.0.0.1:6379->6379/tcp`, honcho-database `127.0.0.1:5432->5432/tcp`; honcho-deriver exposes `8000/tcp` internally only.
+- Kinlayer defaults must avoid those bindings: API `127.0.0.1:8765`, Web `127.0.0.1:5173`, Postgres host port `127.0.0.1:15432`.
+- Use subagents proactively for independent research, parallelizable tasks, and review passes; keep each delegated task focused and self-contained.
+- Keep edits tightly scoped to the user's request; do not add unrelated cleanup or broad refactors.
+- For frontend or UI changes, verify the result directly in a browser or equivalent visual check when feasible before reporting completion.
+- When a web browser is needed, prefer the Codex in-app browser first; use external browsers only when the task requires the user's profile, cookies, extensions, existing tabs, or the in-app browser cannot complete it.
+- When opening local browser targets, normalize bare addresses such as `localhost:3000`, `127.0.0.1:5173`, or `[::1]:5173` to explicit `http://...` URLs before using the Codex in-app browser.
+- Apply git branch, PR, and worktree rules only inside project repositories; do not require them for global Codex configuration or projectless maintenance.
+- For project repository work, avoid committing or pushing directly to `main` unless the user explicitly asks. Prefer focused branches, scoped commits, pushed branches, and PRs before merging.
+- Before starting git work, inspect the current branch, working tree state, remote tracking status, and latest `origin/main` when a remote exists. Do not overwrite, reset, or discard existing changes unless the user explicitly asks.
+- Before creating a new work branch, fetch the remote and base the branch on the latest `origin/main` when a remote exists.
+- If continuing an existing branch, check whether it is behind `origin/main` and rebase or merge the latest mainline only when safe for the current worktree; ask before resolving non-trivial conflicts.
+- When a request contains multiple unrelated changes, split the work into focused branches by intent when practical. Keep related backend/frontend/docs changes for the same user-visible outcome on the same branch.
+- For project work that may involve parallel branches or independent tasks, prefer `git worktree` to isolate each branch and avoid cross-branch working tree conflicts.
+- Do not merge PRs into `main` without explicit user approval.
+- During planning cleanup or session maintenance, inspect PR status and clean up worktrees and local branches only after their PRs are merged into `main` and no active session still needs them.
