@@ -23,6 +23,7 @@ services:
       KINLAYER_DATABASE_URL: postgresql+psycopg://kinlayer:kinlayer@postgres:5432/kinlayer
       KINLAYER_BIND_HOST: 0.0.0.0
       KINLAYER_API_PORT: 8765
+      KINLAYER_API_TOKEN: ${KINLAYER_API_TOKEN:-}
     ports:
       - "127.0.0.1:8765:8765"
     depends_on:

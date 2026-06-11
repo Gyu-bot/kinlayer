@@ -32,6 +32,8 @@ No built-in auth, user accounts, or workspace membership in MVP.
 
 Do not add `workspace_id` to every table in MVP unless implementation later needs an internal constant.
 
+Optional local bearer-token protection is runtime configuration, not a user/session table.
+
 ### 2.2 Protected self entity
 
 Kinlayer initializes a protected `self` entity.
@@ -167,6 +169,7 @@ entities
 - canonical_name text
 - properties jsonb not null default '{}'
 - confirmation_status text not null default 'confirmed'
+- status text not null default 'active'
 - sensitivity text not null default 'medium'
 - ai_use_policy text not null default 'cautious_use'
 - created_by text not null
@@ -368,17 +371,18 @@ Stores source/provenance metadata and bounded excerpts. Kinlayer MVP is not a ra
 ```text
 episodes
 - id uuid primary key
-- source_type text not null                # agent_conversation, manual, connector, import, calendar, etc.
+- source_type text not null                # agent_conversation, manual_entry, connector, import, correction
 - source_ref text nullable
 - source_description text nullable
-- body_excerpt text nullable
-- body_hash text nullable
-- actor text nullable
+- body_excerpt text not null
+- body_hash text not null
+- actor text not null
 - occurred_at timestamptz nullable
 - ingested_at timestamptz not null
 - sensitivity text not null default 'medium'
 - retention_policy text not null default 'excerpt_only'
 - created_at timestamptz not null
+- updated_at timestamptz not null
 ```
 
 Allowed MVP retention policies:
@@ -492,16 +496,28 @@ observation_evidence
 
 See `ontology-design.md` for full semantics.
 
-MVP registry tables:
+Implemented MVP registry tables:
 
 ```text
-allowed_entity_types
+ontology_registry_values
 allowed_edge_types
-allowed_claim_types
 allowed_observation_types
-allowed_candidate_types
-allowed_sensitivity_levels
-allowed_ai_use_policies
+```
+
+`ontology_registry_values` stores controlled values by category, including `entity_type`, `fact_type`, `claim_type`, `sensitivity`, `ai_use_policy`, `retention_policy`, `evidence_source_type`, and `candidate_type`.
+
+```text
+ontology_registry_values
+- id uuid primary key
+- category text not null
+- value text not null
+- label text not null
+- description text nullable
+- support_level text not null
+- is_active boolean not null default true
+- sort_order integer not null default 0
+- created_at timestamptz not null
+- updated_at timestamptz not null
 ```
 
 `allowed_edge_types` is especially important:
@@ -579,9 +595,9 @@ blocked
 
 ---
 
-## 9. Open Issues
+## 9. Closed Implementation Decisions
 
-1. Exact initial seed values for ontology registries.
-2. Whether `entity_facts.fact_type` should be registry-backed in MVP.
-3. Whether `canonical_record_ref` should remain string-based (`table:id`) or become typed columns.
-4. Exact indexes and constraints for confidence/status/policy retrieval performance.
+1. Ontology seed values live in `kinlayer_backend.services.ontology.REGISTRY_SEEDS`.
+2. `entity_facts.fact_type` is registry-backed.
+3. `canonical_record_ref` remains string-based in the form `table:id`.
+4. MVP indexes cover entity type, canonical name, confirmation/status, aliases, facts, edges, observations, episodes, and evidence lookup paths used by current retrieval and smoke checks.

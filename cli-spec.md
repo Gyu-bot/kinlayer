@@ -10,10 +10,10 @@
 
 Kinlayer is CLI-first, but the CLI is not the canonical capability owner. The HTTP API is canonical; the CLI is an API client for setup, debugging, agent-callable workflows, and core local operations.
 
-MVP CLI scope:
+Implemented MVP CLI scope:
 
 ```text
-ops + agent/debug core CLI + raw API/JSON escape hatch
+ops + people bootstrap + candidate/correction workflows + context/debug/graph/embedding commands
 ```
 
 The CLI should be implemented with Typer.
@@ -24,7 +24,7 @@ The CLI should be implemented with Typer.
 
 1. No Web-only state-changing capability.
 2. CLI wraps core workflows but does not need polished flags for every advanced edit.
-3. Advanced or not-yet-wrapped actions must be reachable through raw API passthrough.
+3. Advanced or not-yet-wrapped actions remain reachable through the canonical HTTP API and smoke scripts.
 4. Commands should support JSON output for agents and tests.
 5. Human-readable output is useful by default, but `--json` should be available on core commands.
 
@@ -72,28 +72,11 @@ Checks backend status, DB connectivity, migration status, and configured API URL
 
 ---
 
-## 4. Raw API Escape Hatch
+## 4. HTTP API Access
 
-```bash
-kinlayer api GET /api/health
-kinlayer api POST /api/entities --data entity.json
-kinlayer api PATCH /api/observations/<id> --data patch.json
-```
-
-Purpose:
-
-- expose all canonical HTTP API capability even when first-class CLI commands do not exist;
-- support development, tests, and advanced local operations;
-- prevent Web-only functionality.
-
-Expected options:
-
-```bash
---data <file.json>
---json
---pretty
---header KEY=VALUE
-```
+There is no generic `kinlayer api` passthrough command in the current MVP CLI.
+Advanced API-only operations are exercised through documented HTTP endpoints and smoke scripts.
+This keeps the CLI focused on stable agent/debug workflows while preserving the rule that Web UI does not own unique state-changing capabilities.
 
 ---
 
@@ -120,7 +103,7 @@ MVP options:
 --json
 ```
 
-Advanced edge/observation/fact creation can use Web UI or raw `kinlayer api` in MVP.
+Advanced edge/observation/fact creation can use the canonical HTTP API in MVP.
 
 ### `person list`
 
@@ -177,8 +160,11 @@ Options:
 
 ```bash
 --status pending
+--candidate-type observation
 --type observation
+--target-entity-id <entity_id>
 --target <entity_id>
+--sensitivity medium
 --json
 ```
 
@@ -244,9 +230,9 @@ Calls retrieval endpoint and returns matched entities, confidence, suggested res
 Options:
 
 ```bash
---max-results 8
---include-pending-recent / --no-include-pending-recent
---debug
+--entity-hint <entity_id>  # repeatable
+--focal-entity-id <entity_id>
+--limit 8
 --json
 ```
 
@@ -267,8 +253,10 @@ Returns Context Pack for a user query.
 Options:
 
 ```bash
---conversation-context <file-or-text>
---include-pending-recent / --no-include-pending-recent
+--entity-hint <entity_id>  # repeatable
+--focal-entity-id <entity_id>
+--situation TEXT
+--limit 8
 --debug
 --json
 ```
@@ -317,6 +305,7 @@ Options:
 --relation-type TEXT
 --status active
 --sensitivity low|medium|high
+--depth 1
 --json
 ```
 
@@ -327,8 +316,9 @@ Returns retrieval score breakdown and policy decisions.
 Options:
 
 ```bash
---include-blocked
---include-superseded
+--entity-hint <entity_id>
+--focal-entity-id <entity_id>
+--limit 8
 --json
 ```
 
@@ -348,4 +338,4 @@ connector management
 import management
 ```
 
-These capabilities should exist in HTTP API where relevant and remain reachable through `kinlayer api`.
+These capabilities exist in HTTP API where relevant and are covered by acceptance smoke scripts.

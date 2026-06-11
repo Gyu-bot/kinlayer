@@ -118,24 +118,26 @@ Required sections:
 
 3. Profile facts
    - list active `entity_facts`;
-   - create/edit/delete via API where supported;
    - show claim_type/confidence/policy.
 
 4. Relationship edges
    - list active edges to/from this person;
-   - show relation_type, direction, confidence, status;
-   - create/edit/delete via API where supported.
+   - show relation_type, direction, confidence, status.
 
 5. Observations
    - list observations where subject or related entity includes this person;
-   - filter recent/stable/caution types;
-   - create/edit/delete via API where supported.
+   - group recent/stable/caution-oriented sections where context-card data supports it.
 
 6. Evidence/provenance panel
    - show source episode metadata and bounded excerpts for selected fact/edge/observation;
    - no full raw archive display in MVP.
 
-Required actions:
+Current MVP actions:
+
+- navigate back to `/people`;
+- inspect context card, evidence, policy, and relationship/observation sections.
+
+Future API-backed actions:
 
 - patch entity summary fields;
 - add/deprecate alias;
@@ -157,21 +159,20 @@ Purpose: candidate inbox and review surface.
 Required behavior:
 
 - list candidates with status, candidate_type, target entity, confidence, sensitivity, created_by, created_at;
-- filter by status/type/sensitivity/target entity;
+- filter by status/type/sensitivity;
 - show candidate detail drawer/panel with payload, evidence excerpts, suggested action;
 - actions:
   - accept;
   - edit-accept;
   - reject;
   - archive;
-  - needs-clarification;
-  - supersede.
+  - needs-clarification.
 
 Expected action semantics:
 
 - accept/edit-accept call explicit action endpoints and may create canonical records;
 - reject/archive/needs-clarification update candidate workflow state;
-- supersede links candidate replacement.
+- supersede links candidate replacement through API/CLI, but is not a current Web control.
 
 MVP non-goals:
 
@@ -221,23 +222,19 @@ Required behavior:
 
 - input fields:
   - query;
-  - situation_text;
-  - retrieval_intent;
-  - desired_context;
-  - candidate_entities/focal_entity_id;
-  - include_pending_recent;
-  - max_results;
-  - debug toggle;
+  - situation;
+  - focal_entity_id;
+  - candidate entity IDs / entity_hints;
 - call `POST /api/context/retrieve`;
 - call `POST /api/context/pack`;
 - display:
   - matched entities;
   - matched observations;
   - score breakdown;
-  - semantic_observation_score;
   - confidence band;
   - suggested_response_policy;
-  - context buckets.
+  - context buckets;
+  - raw debug metadata when returned.
 
 MVP non-goals:
 
@@ -254,22 +251,22 @@ Purpose: local instance status and read-only configuration inspection.
 Required sections:
 
 - system health/status;
-- database/migration status;
+- database health;
+- optional bearer token configured/not configured state;
 - embedding provider status;
 - active embedding model and dimension;
 - ontology registry read-only lists:
   - entity types;
+  - fact types;
   - edge types;
   - observation types;
-  - claim types;
   - sensitivity levels;
-  - ai_use_policies;
-  - candidate types;
-- default policy values.
+  - ai_use_policies.
 
 MVP non-goals:
 
 - full auth/user management;
+- token value display after save;
 - full ontology editor;
 - connector setup wizard.
 

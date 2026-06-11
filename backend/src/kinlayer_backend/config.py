@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     api_token: str | None = None
     database_url: str = "postgresql+psycopg://kinlayer:kinlayer@127.0.0.1:15432/kinlayer"
     embedding_provider: str | None = Field(default=None)
+    embedding_api_url: str | None = Field(default=None)
+    embedding_api_key: str | None = Field(default=None)
     embedding_model: str | None = Field(default=None)
     embedding_dim: int | None = Field(default=None)
 

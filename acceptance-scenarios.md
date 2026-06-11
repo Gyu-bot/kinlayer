@@ -12,7 +12,7 @@ This document defines journey-level MVP acceptance scenarios for Kinlayer.
 
 These scenarios are not exhaustive unit tests. They describe the minimum end-to-end behavior that must work before the MVP can be considered usable by a user and AI agent.
 
-Expected JSON examples and fixture-level assertions should be added after `api-spec.md` is finalized.
+Fixture-level assertions are covered by the acceptance smoke scripts in `scripts/`.
 
 ---
 
@@ -112,8 +112,7 @@ Kinlayer supports agent-assisted retrieval for ambiguous references without over
 
 1. Agent sends context request with:
    - `query` containing an implicit reference such as "that person";
-   - `situation_text`;
-   - `candidate_entities` with confidence;
+   - optional `entity_hints`;
    - no confirmed `focal_entity_id`.
 2. Kinlayer performs hybrid retrieval.
 3. Kinlayer applies ambiguity guard.
@@ -188,14 +187,14 @@ Kinlayer uses embeddings to retrieve semantically relevant Korean observations e
    - local sentence-transformers model `dragonkue/multilingual-e5-small-ko-v2`.
 2. Create an observation with nuanced Korean content.
 3. Ensure embedding status becomes `ready` or backfill succeeds.
-4. Query with semantically similar Korean `situation_text` using different wording.
+4. Query with semantically similar Korean `query` text using different wording.
 5. Inspect retrieval result/debug.
 
 ### Pass Criteria
 
 - Observation has embedding metadata.
-- `semantic_enabled = true` in debug output.
-- `semantic_observation_score` contributes to final score.
+- Debug output includes retrieval score weights and thresholds.
+- `semantic_observation` contributes to `score_breakdown` when embeddings are available.
 - Relevant observation is returned despite weak exact keyword overlap.
 - Hybrid scoring still respects entity hints, policy, status, and recency.
 
@@ -258,4 +257,7 @@ Minimum verification artifacts:
 - Web UI loads;
 - CLI can call API;
 - embedding provider can be smoke-tested;
+- `python3 scripts/load-acceptance-fixtures.py` creates protected self, two fixture people, aliases, facts, edges, observations, episodes, evidence, one pending candidate, one accepted candidate, and one correction;
+- `python3 scripts/smoke-acceptance-api.py` verifies API scenarios including candidate acceptance, context pack, policy buckets, graph, ontology, embeddings, and optional token boundary when `KINLAYER_API_TOKEN` is set;
+- `scripts/smoke-acceptance-cli.sh` verifies CLI status, people, candidate, correction, context/retrieval, graph/debug, and embedding workflows.
 - scenarios A-I are manually or automatically verified.

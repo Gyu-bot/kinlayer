@@ -15,11 +15,17 @@ dependencies = [
   "psycopg[binary]>=3.2.9",
 ]
 
+[project.optional-dependencies]
+local-embeddings = [
+  "sentence-transformers>=3.0.0",
+]
+
 [project.scripts]
 kinlayer = "kinlayer_backend.cli:app"
 
 [dependency-groups]
 dev = [
+  "pytest>=8.4.0",
   "ruff>=0.11.13",
 ]
 

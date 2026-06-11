@@ -1,63 +1,79 @@
 from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect
 
+from kinlayer_backend.api.candidates import router as candidates_router
+from kinlayer_backend.api.context import router as context_router
+from kinlayer_backend.api.corrections import router as corrections_router
+from kinlayer_backend.api.embeddings import router as embeddings_router
+from kinlayer_backend.api.entities import router as entities_router
+from kinlayer_backend.api.graph import router as graph_router
+from kinlayer_backend.api.ontology import router as ontology_router
+from kinlayer_backend.api.errors import (
+    error_response,
+    http_exception_handler,
+    validation_exception_handler,
+)
+from kinlayer_backend.api.system import router as system_router
+from kinlayer_backend.api.relationships import router as relationships_router
 from kinlayer_backend.config import Settings
-from kinlayer_backend.database import check_database
+from kinlayer_backend.database import create_session_maker
+from kinlayer_backend.services.ontology import seed_ontology_values
 
 PUBLIC_PATHS = {"/api/system/health", "/api/system/version"}
 
 
-def error_response(status_code: int, code: str, message: str, details: dict[str, Any] | None = None):
-    return JSONResponse(
-        status_code=status_code,
-        content={"error": {"code": code, "message": message, "details": details or {}}},
-    )
-
-
 def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
     settings = Settings.from_overrides(overrides)
-    app = FastAPI(title="Kinlayer", version="0.1.0")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        with app.state.session_factory() as session:
+            if inspect(session.get_bind()).has_table("ontology_registry_values"):
+                seed_ontology_values(session)
+        yield
+
+    app = FastAPI(title="Kinlayer", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
+    app.state.session_factory = create_session_maker(settings)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
     @app.middleware("http")
     async def optional_token_auth(
         request: Request,
         call_next: Callable[[Request], Awaitable[Any]],
     ):
-        if settings.api_token and request.url.path not in PUBLIC_PATHS:
+        if (
+            settings.api_token
+            and request.method != "OPTIONS"
+            and request.url.path not in PUBLIC_PATHS
+        ):
             expected = f"Bearer {settings.api_token}"
             if request.headers.get("authorization") != expected:
                 return error_response(401, "unauthorized", "Bearer API token is required.")
         return await call_next(request)
 
-    @app.get("/api/system/health")
-    def health() -> dict[str, str]:
-        database_status = check_database(settings)
-        return {
-            "status": "ok" if database_status == "ok" else "degraded",
-            "database": database_status,
-            "embedding": "disabled",
-        }
-
-    @app.get("/api/system/version")
-    def version() -> dict[str, str]:
-        return {"name": "kinlayer", "version": "0.1.0", "api_version": "v1"}
-
-    @app.get("/api/system/config")
-    def config() -> dict[str, Any]:
-        return {
-            "bind_host": settings.bind_host,
-            "auth_token_configured": bool(settings.api_token),
-            "embedding": {
-                "provider": settings.embedding_provider or "disabled",
-                "model": settings.embedding_model,
-                "dim": settings.embedding_dim,
-                "status": "disabled",
-            },
-        }
+    app.include_router(system_router)
+    app.include_router(entities_router)
+    app.include_router(relationships_router)
+    app.include_router(embeddings_router)
+    app.include_router(candidates_router)
+    app.include_router(corrections_router)
+    app.include_router(context_router)
+    app.include_router(graph_router)
+    app.include_router(ontology_router)
 
     return app
 

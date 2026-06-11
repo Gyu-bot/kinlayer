@@ -546,8 +546,12 @@ Response:
 
 ```json
 {
-  "candidate": {},
-  "canonical_record_ref": "observations:uuid"
+  "id": "uuid",
+  "candidate_type": "observation",
+  "status": "accepted",
+  "canonical_record_ref": "observations:uuid",
+  "payload": {},
+  "evidence": []
 }
 ```
 
@@ -567,6 +571,7 @@ Semantics:
 - Validate edited payload.
 - Write canonical record using edited payload.
 - Mark candidate `edited_accepted`.
+- Response is the same flat candidate object shape as `accept`.
 
 ### `POST /api/candidates/{id}/reject`
 
@@ -656,26 +661,11 @@ Validation:
 ```json
 {
   "query": "그 사람이랑 또 연락 왔는데 애매해",
-  "situation_text": "그 사람이 다시 연락했고, 사용자가 답장을 해야 할지 애매해하는 상황.",
-  "retrieval_intent": "relationship_advice",
-  "desired_context": [
-    "recent_interactions",
-    "relationship_patterns",
-    "communication_preferences",
-    "cautions"
-  ],
-  "candidate_entities": [
-    {
-      "entity_id": "uuid",
-      "confidence": 0.72,
-      "reason": "recently discussed person"
-    }
-  ],
+  "entity_hints": ["uuid"],
   "focal_entity_id": null,
-  "time_window": {"recent_days": 60},
-  "include_pending_recent": true,
-  "max_results": 8,
-  "debug": false
+  "query_embedding": null,
+  "include_debug": false,
+  "limit": 8
 }
 ```
 
@@ -687,29 +677,37 @@ Response:
 
 ```json
 {
-  "query": "...",
   "matched_entities": [
     {
       "entity_id": "uuid",
       "display_name": "Alex",
+      "entity_type": "person",
       "score": 0.82,
-      "confidence": "high",
-      "match_reasons": ["candidate_entity", "recent_mention"],
+      "confidence_band": "high",
+      "match_reasons": ["entity_hint", "recent"],
       "score_breakdown": {
-        "entity_hint_score": 0.25,
-        "alias_name_score": 0.18,
-        "semantic_observation_score": 0.16,
-        "recency_score": 0.12,
-        "graph_proximity_score": 0.08,
-        "confirmation_policy_score": 0.09,
-        "penalties": 0.0
-      }
+        "entity_hint": 0.25,
+        "alias_name": 0.2,
+        "semantic_observation": 0.2,
+        "recency": 0.15,
+        "graph_proximity": 0.1,
+        "confirmation_policy": 0.1
+      },
+      "penalties": {},
+      "surface_bucket": "direct_surface",
+      "sensitivity": "medium",
+      "ai_use_policy": "cautious_use",
+      "confirmation_status": "confirmed",
+      "observations": []
     }
   ],
-  "matched_observations": [],
+  "observations": [],
+  "scores": {"uuid": 0.82},
+  "match_reasons": {"uuid": ["entity_hint", "recent"]},
+  "score_breakdown": {"uuid": {"entity_hint": 0.25}},
+  "ambiguity_detected": false,
   "debug": {
-    "semantic_enabled": true,
-    "embedding_model": "dragonkue/multilingual-e5-small-ko-v2"
+    "score_weights": {}
   }
 }
 ```
@@ -722,21 +720,22 @@ Response:
 
 ```json
 {
-  "type": "context_pack",
-  "query": "...",
-  "confidence": "medium",
-  "suggested_response_policy": "conditional_use",
-  "matched_entities": [],
-  "context_buckets": {
-    "direct_surface": [],
-    "conditional_surface": [],
-    "internal_only": [],
-    "blocked": []
+  "context_pack": {
+    "confidence": "medium",
+    "suggested_response_policy": "conditional_use",
+    "ambiguity_detected": false,
+    "matched_entities": [],
+    "buckets": {
+      "direct_surface": [],
+      "conditional_surface": [],
+      "internal_only": [],
+      "blocked": []
+    },
+    "recent_context": [],
+    "stable_context": [],
+    "cautions": [],
+    "provenance": []
   },
-  "recent_context": [],
-  "stable_context": [],
-  "cautions": [],
-  "provenance": [],
   "debug": {}
 }
 ```
@@ -853,9 +852,11 @@ Response:
   "dim": 384,
   "status": "ready",
   "observations": {
-    "ready": 10,
+    "total": 13,
     "pending": 2,
-    "failed": 1
+    "ready": 10,
+    "failed": 1,
+    "stale": 0
   }
 }
 ```
@@ -864,22 +865,15 @@ Response:
 
 Purpose: regenerate pending/failed/stale observation embeddings.
 
-Request:
-
-```json
-{
-  "status": ["pending", "failed"],
-  "limit": 100
-}
-```
+Query params: `limit` (default `100`, max `500`).
 
 Response:
 
 ```json
 {
   "processed": 10,
-  "ready": 9,
-  "failed": 1
+  "failed": 1,
+  "skipped": 0
 }
 ```
 
