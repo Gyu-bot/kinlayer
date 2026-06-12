@@ -154,6 +154,10 @@ open(path, "w").write(json.dumps(payload))
 PY
 uv run kinlayer correction apply "$correction_json" --json > "$correction_result_json"
 
+echo "== CLI agent write operations =="
+uv run kinlayer agent-operations list --json > "$TMP_DIR/agent-operations-list.json"
+uv run kinlayer agent-operations export --limit 50 > "$TMP_DIR/agent-operations-export.jsonl"
+
 echo "== CLI context, graph, and embeddings =="
 uv run kinlayer retrieve "민지 한국어 요약 회의 확인" --entity-hint "$minji_id" --json > "$TMP_DIR/retrieve.json"
 uv run kinlayer context pack "민지 한국어 요약 회의 확인" --focal-entity-id "$self_id" --debug --json > "$TMP_DIR/context-pack.json"
@@ -176,6 +180,9 @@ assert json.load(open(root / "person-show.json"))["entity"]["display_name"].star
 assert json.load(open(root / "candidate-accept.json"))["canonical_record_ref"].startswith("observations:")
 assert json.load(open(root / "candidate-edit-accept.json"))["status"] == "edited_accepted"
 assert json.load(open(root / "correction-result.json"))["new_record_ref"].startswith("observations:")
+assert json.load(open(root / "agent-operations-list.json"))["total"] >= 1
+first_export_line = open(root / "agent-operations-export.jsonl").readline()
+assert json.loads(first_export_line)["schema_version"] == "agent_write_operations.v1"
 assert any(item["entity_id"] == minji_id for item in json.load(open(root / "retrieve.json"))["matched_entities"])
 assert "context_pack" in json.load(open(root / "context-pack.json"))
 assert json.load(open(root / "context-card.json"))["entity"]["id"] == minji_id

@@ -30,6 +30,7 @@ No Web-only state-changing capability is allowed.
 /people/new
 /people/:id
 /candidates
+/agent-operations
 /graph
 /retrieval-debug
 /settings
@@ -41,7 +42,7 @@ Excluded from MVP:
 /episodes
 /imports
 /connectors
-/audit
+/audit full timeline
 /ontology full admin
 full-network graph analytics
 ```
@@ -244,7 +245,29 @@ MVP non-goals:
 
 ---
 
-## 9. `/settings`
+## 9. `/agent-operations`
+
+Purpose: inspect and export AI-agent write attempts and their outcomes.
+
+Required behavior:
+
+- list recent agent write operations from `GET /api/agent-operations`;
+- filter by actor, source path, operation type, result status, diagnostic/error status, and optional time range;
+- show operation type, result, actor, candidate/correction/canonical refs where available, and bounded excerpt;
+- provide an Export action that downloads the current filter from `GET /api/agent-operations/export`;
+- keep export bounded and redacted.
+
+Non-goals:
+
+- retrieval/context-pack read history;
+- full prompt archive;
+- raw conversation transcript viewer;
+- general Docker/container log viewer;
+- full audit timeline across manual UI actions.
+
+---
+
+## 10. `/settings`
 
 Purpose: local instance status and read-only configuration inspection.
 
@@ -274,7 +297,7 @@ MVP non-goals:
 
 ---
 
-## 10. UX Priorities
+## 11. UX Priorities
 
 MVP Web UI should optimize for:
 

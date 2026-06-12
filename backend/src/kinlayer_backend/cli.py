@@ -17,6 +17,7 @@ correction_app = typer.Typer(help="Apply explicit corrections.")
 context_app = typer.Typer(help="Retrieve and package context.")
 debug_app = typer.Typer(help="Inspect retrieval internals.")
 graph_app = typer.Typer(help="Inspect relationship graph views.")
+agent_operations_app = typer.Typer(help="Inspect and export agent write operations.")
 app.add_typer(person_app, name="person")
 app.add_typer(embedding_app, name="embedding")
 app.add_typer(candidate_app, name="candidate")
@@ -24,6 +25,7 @@ app.add_typer(correction_app, name="correction")
 app.add_typer(context_app, name="context")
 app.add_typer(debug_app, name="debug")
 app.add_typer(graph_app, name="graph")
+app.add_typer(agent_operations_app, name="agent-operations")
 
 
 def _headers(settings: Settings) -> dict[str, str]:
@@ -79,6 +81,11 @@ def _read_json_file(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise typer.BadParameter("JSON file must contain an object.")
     return payload
+
+
+def _query_path(path: str, params: list[tuple[str, Any]]) -> str:
+    parts = [f"{key}={value}" for key, value in params if value is not None]
+    return f"{path}?{'&'.join(parts)}" if parts else path
 
 
 def _context_payload(
@@ -494,6 +501,77 @@ def correction_apply(
         _emit(payload, json_output=True)
     else:
         typer.echo(f"{payload['old_record_ref']} -> {payload['new_record_ref']}")
+
+
+@agent_operations_app.command("list")
+def agent_operations_list(
+    actor: Annotated[str | None, typer.Option("--actor")] = None,
+    source_path: Annotated[str | None, typer.Option("--source-path")] = None,
+    operation_type: Annotated[str | None, typer.Option("--operation-type")] = None,
+    result_status: Annotated[str | None, typer.Option("--result-status")] = None,
+    has_error: Annotated[bool | None, typer.Option("--has-error")] = None,
+    created_from: Annotated[str | None, typer.Option("--created-from")] = None,
+    created_to: Annotated[str | None, typer.Option("--created-to")] = None,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=200)] = 50,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    response = _request(
+        "GET",
+        _query_path(
+            "/api/agent-operations",
+            [
+                ("actor", actor),
+                ("source_path", source_path),
+                ("operation_type", operation_type),
+                ("result_status", result_status),
+                ("has_error", has_error),
+                ("created_from", created_from),
+                ("created_to", created_to),
+                ("limit", limit if limit != 50 else None),
+            ],
+        ),
+    )
+    _raise_for_api(response)
+    payload = response.json()
+    if json_output:
+        _emit(payload, json_output=True)
+        return
+    for item in payload["items"]:
+        typer.echo(
+            f"{item['id']}  {item['operation_type']}  "
+            f"{item['result_status']}  {item['actor']}"
+        )
+
+
+@agent_operations_app.command("export")
+def agent_operations_export(
+    actor: Annotated[str | None, typer.Option("--actor")] = None,
+    source_path: Annotated[str | None, typer.Option("--source-path")] = None,
+    operation_type: Annotated[str | None, typer.Option("--operation-type")] = None,
+    result_status: Annotated[str | None, typer.Option("--result-status")] = None,
+    has_error: Annotated[bool | None, typer.Option("--has-error")] = None,
+    created_from: Annotated[str | None, typer.Option("--created-from")] = None,
+    created_to: Annotated[str | None, typer.Option("--created-to")] = None,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=1000)] = 200,
+) -> None:
+    response = _request(
+        "GET",
+        _query_path(
+            "/api/agent-operations/export",
+            [
+                ("actor", actor),
+                ("source_path", source_path),
+                ("operation_type", operation_type),
+                ("result_status", result_status),
+                ("has_error", has_error),
+                ("created_from", created_from),
+                ("created_to", created_to),
+                ("limit", limit),
+            ],
+        ),
+    )
+    _raise_for_api(response)
+    typer.echo(response.text, nl=False)
 
 
 @app.command()

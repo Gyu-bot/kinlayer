@@ -90,6 +90,8 @@ kinlayer_apply_correction
 kinlayer_list_candidates
 kinlayer_accept_candidate
 kinlayer_reject_candidate
+kinlayer_list_agent_write_operations
+kinlayer_export_agent_write_operations
 ```
 
 Benefits:
@@ -98,9 +100,12 @@ Benefits:
 - stable tool calls;
 - easier candidate/correction submission;
 - less dependence on free-form CLI parsing;
-- better integration with agent reasoning loops.
+- better integration with agent reasoning loops;
+- easier postmortem review of what agents attempted to write and what Kinlayer accepted or rejected.
 
 This is the likely best first deep integration for Som after Kinlayer MVP is functional.
+
+Agent write operation export is deliberately narrower than a full audit timeline. It includes AI-agent write attempts and results only: candidate submit/accept/edit-accept and correction apply records, plus bounded refs/excerpts/diagnostics. It excludes retrieval reads, full prompts, raw conversation transcripts, bearer tokens, API keys, and ordinary container logs.
 
 ---
 

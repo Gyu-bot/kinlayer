@@ -6,9 +6,10 @@ from kinlayer_backend import cli
 
 
 class DummyResponse:
-    def __init__(self, status_code: int, payload: dict):
+    def __init__(self, status_code: int, payload: dict, text: str | None = None):
         self.status_code = status_code
         self._payload = payload
+        self.text = text if text is not None else json.dumps(payload)
 
     def json(self) -> dict:
         return self._payload
@@ -272,6 +273,50 @@ def test_correction_apply_reads_json_file_and_cli_uses_api_token(tmp_path, monke
     assert calls[0][1]["Authorization"] == "Bearer secret-token"
     assert calls[0][2] == correction_payload
     assert json.loads(result.stdout)["new_record_ref"] == "entity_edges:new"
+
+
+def test_agent_operations_cli_lists_and_exports_write_operations(monkeypatch) -> None:
+    calls = []
+    jsonl = (
+        '{"record_type":"manifest","schema_version":"agent_write_operations.v1"}\n'
+        '{"record_type":"agent_write_operation","operation_type":"candidate_submit"}\n'
+    )
+
+    def fake_get(url, headers, timeout):
+        calls.append(url)
+        if url.endswith("/api/agent-operations/export?limit=25"):
+            return DummyResponse(200, {}, text=jsonl)
+        return DummyResponse(
+            200,
+            {
+                "items": [
+                    {
+                        "id": "audit-id",
+                        "operation_type": "candidate_submit",
+                        "result_status": "success",
+                        "actor": "ai_agent",
+                    }
+                ],
+                "limit": 50,
+                "offset": 0,
+                "total": 1,
+            },
+        )
+
+    monkeypatch.setattr(cli.httpx, "get", fake_get)
+
+    listed = CliRunner().invoke(cli.app, ["agent-operations", "list", "--json"])
+    exported = CliRunner().invoke(
+        cli.app,
+        ["agent-operations", "export", "--limit", "25"],
+    )
+
+    assert listed.exit_code == 0
+    assert exported.exit_code == 0
+    assert calls[0].endswith("/api/agent-operations")
+    assert calls[1].endswith("/api/agent-operations/export?limit=25")
+    assert json.loads(listed.stdout)["items"][0]["id"] == "audit-id"
+    assert "agent_write_operation" in exported.stdout
 
 
 def test_retrieve_cli_calls_context_retrieve_and_supports_json(monkeypatch) -> None:

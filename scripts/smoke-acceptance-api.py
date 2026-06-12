@@ -59,6 +59,18 @@ class SmokeClient:
         except urllib.error.HTTPError as exc:
             return exc.code
 
+    def text(self, path: str) -> str:
+        headers = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        request = urllib.request.Request(f"{self.api_url}{path}", headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                return response.read().decode()
+        except urllib.error.HTTPError as exc:
+            data = exc.read().decode()
+            raise AssertionError(f"GET {path} failed: HTTP {exc.code} {data}") from exc
+
     def get(self, path: str) -> Any:
         return self.request("GET", path)
 
@@ -327,6 +339,20 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
 
     correction = fixtures["correction"]
     assert_true(correction["new_record_ref"].startswith("observations:"), "correction apply fixture failed")
+
+    agent_operations = client.get("/api/agent-operations?limit=50")
+    assert_true(agent_operations["total"] >= 1, "agent write operation list missing records")
+    assert_true(
+        any(item["operation_type"].startswith("candidate_") for item in agent_operations["items"]),
+        "agent write operation candidate records missing",
+    )
+    agent_export = client.text("/api/agent-operations/export?limit=50")
+    agent_export_lines = [json.loads(line) for line in agent_export.splitlines()]
+    assert_true(agent_export_lines[0]["schema_version"] == "agent_write_operations.v1", "agent export manifest missing")
+    assert_true(
+        any(line.get("record_type") == "agent_write_operation" for line in agent_export_lines[1:]),
+        "agent export records missing",
+    )
 
     retrieved = client.post(
         "/api/context/retrieve",

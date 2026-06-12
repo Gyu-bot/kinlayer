@@ -128,6 +128,7 @@ Scripts and docs:
 | T050 | Structured profile fact promotion workflow | High | Backlog | T033, T034, T039, T049 |
 | T051 | Temporal observation recording and candidate payload preservation | High | Backlog | T012, T016, T048, T049 |
 | T052 | Optional LLM-assisted background curation | Low | Backlog | T040, T045, T049, T050, T051 |
+| T053 | Agent write operation export and Web download | High | Done | T034 |
 
 ---
 
@@ -1107,7 +1108,7 @@ uv run kinlayer status --json
 - Design:
   - Treat any persisted `entity_edges.relation_type` value that is not present in active `allowed_edge_types.relation_type` as a data-integrity defect, not a UI polish issue.
   - Add an explicit relationship write audit trail that records every attempted edge create/update/candidate-accept/correction path, including rejected invalid relation types.
-  - Audit records should capture timestamp, operation, endpoint or service path, submitted `relation_type`, resolved edge type match status, from/to entity IDs, from/to entity types, actor/submitted_by/created_by when available, candidate/correction IDs when applicable, result status, API error code, and redacted request metadata.
+  - Audit records should capture timestamp, stable `audit_id`, operation, endpoint or service path, submitted `relation_type`, resolved edge type match status, from/to entity IDs, from/to entity types, actor/submitted_by/created_by when available, episode/candidate/correction/source-message refs when applicable, result status, API error code, and redacted request metadata.
   - Audit logs must not store full raw conversation bodies, secrets, bearer tokens, or unbounded payloads. Store bounded excerpts or structured refs only.
   - Add a read-only diagnostic API/CLI path for local debugging that can list recent relationship write audit records and scan existing DB rows for relation types that are missing from `allowed_edge_types`.
   - Keep the canonical fix in the API/service layer first. Database constraints may be added if they do not block existing local recovery workflows, but at minimum every public/service write path must reject invalid edge types before persistence.
@@ -1123,12 +1124,15 @@ uv run kinlayer status --json
   - [ ] Tests prove an invalid `relationship_edge` candidate cannot be submitted, accepted, or edit-accepted into a canonical edge.
   - [ ] Tests prove an invalid relation type cannot be introduced through correction apply.
   - [ ] Tests prove write audit records exist for success and failure cases, including the invalid relation type string.
+  - [ ] Write audit records expose stable join refs for related `episode_id`, `candidate_id`, `correction_id`, canonical record ref, and source turn/message IDs when those refs are available, without storing raw conversation bodies.
+  - [ ] Diagnostic API/CLI responses include stable `audit_id` values and related refs so a later export surface can trace each write attempt to real persisted records.
   - [ ] Tests prove diagnostic output identifies seeded legacy invalid rows without modifying them.
   - [ ] API/CLI smoke includes one rejected invalid relation type attempt and verifies the audit/diagnostic surface can explain it.
   - [ ] Docs clarify that UI-visible relationship type, API `relation_type`, candidate `relationship_edge.relation_type`, and graph edge labels are all derived from ontology edge types.
 - Notes:
   - This task responds to observed behavior where an agent produced a relation type outside the edge-type registry. Do not treat the issue as presentation-only.
   - Prefer append-only audit rows over ordinary application log lines for local postmortem debugging because container logs may rotate or disappear.
+  - T047 is the write-audit foundation for later operator export, but it should remain focused on edge-type enforcement and joinable write-attempt records rather than building the full Web export workflow.
   - If invalid rows already exist in a user's local DB, the first implementation should make them discoverable and safe to inspect before deciding whether to add a repair migration.
 
 #### Task T048. Agent Write Instruction Pack
@@ -1379,6 +1383,59 @@ uv run kinlayer status --json
   - The value of this task is maintenance assistance, not trust. Human review remains the promotion boundary.
   - This task may reuse embedding/provider configuration concepts, but it should not be coupled to retrieval embeddings.
 
+#### Task T053. Agent write operation export and Web download
+- Priority: High
+- Status: Done
+- Depends on: T034
+- Files:
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `docs/specs/data-model.md`
+  - Modify: `docs/specs/web-ui-spec.md`
+  - Modify: `docs/agents/agent-integration-notes.md`
+  - Modify: `backend/src/kinlayer_backend/models.py`
+  - Add: `backend/alembic/versions/20260612_0005_agent_write_operation_audits.py`
+  - Add: `backend/src/kinlayer_backend/schemas/agent_operations.py`
+  - Add: `backend/src/kinlayer_backend/services/agent_operation_exports.py`
+  - Add: `backend/src/kinlayer_backend/api/agent_operations.py`
+  - Modify: `backend/src/kinlayer_backend/main.py`
+  - Modify: `backend/src/kinlayer_backend/api/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/api/corrections.py`
+  - Modify: `backend/src/kinlayer_backend/cli.py`
+  - Add: `backend/tests/test_agent_operations_api.py`
+  - Modify: `backend/tests/test_cli.py`
+  - Modify: `backend/tests/test_migrations.py`
+  - Modify: `frontend/src/api/client.ts`
+  - Add: `frontend/src/types/agentOperations.ts`
+  - Add: `frontend/src/routes/AgentOperations.tsx`
+  - Modify: `frontend/src/App.tsx`
+  - Test: `frontend/src/App.test.tsx`
+  - Modify: `scripts/smoke-acceptance-api.py`
+  - Modify: `scripts/smoke-acceptance-cli.sh`
+- Design:
+  - Provide an operator-facing way to inspect and export what agents attempted to write into Kinlayer and what happened to those attempts.
+  - Scope is write operations only: candidate submissions, candidate accept/edit-accept paths, correction apply paths, and rejected validation attempts where the route can safely identify `created_by = ai_agent`.
+  - Explicitly exclude retrieval/context-pack reads, full agent prompts, raw conversation transcripts, ordinary Docker/container logs, and unrelated manual Web UI actions from this export task.
+  - Define an `agent_write_operation` export record as a bounded bundle assembled from persisted `agent_write_operation_audits` plus referenced episode/evidence/candidate/correction/canonical-record metadata.
+  - Export records should include schema version, export timestamp, filters used, operation timestamp, actor/source adapter when known, operation type, result status, API error code, validation diagnostics, normalized/controlled values checked when available, stable related record refs, and bounded request/evidence excerpts.
+  - Export records must never include bearer tokens, API keys, secrets, full raw request payloads, full conversation bodies, or unbounded text fields.
+  - Add read-only API and CLI surfaces to list recent agent write operations and export them as `jsonl` or `ndjson` with a small manifest. Web download may return a single `.jsonl` file or a zip containing `manifest.json` plus `agent-write-operations.ndjson`.
+  - Add a Web route such as `/agent-operations` that lists recent agent write operations with filters for time range, actor/source, operation type, result status, and diagnostic/error status, plus an export button for the current filter.
+  - T047 and T049 are not hard dependencies. T047 can later add richer relationship edge-type diagnostics to the same export surface; T049 can later add schema-guard diagnostics. Before those tasks, export the persisted audit result and API validation error details that are available.
+- Acceptance Criteria:
+  - [x] API can list recent agent write operations with filter parameters for time range, actor/source, operation type, result status, and diagnostic/error status.
+  - [x] API can export filtered agent write operations as bounded newline-delimited JSON records plus manifest metadata.
+  - [x] CLI can list and export the same operation records in machine-readable form.
+  - [x] Web UI lists recent agent write operations without requiring raw UUIDs as the primary workflow input.
+  - [x] Web UI can download a file for the current filter, and the file includes schema version, export timestamp, filters, and bounded operation records.
+  - [x] Export includes successful and rejected agent write attempts, related `audit_id`, `episode_id`, `candidate_id`, `correction_id`, canonical record refs, result status, API error code, and diagnostics when available.
+  - [x] Export excludes retrieval/context-pack reads, raw prompts, full conversation transcripts, secrets, bearer tokens, and unbounded request bodies.
+  - [x] Tests prove exported records match persisted audit/candidate/correction/evidence references for one successful and one rejected agent-like write.
+  - [x] Browser verification confirms the Web list renders without console errors; automated UI/API checks confirm the current-filter download/export flow.
+- Notes:
+  - This task is for later review with a coding agent: the exported file should be small, redacted, deterministic, and easy to paste or attach back into a Codex session.
+  - Keep this narrower than a full audit timeline. The first useful loop is "what did the agent try to write, what did Kinlayer persist or reject, and why?"
+  - Implemented as a standalone agent write operation audit/export surface; later T047/T049 work can append richer diagnostics without changing the export shape.
+
 ---
 
 ## Dependency Flow
@@ -1477,4 +1534,5 @@ flowchart TD
   T049 --> T052
   T050 --> T052
   T051 --> T052
+  T034 --> T053
 ```

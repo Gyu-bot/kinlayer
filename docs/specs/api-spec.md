@@ -888,6 +888,67 @@ Response:
 
 ---
 
-## 17. Handoff Notes
+## 17. Agent Write Operations
+
+Purpose: inspect and export what AI agents attempted to write into Kinlayer and what happened to those attempts.
+
+Scope is write-only. These endpoints do not export context-pack/retrieval reads, full prompts, raw conversation transcripts, bearer tokens, API keys, or ordinary container logs.
+
+### `GET /api/agent-operations`
+
+Query params:
+
+- `actor`
+- `source_path`
+- `operation_type`
+- `result_status`
+- `has_error`
+- `created_from`
+- `created_to`
+- `limit`
+- `offset`
+
+Response:
+
+```json
+{
+  "items": [
+    {
+      "id": "audit-id",
+      "operation_type": "candidate_submit",
+      "source_path": "/api/candidates",
+      "actor": "ai_agent",
+      "result_status": "success",
+      "api_error_code": null,
+      "request_summary": {"candidate_type": "observation"},
+      "diagnostics": {},
+      "related_refs": {},
+      "candidate_id": "candidate-id",
+      "correction_id": null,
+      "episode_id": "episode-id",
+      "canonical_record_ref": "observations:record-id",
+      "bounded_excerpt": "User-authored bounded excerpt.",
+      "created_at": "2026-06-12T00:00:00Z",
+      "updated_at": "2026-06-12T00:00:00Z"
+    }
+  ],
+  "limit": 50,
+  "offset": 0,
+  "total": 1
+}
+```
+
+### `GET /api/agent-operations/export`
+
+Returns newline-delimited JSON with a manifest first, then bounded operation records. `format=jsonl` and `format=ndjson` are accepted aliases.
+
+```jsonl
+{"record_type":"manifest","schema_version":"agent_write_operations.v1","scope":"agent_write_operations_only"}
+{"record_type":"agent_write_operation","schema_version":"agent_write_operations.v1","audit_id":"audit-id","operation_type":"candidate_submit"}
+```
+
+---
+
+## 18. Handoff Notes
 
 This spec is intentionally Markdown-first. After implementation stabilizes, generate `openapi.yaml` from FastAPI/Pydantic models or convert this file into formal OpenAPI.

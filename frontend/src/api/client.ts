@@ -19,6 +19,7 @@ import type {
 } from "../types/context";
 import type {Candidate, CandidateFilters} from "../types/candidates";
 import type {EgoGraph, GraphFilters} from "../types/graph";
+import type {AgentOperationFilters, AgentWriteOperation} from "../types/agentOperations";
 
 type LocationLike = Pick<Location, "protocol" | "hostname">;
 
@@ -124,11 +125,27 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const code = payload?.error?.code ?? "request_failed";
-    const message = payload?.error?.message ?? `Request failed with ${response.status}`;
+  const message = payload?.error?.message ?? `Request failed with ${response.status}`;
     const details = payload?.error?.details ?? {};
     throw new ApiError(response.status, code, message, details);
   }
   return payload as T;
+}
+
+async function requestText(path: string, init?: RequestInit): Promise<string> {
+  const response = await fetch(`${apiUrl}${path}`, {
+    ...init,
+    headers: {...headers(), ...(init?.headers ?? {})},
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new ApiError(
+      response.status,
+      "request_failed",
+      text || `Request failed with ${response.status}`,
+    );
+  }
+  return text;
 }
 
 export function formatApiError(error: unknown) {
@@ -344,6 +361,42 @@ export async function listCandidates(filters: CandidateFilters) {
     params.set("sensitivity", filters.sensitivity);
   }
   return request<ListResponse<Candidate>>(`/api/candidates?${params.toString()}`);
+}
+
+function agentOperationParams(filters: AgentOperationFilters, limit: string) {
+  const params = new URLSearchParams({limit});
+  if (filters.actor.trim()) {
+    params.set("actor", filters.actor.trim());
+  }
+  if (filters.source_path.trim()) {
+    params.set("source_path", filters.source_path.trim());
+  }
+  if (filters.operation_type && filters.operation_type !== "all") {
+    params.set("operation_type", filters.operation_type);
+  }
+  if (filters.result_status && filters.result_status !== "all") {
+    params.set("result_status", filters.result_status);
+  }
+  if (filters.has_error && filters.has_error !== "all") {
+    params.set("has_error", filters.has_error);
+  }
+  if (filters.created_from.trim()) {
+    params.set("created_from", filters.created_from.trim());
+  }
+  if (filters.created_to.trim()) {
+    params.set("created_to", filters.created_to.trim());
+  }
+  return params;
+}
+
+export async function listAgentOperations(filters: AgentOperationFilters) {
+  const params = agentOperationParams(filters, "50");
+  return request<ListResponse<AgentWriteOperation>>(`/api/agent-operations?${params.toString()}`);
+}
+
+export async function exportAgentOperations(filters: AgentOperationFilters) {
+  const params = agentOperationParams(filters, "200");
+  return requestText(`/api/agent-operations/export?${params.toString()}`);
 }
 
 export async function runCandidateAction(candidateId: string, action: string) {

@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
@@ -14,6 +15,7 @@ from kinlayer_backend.schemas.candidates import (
     CandidatePatch,
     CandidateRead,
 )
+from kinlayer_backend.services.agent_operation_exports import AgentOperationService
 from kinlayer_backend.services.candidates import CandidateService
 
 router = APIRouter(tags=["candidates"])
@@ -22,7 +24,18 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 @router.post("/api/candidates", response_model=CandidateRead, status_code=201)
 def create_candidate(payload: CandidateCreate, session: SessionDep):
-    return CandidateService(session).create_candidate(payload.model_dump())
+    body = payload.model_dump()
+    try:
+        candidate = CandidateService(session).create_candidate(body)
+    except HTTPException as exc:
+        AgentOperationService(session).record_candidate_submit_failure(
+            body,
+            "/api/candidates",
+            exc,
+        )
+        raise
+    AgentOperationService(session).record_candidate_submit_success(candidate, "/api/candidates")
+    return candidate
 
 
 @router.get("/api/candidates", response_model=CandidateList)
@@ -76,7 +89,22 @@ def delete_candidate(candidate_id: str, session: SessionDep):
 @router.post("/api/candidates/{candidate_id}/accept", response_model=CandidateRead)
 def accept_candidate(candidate_id: str, session: SessionDep):
     candidate = _candidate_or_404(session, candidate_id)
-    return CandidateService(session).accept_candidate(candidate)
+    try:
+        candidate = CandidateService(session).accept_candidate(candidate)
+    except HTTPException as exc:
+        AgentOperationService(session).record_candidate_action_failure(
+            candidate,
+            "candidate_accept",
+            f"/api/candidates/{candidate_id}/accept",
+            exc,
+        )
+        raise
+    AgentOperationService(session).record_candidate_action(
+        candidate,
+        "candidate_accept",
+        f"/api/candidates/{candidate_id}/accept",
+    )
+    return candidate
 
 
 @router.post("/api/candidates/{candidate_id}/edit-accept", response_model=CandidateRead)
@@ -86,12 +114,27 @@ def edit_accept_candidate(
     session: SessionDep,
 ):
     candidate = _candidate_or_404(session, candidate_id)
-    return CandidateService(session).edit_accept_candidate(
+    try:
+        candidate = CandidateService(session).edit_accept_candidate(
+            candidate,
+            payload.payload,
+            resolution_note=payload.resolution_note,
+            resolved_by=payload.resolved_by,
+        )
+    except HTTPException as exc:
+        AgentOperationService(session).record_candidate_action_failure(
+            candidate,
+            "candidate_edit_accept",
+            f"/api/candidates/{candidate_id}/edit-accept",
+            exc,
+        )
+        raise
+    AgentOperationService(session).record_candidate_action(
         candidate,
-        payload.payload,
-        resolution_note=payload.resolution_note,
-        resolved_by=payload.resolved_by,
+        "candidate_edit_accept",
+        f"/api/candidates/{candidate_id}/edit-accept",
     )
+    return candidate
 
 
 @router.post("/api/candidates/{candidate_id}/reject", response_model=CandidateRead)

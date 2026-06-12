@@ -83,3 +83,26 @@ def test_candidate_migration_defines_required_tables() -> None:
 
     for seed in ["candidate_type", "new_entity", "relationship_edge", "supersede", "pending"]:
         assert f'"{seed}"' in content
+
+
+def test_agent_write_operation_audit_migration_defines_required_table() -> None:
+    migration = Path("backend/alembic/versions/20260612_0005_agent_write_operation_audits.py")
+    content = migration.read_text()
+
+    assert '"agent_write_operation_audits"' in content
+    for column in [
+        "operation_type",
+        "source_path",
+        "actor",
+        "result_status",
+        "api_error_code",
+        "request_summary",
+        "diagnostics",
+        "related_refs",
+        "candidate_id",
+        "correction_id",
+        "episode_id",
+        "canonical_record_ref",
+        "bounded_excerpt",
+    ]:
+        assert f'"{column}"' in content

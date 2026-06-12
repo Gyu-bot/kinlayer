@@ -1,6 +1,7 @@
 import {useEffect, useState} from "react";
 
 import {apiUrl} from "./api/client";
+import {AgentOperations} from "./routes/AgentOperations";
 import {Candidates} from "./routes/Candidates";
 import {Graph} from "./routes/Graph";
 import {NewPerson} from "./routes/NewPerson";
@@ -13,6 +14,7 @@ const routes = [
   {label: "People", path: "/people"},
   {label: "New person", path: "/people/new"},
   {label: "Candidates", path: "/candidates"},
+  {label: "Agent operations", path: "/agent-operations"},
   {label: "Graph", path: "/graph"},
   {label: "Retrieval debug", path: "/retrieval-debug"},
   {label: "Settings", path: "/settings"},
@@ -41,6 +43,8 @@ function App() {
     content = <PersonDetail id={personMatch[1]} onNavigate={navigate} />;
   } else if (normalizedPath === "/candidates") {
     content = <Candidates />;
+  } else if (normalizedPath === "/agent-operations") {
+    content = <AgentOperations />;
   } else if (normalizedPath === "/graph") {
     content = <Graph />;
   } else if (normalizedPath === "/retrieval-debug") {

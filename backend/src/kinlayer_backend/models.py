@@ -368,3 +368,29 @@ class CandidateEvidence(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     candidate: Mapped[Candidate] = relationship(back_populates="evidence")
+
+
+class AgentWriteOperationAudit(Base, TimestampMixin):
+    __tablename__ = "agent_write_operation_audits"
+    __table_args__ = (
+        Index("ix_agent_write_operation_actor", "actor"),
+        Index("ix_agent_write_operation_operation_type", "operation_type"),
+        Index("ix_agent_write_operation_result_status", "result_status"),
+        Index("ix_agent_write_operation_candidate_id", "candidate_id"),
+        Index("ix_agent_write_operation_created_at", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    operation_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    source_path: Mapped[str] = mapped_column(String(240), nullable=False)
+    actor: Mapped[str] = mapped_column(String(80), nullable=False)
+    result_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    api_error_code: Mapped[str | None] = mapped_column(String(80))
+    request_summary: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    diagnostics: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    related_refs: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    candidate_id: Mapped[str | None] = mapped_column(String(36))
+    correction_id: Mapped[str | None] = mapped_column(String(36))
+    episode_id: Mapped[str | None] = mapped_column(String(36))
+    canonical_record_ref: Mapped[str | None] = mapped_column(String(120))
+    bounded_excerpt: Mapped[str | None] = mapped_column(Text)

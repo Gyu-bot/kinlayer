@@ -20,6 +20,7 @@ describe("App route shell", () => {
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   it("supports the MVP routes from the shell", () => {
@@ -31,9 +32,78 @@ describe("App route shell", () => {
     expect(nav.getByRole("button", {name: "People"})).toBeInTheDocument();
     expect(nav.getByRole("button", {name: "New person"})).toBeInTheDocument();
     expect(nav.getByRole("button", {name: "Candidates"})).toBeInTheDocument();
+    expect(nav.getByRole("button", {name: "Agent operations"})).toBeInTheDocument();
     expect(nav.getByRole("button", {name: "Graph"})).toBeInTheDocument();
     expect(nav.getByRole("button", {name: "Retrieval debug"})).toBeInTheDocument();
     expect(nav.getByRole("button", {name: "Settings"})).toBeInTheDocument();
+  });
+
+  it("renders agent write operations and downloads the current export", async () => {
+    window.history.pushState({}, "", "/agent-operations");
+    const createObjectUrl = vi.fn(() => "blob:agent-operations");
+    const revokeObjectUrl = vi.fn();
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: createObjectUrl,
+      revokeObjectURL: revokeObjectUrl,
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/api/agent-operations?limit=50")) {
+        return jsonResponse({
+          items: [
+            {
+              id: "audit-id",
+              operation_type: "candidate_submit",
+              source_path: "/api/candidates",
+              actor: "ai_agent",
+              result_status: "success",
+              api_error_code: null,
+              request_summary: {candidate_type: "observation"},
+              diagnostics: {},
+              related_refs: {},
+              candidate_id: "candidate-id",
+              correction_id: null,
+              episode_id: "episode-id",
+              canonical_record_ref: null,
+              bounded_excerpt: "Alex prefers concise follow-ups.",
+              created_at: "2026-06-12T00:00:00Z",
+              updated_at: "2026-06-12T00:00:00Z",
+            },
+          ],
+          total: 1,
+          limit: 50,
+          offset: 0,
+        });
+      }
+      if (url.endsWith("/api/agent-operations/export?limit=200")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              '{"record_type":"manifest","schema_version":"agent_write_operations.v1"}\n',
+            ),
+        } as Response);
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", {level: 1, name: "Agent Write Operations"})).toBeInTheDocument(),
+    );
+    expect(screen.getAllByText("candidate_submit").length).toBeGreaterThan(0);
+    expect(screen.getByText("Alex prefers concise follow-ups.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", {name: "Export"}));
+
+    await waitFor(() => expect(createObjectUrl).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/api/agent-operations/export?limit=200");
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:agent-operations");
   });
 
   it("renders settings without exposing the stored local token value", async () => {

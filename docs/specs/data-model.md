@@ -595,9 +595,45 @@ blocked
 
 ---
 
-## 9. Closed Implementation Decisions
+## 9. Agent Write Operation Audits
+
+`agent_write_operation_audits` is the persisted operational record for AI-agent write attempts.
+
+It is not a raw log sink. It stores bounded, structured metadata that can be exported for later review with a coding agent:
+
+```text
+agent_write_operation_audits
+- id uuid primary key
+- operation_type text not null
+- source_path text not null
+- actor text not null
+- result_status text not null
+- api_error_code text nullable
+- request_summary jsonb not null
+- diagnostics jsonb not null
+- related_refs jsonb not null
+- candidate_id uuid nullable
+- correction_id uuid nullable
+- episode_id uuid nullable
+- canonical_record_ref text nullable
+- bounded_excerpt text nullable
+- created_at timestamptz not null
+- updated_at timestamptz not null
+```
+
+Rules:
+
+- include agent candidate submit/accept/edit-accept and correction apply attempts;
+- include rejected validation attempts when the route can safely identify `created_by = ai_agent`;
+- do not store full prompts, bearer tokens, API keys, raw conversation transcripts, or unbounded request bodies;
+- retrieval/context-pack reads are not agent write operations.
+
+---
+
+## 10. Closed Implementation Decisions
 
 1. Ontology seed values live in `kinlayer_backend.services.ontology.REGISTRY_SEEDS`.
 2. `entity_facts.fact_type` is registry-backed.
 3. `canonical_record_ref` remains string-based in the form `table:id`.
 4. MVP indexes cover entity type, canonical name, confirmation/status, aliases, facts, edges, observations, episodes, and evidence lookup paths used by current retrieval and smoke checks.
+5. Agent write operation export uses newline-delimited JSON with a manifest followed by bounded operation records.
