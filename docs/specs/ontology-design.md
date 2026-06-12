@@ -3,6 +3,7 @@
 - Status: Draft v0.1
 - Scope: Ontology registry and relationship-edge design for Kinlayer
 - Parent PRD: `prd.md`
+- Related docs: `../agents/agent-write-instruction-pack.md`
 
 ---
 
@@ -11,6 +12,10 @@
 Kinlayer needs ontology support, but MVP must not become a formal semantic-web project.
 
 The ontology design exists to keep relationship context controlled, validated, explainable, and extensible while preserving a practical local-first implementation.
+
+For agent write behavior, `../agents/agent-write-instruction-pack.md` is the operational instruction
+pack. It treats UI relationship type, API `relation_type`, candidate `relationship_edge.relation_type`,
+and graph edge labels as ontology edge types from `allowed_edge_types`.
 
 Core principle:
 

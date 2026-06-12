@@ -3,13 +3,18 @@
 - Status: Draft v0.1
 - Style: OpenAPI-like Markdown
 - Parent PRD: `prd.md`
-- Related docs: `data-model.md`, `context-output-contract.md`, `candidate-lifecycle-and-payload.md`, `acceptance-scenarios.md`
+- Related docs: `data-model.md`, `context-output-contract.md`, `candidate-lifecycle-and-payload.md`, `acceptance-scenarios.md`, `../agents/agent-write-instruction-pack.md`
 
 ---
 
 ## 1. API Principles
 
 Kinlayer's HTTP API is the canonical capability layer.
+
+Agent-facing write behavior is specified in `../agents/agent-write-instruction-pack.md`. In
+particular, agent-visible relationship type, API `relation_type`, candidate
+`relationship_edge.relation_type`, and graph edge labels are ontology edge types from
+`allowed_edge_types`.
 
 Clients:
 

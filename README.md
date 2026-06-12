@@ -37,6 +37,13 @@ Kinlayer의 중심 흐름은 AI 에이전트와의 대화입니다.
 
 웹 UI와 CLI는 이 흐름을 보조합니다. 주된 목적은 매일 쓰는 CRM을 만드는 것이 아니라, AI가 사용하는 관계 기억을 사람이 살펴보고 통제할 수 있게 하는 것입니다.
 
+> **중요: 에이전트 쓰기 연동 전에 반드시 읽기**
+>
+> Kinlayer에 후보, 관찰, 관계, 정정 데이터를 쓰는 AI 에이전트/스킬/플러그인/MCP 어댑터는
+> [Agent Write Instruction Pack](docs/agents/agent-write-instruction-pack.md)을 따라야 합니다.
+> 이 문서는 `relation_type` 같은 ontology-controlled 값, edge와 observation의 경계,
+> 사용자 발화 증거 규칙, 상대 날짜 처리, 명시적 정정 적용 조건을 정의합니다.
+
 ## Kinlayer가 다루는 것
 
 Kinlayer는 다음 정보를 구조화해 저장하고 검색합니다.
@@ -225,13 +232,14 @@ docker compose up -d --build
 
 ## 업데이트
 
-새 버전으로 업데이트할 때는 최신 코드를 받은 뒤 컨테이너를 다시 빌드합니다. 필요한 DB 마이그레이션은 API 컨테이너 시작 시 자동 적용됩니다.
+새 버전으로 업데이트할 때는 최신 코드를 받은 뒤 앱 컨테이너만 다시 빌드합니다. 필요한 DB 마이그레이션은 API 컨테이너 시작 시 자동 적용됩니다.
 
 ```bash
-git pull
-docker compose pull postgres
-docker compose up -d --build
+git pull --ff-only
+docker compose up -d --build api web
 ```
+
+운영 데이터가 쓰이기 시작한 뒤에는 일반 업데이트 때 Postgres 이미지를 매번 pull하거나 재기동하지 않는 편이 안전합니다. Postgres/pgvector 이미지 갱신은 보안 패치나 운영 점검이 필요할 때 백업 후 별도 유지보수 작업으로 진행합니다.
 
 일시 중지는 컨테이너만 멈춥니다.
 

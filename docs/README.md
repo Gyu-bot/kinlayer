@@ -14,6 +14,7 @@ This directory keeps project documentation that should not live at the repositor
 - `specs/candidate-lifecycle-and-payload.md`: candidate lifecycle and payload rules.
 - `specs/ontology-design.md`: ontology registry and relationship boundary design.
 - `agents/agent-integration-notes.md`: agent integration and post-turn boundary notes.
+- `agents/agent-write-instruction-pack.md`: copy/paste-ready write guidance for agents, skills, plugins, MCP adapters, and runtime hooks.
 
 ## Archived Docs
 

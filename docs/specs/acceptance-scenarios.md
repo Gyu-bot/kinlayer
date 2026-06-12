@@ -2,7 +2,7 @@
 
 - Status: Draft v0.1
 - Parent PRD: `prd.md`
-- Related docs: `data-model.md`, `context-output-contract.md`, `candidate-lifecycle-and-payload.md`, `cli-spec.md`, `web-ui-spec.md`
+- Related docs: `data-model.md`, `context-output-contract.md`, `candidate-lifecycle-and-payload.md`, `cli-spec.md`, `web-ui-spec.md`, `../agents/agent-write-instruction-pack.md`
 
 ---
 
@@ -246,9 +246,35 @@ DELETE endpoints remove records from default retrieval without breaking provenan
 
 ---
 
+## Scenario J — Agent Write Instruction Pack Boundary
+
+### Goal
+
+An AI agent follows the write instruction pack and does not submit schema-polluting relationship types.
+
+### Steps
+
+1. Agent receives a user-authored statement such as "Minji is my former coworker."
+2. Agent fetches ontology edge types and confirms `former_coworker` is active for the endpoint entity types.
+3. Agent creates an episode with bounded user-authored excerpt/hash.
+4. Agent submits a `relationship_edge` candidate using canonical `relation_type: "former_coworker"`.
+5. Agent receives a second user-authored statement such as "Minji prefers short replies."
+6. Agent does not submit `relation_type: "prefers_short_replies"` or any other invented edge type.
+7. Agent submits an `observation` candidate only if an active observation type supports it; otherwise it produces no write or asks for clarification.
+
+### Pass Criteria
+
+- Relationship candidate uses an active ontology edge type.
+- UI relationship type, API `relation_type`, candidate `relationship_edge.relation_type`, and graph label semantics are consistent.
+- Observation-like statements do not become relationship edges.
+- Invalid or missing edge types are rejected before canonical persistence.
+- Evidence uses bounded user-authored excerpts, not assistant/tool/retrieval output.
+
+---
+
 ## MVP Exit Bar
 
-The MVP is not done until scenarios A through I pass in a local Docker Compose environment.
+The MVP is not done until scenarios A through J pass in a local Docker Compose environment.
 
 Minimum verification artifacts:
 
@@ -260,4 +286,4 @@ Minimum verification artifacts:
 - `python3 scripts/load-acceptance-fixtures.py` creates protected self, two fixture people, aliases, facts, edges, observations, episodes, evidence, one pending candidate, one accepted candidate, and one correction;
 - `python3 scripts/smoke-acceptance-api.py` verifies API scenarios including candidate acceptance, context pack, policy buckets, graph, ontology, embeddings, and optional token boundary when `KINLAYER_API_TOKEN` is set;
 - `scripts/smoke-acceptance-cli.sh` verifies CLI status, people, candidate, correction, context/retrieval, graph/debug, and embedding workflows.
-- scenarios A-I are manually or automatically verified.
+- scenarios A-J are manually or automatically verified.

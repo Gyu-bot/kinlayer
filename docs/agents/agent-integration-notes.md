@@ -44,6 +44,10 @@ Do not let any single agent runtime shape the core product too early.
 
 A skill-like integration is the fastest way to dogfood Kinlayer without patching an agent runtime.
 
+Canonical write guidance lives in `agent-write-instruction-pack.md`. Skills, plugins, MCP adapters,
+and runtime hooks should use that pack when deciding how to submit candidates, apply explicit
+corrections, select ontology-controlled values, and handle no-write/clarification cases.
+
 Purpose:
 
 - teach the agent when to call Kinlayer;

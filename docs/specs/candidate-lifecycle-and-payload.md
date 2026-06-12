@@ -2,7 +2,7 @@
 
 - Status: Draft v0.1
 - Parent PRD: `prd.md`
-- Related docs: `ontology-design.md`, `context-output-contract.md`
+- Related docs: `ontology-design.md`, `context-output-contract.md`, `../agents/agent-write-instruction-pack.md`
 
 ---
 
@@ -11,6 +11,9 @@
 Kinlayer allows AI agents, connectors, importers, and users to propose relationship context changes without immediately polluting canonical context.
 
 The candidate system is the control boundary between detected context and trusted context.
+
+Agents and adapters should follow `../agents/agent-write-instruction-pack.md` when selecting
+candidate types, controlled ontology values, evidence excerpts, and no-write behavior.
 
 Core principle:
 

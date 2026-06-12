@@ -121,6 +121,13 @@ Scripts and docs:
 | T043 | Atomic person merge execution API | Critical | Backlog | T038, T041 |
 | T044 | Merge review CLI and Web workflow | High | Backlog | T039, T043 |
 | T045 | Merge acceptance fixtures and retrieval verification | High | Backlog | T042, T043, T044 |
+| T046 | Admin Web UI ID hiding and ontology-backed relationship controls | High | Ready | T024, T026, T032 |
+| T047 | Relationship edge-type enforcement audit and debug logging | Critical | Ready | T012, T016, T017, T024 |
+| T048 | Agent Write Instruction Pack | Critical | Done | T035, T047 |
+| T049 | Agent write schema guard, low-risk normalization, and diagnostics filter | Critical | Backlog | T036, T037, T047, T048 |
+| T050 | Structured profile fact promotion workflow | High | Backlog | T033, T034, T039, T049 |
+| T051 | Temporal observation recording and candidate payload preservation | High | Backlog | T012, T016, T048, T049 |
+| T052 | Optional LLM-assisted background curation | Low | Backlog | T040, T045, T049, T050, T051 |
 
 ---
 
@@ -1018,6 +1025,362 @@ uv run kinlayer status --json
 
 ---
 
+## Admin Web UI Usability and Ontology Hardening
+
+#### Task T046. Admin Web UI ID hiding and ontology-backed relationship controls
+- Priority: High
+- Status: Ready
+- Depends on: T024, T026, T032
+- Files:
+  - Modify: `docs/specs/web-ui-spec.md`
+  - Modify: `backend/src/kinlayer_backend/services/relationships.py`
+  - Test: `backend/tests/test_relationships_api.py`
+  - Modify: `frontend/src/api/client.ts`
+  - Modify: `frontend/src/types/entities.ts`
+  - Modify: `frontend/src/routes/PeopleList.tsx`
+  - Modify: `frontend/src/routes/NewPerson.tsx`
+  - Modify: `frontend/src/routes/PersonDetail.tsx`
+  - Modify: `frontend/src/routes/Candidates.tsx`
+  - Modify: `frontend/src/routes/Graph.tsx`
+  - Modify: `frontend/src/routes/RetrievalDebug.tsx`
+  - Modify: `frontend/src/styles.css`
+  - Test: `frontend/src/App.test.tsx`
+  - Test: `frontend/src/api/client.test.ts`
+  - Modify: `scripts/web-smoke-checklist.md`
+- Design:
+  - Treat Web UI as a human control plane, not an internal-record inspector by default.
+  - Hide raw UUIDs and internal record refs from normal visible labels, table columns, button text, and detail panels across People, Candidates, Graph, and Retrieval Debug.
+  - Keep raw IDs available only through explicit technical affordances such as copy buttons, collapsed debug details, accessible labels that do not visually expose IDs, or raw JSON/debug sections where the screen is explicitly for API debugging.
+  - Replace raw entity ID entry in People relationship forms and Retrieval Debug focal/candidate entity inputs with person selectors or search-backed pickers that store IDs internally.
+  - Treat UI `relationship type` as the ontology edge type selected from `allowed_edge_types`; the displayed value may be a human label/description, but the submitted value must be the canonical `relation_type`.
+  - Replace hardcoded or free-text relationship type inputs in `/people/new`, `/people/:id`, and `/graph` with ontology-backed options from `/api/ontology` or `/api/ontology/edge-types`.
+  - Keep Graph edge labels concise and human-readable while using canonical edge IDs only as React Flow internal node/edge keys.
+  - Preserve HTTP API as the canonical state-changing layer; no Web-only relationship or ID mapping state is allowed.
+- Acceptance Criteria:
+  - [ ] `/people/:id` no longer shows alias, fact, relationship, or observation UUIDs in visible labels or button text.
+  - [ ] `/people/:id` relationship creation uses a person picker/search instead of a raw `Related entity ID` input.
+  - [ ] `/people/:id` relationship creation and editing use ontology-backed edge type controls; users cannot type arbitrary relation strings in the normal UI.
+  - [ ] `/people/new` initial relationship type options come from ontology edge types instead of a hardcoded local list.
+  - [ ] `/graph` relation type filter uses ontology edge type options, including an all-types option, instead of a free-text input.
+  - [ ] `/graph` node and edge detail panels show names, relation labels, direction, status, sensitivity, and confidence without visible UUIDs by default.
+  - [ ] `/candidates` replaces the visible ID column/detail field with user-meaningful candidate summaries, type, status, confidence, target display name when available, and timestamps.
+  - [ ] `/retrieval-debug` lets the operator choose focal/candidate entities by display name or search result while keeping raw IDs only in explicit debug/raw output areas.
+  - [ ] Provenance and canonical record references display record type and available excerpt/summary first; raw record IDs are hidden behind an explicit technical detail or copy affordance.
+  - [ ] Relationship type wording in Web UI and docs is clarified: UI "relationship type" is the selected ontology edge type's canonical `relation_type`, not an agent-invented free-text label.
+  - [ ] `PATCH /api/edges/{edge_id}` revalidates changed `relation_type` against the existing edge endpoints' entity types, matching create-time validation.
+  - [ ] Frontend tests prove ID strings are not visible in People, Candidates, and Graph default views while actions still call the same API endpoints with IDs internally.
+  - [ ] Frontend tests prove relationship type controls are populated from ontology and submit canonical `relation_type` values.
+  - [ ] Backend tests cover invalid edge type patch and endpoint-type mismatch on relation type patch.
+  - [ ] Browser verification confirms People edit actions, Graph filtering, Candidate review, and Retrieval Debug still work without console errors.
+- Notes:
+  - The API and database may continue to use UUID primary keys. This task is about default Web presentation and operator ergonomics, not changing canonical identifiers.
+  - Debug screens may expose raw IDs only when the user explicitly opens a technical/raw section; do not make IDs the primary workflow input.
+  - Relationship observations such as care points, cautions, communication preferences, and recent interactions remain observations, not edge types.
+
+#### Task T047. Relationship edge-type enforcement audit and debug logging
+- Priority: Critical
+- Status: Ready
+- Depends on: T012, T016, T017, T024
+- Files:
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `docs/specs/data-model.md`
+  - Modify: `docs/specs/ontology-design.md`
+  - Modify: `docs/specs/web-ui-spec.md`
+  - Modify: `backend/src/kinlayer_backend/models.py`
+  - Add: `backend/alembic/versions/20260612_0007_relationship_write_audit.py`
+  - Modify: `backend/src/kinlayer_backend/schemas/relationships.py`
+  - Modify: `backend/src/kinlayer_backend/schemas/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/schemas/corrections.py`
+  - Modify: `backend/src/kinlayer_backend/services/relationships.py`
+  - Modify: `backend/src/kinlayer_backend/services/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/services/corrections.py`
+  - Modify: `backend/src/kinlayer_backend/repositories/relationships.py`
+  - Modify: `backend/src/kinlayer_backend/api/relationships.py`
+  - Modify: `backend/src/kinlayer_backend/api/ontology.py`
+  - Modify: `backend/src/kinlayer_backend/cli.py`
+  - Test: `backend/tests/test_relationships_api.py`
+  - Test: `backend/tests/test_candidates_api.py`
+  - Test: `backend/tests/test_corrections_api.py`
+  - Test: `backend/tests/test_graph_ontology_api.py`
+  - Modify: `scripts/smoke-acceptance-api.py`
+  - Modify: `scripts/smoke-acceptance-cli.sh`
+- Design:
+  - Treat any persisted `entity_edges.relation_type` value that is not present in active `allowed_edge_types.relation_type` as a data-integrity defect, not a UI polish issue.
+  - Add an explicit relationship write audit trail that records every attempted edge create/update/candidate-accept/correction path, including rejected invalid relation types.
+  - Audit records should capture timestamp, operation, endpoint or service path, submitted `relation_type`, resolved edge type match status, from/to entity IDs, from/to entity types, actor/submitted_by/created_by when available, candidate/correction IDs when applicable, result status, API error code, and redacted request metadata.
+  - Audit logs must not store full raw conversation bodies, secrets, bearer tokens, or unbounded payloads. Store bounded excerpts or structured refs only.
+  - Add a read-only diagnostic API/CLI path for local debugging that can list recent relationship write audit records and scan existing DB rows for relation types that are missing from `allowed_edge_types`.
+  - Keep the canonical fix in the API/service layer first. Database constraints may be added if they do not block existing local recovery workflows, but at minimum every public/service write path must reject invalid edge types before persistence.
+  - Existing invalid rows, if found, should be reported by diagnostics with repair guidance; do not auto-rewrite them without an explicit correction or migration decision.
+- Acceptance Criteria:
+  - [ ] Diagnostic command or endpoint can report all distinct `entity_edges.relation_type` values and whether each exists in active `allowed_edge_types`.
+  - [ ] Diagnostic command or endpoint lists invalid existing edge rows with edge ID, relation type, endpoint entity IDs, endpoint entity types, status, created_by, source_candidate_id, and timestamps.
+  - [ ] `POST /api/edges` logs both successful and rejected edge create attempts without exposing secrets.
+  - [ ] `PATCH /api/edges/{edge_id}` logs both successful and rejected relation type updates and revalidates the new relation type against the existing edge endpoints' entity types.
+  - [ ] Candidate submit, accept, and edit-accept for `relationship_edge` log the submitted relation type and reject any value not present in active `allowed_edge_types`.
+  - [ ] Correction apply paths that create or replace `entity_edges` log the submitted relation type and reject any value not present in active `allowed_edge_types`.
+  - [ ] Graph/context retrieval paths either exclude or clearly flag invalid legacy edge rows so bad data cannot silently appear as trusted relationship context.
+  - [ ] Tests prove an invalid `relationship_edge` candidate cannot be submitted, accepted, or edit-accepted into a canonical edge.
+  - [ ] Tests prove an invalid relation type cannot be introduced through correction apply.
+  - [ ] Tests prove write audit records exist for success and failure cases, including the invalid relation type string.
+  - [ ] Tests prove diagnostic output identifies seeded legacy invalid rows without modifying them.
+  - [ ] API/CLI smoke includes one rejected invalid relation type attempt and verifies the audit/diagnostic surface can explain it.
+  - [ ] Docs clarify that UI-visible relationship type, API `relation_type`, candidate `relationship_edge.relation_type`, and graph edge labels are all derived from ontology edge types.
+- Notes:
+  - This task responds to observed behavior where an agent produced a relation type outside the edge-type registry. Do not treat the issue as presentation-only.
+  - Prefer append-only audit rows over ordinary application log lines for local postmortem debugging because container logs may rotate or disappear.
+  - If invalid rows already exist in a user's local DB, the first implementation should make them discoverable and safe to inspect before deciding whether to add a repair migration.
+
+#### Task T048. Agent Write Instruction Pack
+- Priority: Critical
+- Status: Done
+- Depends on: T035, T047
+- Files:
+  - Add: `docs/agents/agent-write-instruction-pack.md`
+  - Modify: `docs/agents/agent-integration-notes.md`
+  - Modify: `docs/agents/README.md` or `docs/README.md`
+  - Modify: `docs/specs/candidate-lifecycle-and-payload.md`
+  - Modify: `docs/specs/ontology-design.md`
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `docs/specs/acceptance-scenarios.md`
+  - Modify: `implementation-plan.md`
+- Design:
+  - Create a standalone instruction pack that can be copied into an agent skill, plugin prompt, MCP tool description, or runtime hook without requiring the agent to read all Kinlayer specs.
+  - The pack must be prescriptive, not just descriptive: it should say what the agent must do before writing, which endpoints to call, which values are controlled by ontology, which payload shape to use, and when to refuse or ask for clarification.
+  - The pack should make the write flow explicit: resolve entity -> fetch ontology/controlled values -> classify proposed memory as entity, alias, profile fact, edge, observation, merge, conflict, supersede, or no-op -> create episode/evidence -> submit candidate or explicit correction -> verify response.
+  - The pack should state that agents must never invent `relation_type`, `observation_type`, `fact_type`, `candidate_type`, `claim_type`, `sensitivity`, or `ai_use_policy` values. They must use registry/API values or stop with a validation/no-op result.
+  - The pack should include a decision table for edge vs observation. Durable structural relationships may be `relationship_edge`; communication preferences, cautions, feelings, reply strategy, recent interaction interpretation, emotional salience, and follow-up advice must be `observation`.
+  - The pack should include complete JSON examples for `new_entity`, `alias`, `profile_field`, `relationship_edge`, `observation`, `merge`, `conflict`, `supersede`, and explicit `correction apply`.
+  - The pack should include Korean examples for ambiguous pronouns, relationship corrections, dating/social contexts, and no-op exclusions because these are first-class usage patterns.
+  - The pack should define evidence rules: use current-turn user-authored excerpts only for agent-submitted candidates/corrections, store bounded excerpts, never use assistant text/tool output/retrieved context as evidence, and include source refs when available.
+  - The pack should define failure behavior: if entity resolution is ambiguous, edge type is missing, evidence is insufficient, or the claim is observation-like, submit a safer candidate, mark `needs_clarification`, or produce no write.
+- Acceptance Criteria:
+  - [x] `docs/agents/agent-write-instruction-pack.md` exists as a standalone copy/paste-ready instruction document.
+  - [x] The instruction pack lists the exact pre-write checklist an agent must run before every candidate or correction write.
+  - [x] The instruction pack tells agents to fetch or use `/api/ontology`, `/api/ontology/edge-types`, `/api/ontology/observation-types`, `/api/ontology/entity-fact-types`, and `/api/ontology/policies` before choosing controlled values.
+  - [x] The instruction pack explicitly states that UI-visible relationship type, API `relation_type`, candidate `relationship_edge.relation_type`, and graph edge labels all refer to ontology edge types.
+  - [x] The instruction pack forbids invented relation types and includes examples of invalid values that must become observations or no-ops instead.
+  - [x] The instruction pack includes edge-vs-observation classification examples for former coworker, client contact, introduced by, communication preference, caution, care point, emotional salience, reply strategy, and recent interaction.
+  - [x] The instruction pack includes complete valid JSON payload examples for every candidate type and explicit correction apply.
+  - [x] The instruction pack includes invalid payload examples with the correct safer alternative.
+  - [x] The instruction pack defines user-authored evidence rules and warns against using assistant/tool/retrieval output as evidence.
+  - [x] Agent integration notes link to the instruction pack as the canonical write guidance for skills, plugins, MCP adapters, and runtime hooks.
+  - [x] Candidate/API/ontology docs cross-link to the instruction pack without duplicating the entire content.
+  - [x] Acceptance scenarios include at least one agent write that follows the pack and one attempted invalid edge type that the pack says to reject or convert before submit.
+- Notes:
+  - This is not just documentation polish. Treat it as part of the safety boundary for agent writes.
+  - Keep the document operational and terse enough that an agent can actually follow it in a prompt/tool description.
+  - If docs disagree, the instruction pack should point back to API/ontology endpoints as the live source for controlled values.
+
+#### Task T049. Agent write schema guard, low-risk normalization, and diagnostics filter
+- Priority: Critical
+- Status: Backlog
+- Depends on: T036, T037, T047, T048
+- Files:
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `docs/specs/candidate-lifecycle-and-payload.md`
+  - Modify: `docs/agents/agent-write-instruction-pack.md`
+  - Modify: `backend/src/kinlayer_backend/schemas/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/schemas/corrections.py`
+  - Add: `backend/src/kinlayer_backend/schemas/agent_writes.py`
+  - Modify: `backend/src/kinlayer_backend/services/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/services/corrections.py`
+  - Add: `backend/src/kinlayer_backend/services/agent_write_filter.py`
+  - Modify: `backend/src/kinlayer_backend/api/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/api/corrections.py`
+  - Add: `backend/src/kinlayer_backend/api/agent_writes.py`
+  - Modify: `backend/src/kinlayer_backend/main.py`
+  - Modify: `backend/src/kinlayer_backend/cli.py`
+  - Test: `backend/tests/test_candidates_api.py`
+  - Test: `backend/tests/test_corrections_api.py`
+  - Add: `backend/tests/test_agent_write_filter.py`
+  - Modify: `scripts/smoke-acceptance-api.py`
+  - Modify: `scripts/smoke-acceptance-cli.sh`
+- Design:
+  - Add a deterministic schema guard in front of agent-originated candidate and correction writes. It should validate schema/registry compliance, apply explicitly low-risk controlled-value normalization only when unambiguous, reject unsafe payloads, and return actionable diagnostics.
+  - The filter must not call an LLM.
+  - The filter must not use keyword-list heuristics, fuzzy semantic classification, or guessed intent to decide whether a write is an edge, observation, correction, merge, or no-op.
+  - The filter must not silently rewrite one candidate type into another candidate type.
+  - The filter uses only explicit payload fields, typed Pydantic schemas, ontology registry values, entity existence/type checks, evidence rules, and deterministic controlled-value matching.
+  - Provide a dry-run endpoint or CLI command, for example `POST /api/agent-writes/validate` and `kinlayer agent-write validate <payload.json>`, so agent developers can inspect what Kinlayer would accept before writing.
+  - Candidate submit and correction apply should call the same filter for `created_by = ai_agent` or equivalent agent-submitted paths before persistence.
+  - Allowed normalization is limited to controlled-value canonicalization where the submitted value matches exactly one registry entry after a documented mechanical transform.
+  - The mechanical transform may trim surrounding whitespace, casefold ASCII/Unicode text, collapse internal whitespace, and treat spaces or hyphens as underscores for registry values and registry labels.
+  - Examples of acceptable low-risk normalization include `Former coworker`, `former coworker`, and `former-coworker` mapping to `former_coworker` when that is the only matching active edge type.
+  - The filter may match against both canonical registry values such as `former_coworker` and registry labels such as `Former coworker`, but only when the normalized form resolves to exactly one active registry item in the relevant category.
+  - The filter must reject synonyms, paraphrases, translations, fuzzy nearest matches, and multi-match ambiguities. For example, do not map `worked together` to `coworker`, do not translate Korean relationship words into edge types, and do not choose among multiple close registry values.
+  - Unsafe cases must be rejected with diagnostics: unknown relation type, controlled-value mismatch, endpoint entity-type mismatch, missing entity references, missing user-authored evidence, direct correction without explicit user correction, and unsupported candidate type.
+  - For unknown edge types, return the allowed edge-type list and the invalid submitted value. Do not guess a nearest edge type.
+  - For a payload that may be better represented as an observation, return a generic diagnostic such as `relation_type_not_allowed`; do not classify the text or construct a replacement observation payload.
+  - Filter results should include `accepted`, `validated_payload`, `normalizations_applied`, `warnings`, `errors`, `diagnostics`, `controlled_values_checked`, and `audit_ref` when audit logging is available.
+- Acceptance Criteria:
+  - [ ] `POST /api/agent-writes/validate` or equivalent dry-run path validates candidate and correction payloads without persisting canonical or candidate records.
+  - [ ] `kinlayer agent-write validate <payload.json>` returns machine-readable JSON with accepted status, validated payload, normalizations applied, warnings, errors, diagnostics, and controlled values checked.
+  - [ ] Agent-submitted `POST /api/candidates` uses the same filter before persistence.
+  - [ ] Agent-submitted `POST /api/corrections/apply` uses the same filter before persistence.
+  - [ ] The filter accepts a valid `relationship_edge` only when `relation_type` is an active ontology edge type and endpoint entity types match.
+  - [ ] The filter normalizes controlled values only when the submitted value maps to exactly one active registry value or label after the documented mechanical transform.
+  - [ ] The filter rejects unknown relation types instead of allowing persistence and returns the allowed edge-type list for caller-side repair.
+  - [ ] The filter does not use keyword heuristics to classify observation-like attempted edge payloads.
+  - [ ] The filter does not construct replacement observation candidates from rejected edge payloads.
+  - [ ] The filter validates candidate evidence requirements for agent submissions and rejects missing/nonexistent episode refs or empty excerpts.
+  - [ ] The filter rejects direct correction apply when `correction_source.user_explicit` is false or missing.
+  - [ ] The filter rejects synonyms, paraphrases, translations, fuzzy nearest matches, and ambiguous controlled-value matches instead of normalizing them into registry values.
+  - [ ] Tests cover valid candidate, accepted low-risk normalization, unknown relation type, synonym/paraphrase rejection, ambiguous controlled-value rejection, endpoint entity-type mismatch, missing evidence, invalid correction, and dry-run no-persistence behavior.
+  - [ ] Audit/debug logs from T047 include filter decisions, accepted normalizations, and diagnostics for rejected agent writes.
+  - [ ] API/CLI smoke verifies an invalid agent edge write is caught by dry-run and by submit-time enforcement.
+- Notes:
+  - This task is possible and valuable because it avoids semantic guessing while still accepting low-risk mechanical canonicalization. Its job is deterministic guardrails: controlled values, schemas, evidence, entity refs, normalization records, and diagnostics.
+  - Do not auto-create new ontology values from agent text in this filter. Ontology expansion must remain explicit review work.
+  - Prefer clear rejection over clever correction. Agent-side instruction packs may explain how to choose a better payload, but the API/service filter must not infer semantics.
+
+#### Task T050. Structured profile fact promotion workflow
+- Priority: High
+- Status: Backlog
+- Depends on: T033, T034, T039, T049
+- Files:
+  - Modify: `docs/specs/data-model.md`
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `docs/specs/candidate-lifecycle-and-payload.md`
+  - Modify: `docs/specs/web-ui-spec.md`
+  - Modify: `docs/agents/agent-write-instruction-pack.md`
+  - Modify: `backend/src/kinlayer_backend/schemas/entities.py`
+  - Modify: `backend/src/kinlayer_backend/schemas/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/services/entities.py`
+  - Modify: `backend/src/kinlayer_backend/services/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/repositories/entities.py`
+  - Modify: `backend/src/kinlayer_backend/api/entities.py`
+  - Modify: `backend/src/kinlayer_backend/cli.py`
+  - Modify: `frontend/src/routes/PersonDetail.tsx`
+  - Modify: `frontend/src/routes/Candidates.tsx`
+  - Modify: `frontend/src/api/client.ts`
+  - Modify: `frontend/src/types/entities.ts`
+  - Test: `backend/tests/test_entities_api.py`
+  - Test: `backend/tests/test_candidates_api.py`
+  - Test: `backend/tests/test_cli.py`
+  - Test: `frontend/src/App.test.tsx`
+  - Modify: `scripts/web-smoke-checklist.md`
+- Design:
+  - Keep `entity_facts` as the canonical storage for both structured and general profile facts. A structured fact is identified by a supported structured `fact_type` and a predictable `value.field_path`, not by a separate table.
+  - Structured promotion should be explicit and reviewable. A fact may be promoted by a user action in Web/CLI or by accepting a typed `profile_field` candidate; it must not happen silently through keyword heuristics.
+  - Web should add a "Promote to structured" action for general facts. The action opens a small review form where the operator chooses a structured fact type, confirms the content/value mapping, sensitivity, AI use policy, and whether the original general fact should be superseded or updated in place.
+  - Agent-originated promotion must be expressed as a `profile_field` candidate that references the source general fact, for example through `supersedes_record_ref` or a payload/source ref. It must pass the T049 schema guard before entering review.
+  - Candidate accept should either supersede the original general fact and create a structured replacement, or update the original fact in place only when the operation is explicitly user-authored/manual and audit/provenance remains intact.
+  - If a useful structured field does not exist in the ontology registry, the system should not let agents invent a new `fact_type`. The flow should return a controlled diagnostic or create a review note for future ontology expansion.
+  - Registration of new structured fact types should remain an explicit docs/API/admin operation, not a free-form agent write. The first implementation may keep registration docs-only unless a later ontology-admin task is scoped.
+  - The UI should keep General Profile Facts visible as a holding area for context that is useful but not yet structured. The goal is gradual cleanup, not forced normalization of every note.
+- Acceptance Criteria:
+  - [ ] Docs define structured-vs-general profile fact semantics and the supported promotion paths.
+  - [ ] `/people/:id` shows a "Promote to structured" action for general facts.
+  - [ ] Promotion UI requires explicit selection from supported structured fact types and does not infer the target type from content text.
+  - [ ] Promotion UI preserves or explicitly updates sensitivity, AI use policy, claim type, confidence, evidence, and provenance.
+  - [ ] API or service support can promote a general fact by creating a structured replacement and superseding the original general fact.
+  - [ ] Candidate accept/edit-accept can promote a general fact through a `profile_field` candidate that references the source record.
+  - [ ] Agent-originated promotion candidates are rejected when the target `fact_type` is not in the ontology registry.
+  - [ ] CLI can inspect general facts and submit or apply a reviewed structured promotion payload.
+  - [ ] Tests cover manual promotion, candidate-based promotion, unknown fact type rejection, provenance preservation, and retrieval/context-card visibility after promotion.
+  - [ ] Browser verification confirms a promoted fact moves from General Profile Facts to Structured Profile Facts without losing the person detail context.
+- Notes:
+  - This task should not add LLM-based classification. Use explicit user choice or typed agent candidates only.
+  - Use supersede/replacement when preserving an audit trail matters more than in-place cleanup.
+  - Leave ontology type expansion conservative. New structured fields should be deliberate product/schema decisions.
+
+#### Task T051. Temporal observation recording and candidate payload preservation
+- Priority: High
+- Status: Backlog
+- Depends on: T012, T016, T048, T049
+- Files:
+  - Modify: `docs/specs/data-model.md`
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `docs/specs/candidate-lifecycle-and-payload.md`
+  - Modify: `docs/agents/agent-write-instruction-pack.md`
+  - Modify: `backend/src/kinlayer_backend/schemas/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/schemas/relationships.py`
+  - Modify: `backend/src/kinlayer_backend/services/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/services/relationships.py`
+  - Modify: `backend/src/kinlayer_backend/schemas/context.py`
+  - Modify: `frontend/src/routes/PersonDetail.tsx`
+  - Modify: `frontend/src/routes/Candidates.tsx`
+  - Test: `backend/tests/test_candidates_api.py`
+  - Test: `backend/tests/test_relationships_api.py`
+  - Test: `backend/tests/test_retrieval_engine.py`
+  - Modify: `scripts/smoke-acceptance-api.py`
+- Design:
+  - Distinguish the date a user-authored source was recorded from the date the described event actually happened.
+  - Treat `episode.occurred_at` as the source-recorded date for a conversation/import item; exact time is optional.
+  - Treat `observation.occurred_at` as the event date for point-in-time observations such as "Alex contacted me yesterday"; exact time is optional.
+  - Treat `valid_from` and `valid_to` as the applicability date range for period-bound context such as "this week" or "as of June."
+  - Agent-facing UX should be date-first. Exact clock times should be optional and used only when the source provides them or the distinction matters.
+  - Candidate `observation` payloads must preserve event/applicability temporal fields through submit, validation, accept, edit-accept, canonical observation creation, retrieval, and Web display.
+  - If the API continues to store temporal values as `timestamptz`, date-only inputs should be normalized with an explicit timezone and date-range semantics rather than pretending a precise event time is known.
+  - Retrieval/debug and context-card surfaces should avoid implying that `created_at` is the event date.
+  - The Agent Write Instruction Pack should continue to require content-level temporal anchors when relative time is needed for future usefulness.
+- Acceptance Criteria:
+  - [ ] Candidate `observation` payload schema accepts and preserves event/applicability temporal fields, including at least `occurred_at`, `valid_from`, and `valid_to`.
+  - [ ] Candidate accept and edit-accept write those temporal fields into canonical `observations`.
+  - [ ] API examples distinguish source-recorded date from observation event date.
+  - [ ] Web candidate and person detail views display event/applicability dates separately from record creation date where present.
+  - [ ] Retrieval debug/context output includes temporal fields without using `created_at` as a substitute for event date.
+  - [ ] Tests cover a source recorded on one date that describes an event on another date.
+  - [ ] Tests cover a relative period such as "this week" resolved to a date range and preserved through candidate accept.
+  - [ ] Agent Write Instruction Pack examples remain consistent with implemented temporal fields.
+- Notes:
+  - Date precision is enough for most relationship observations. Do not force clock time unless the user/source provides it or it materially changes interpretation.
+  - This task should not add LLM-based temporal inference. Agents may resolve obvious relative dates against a known source timestamp, but ambiguous cases should ask for clarification or preserve uncertainty.
+
+#### Task T052. Optional LLM-assisted background curation
+- Priority: Low
+- Status: Backlog
+- Depends on: T040, T045, T049, T050, T051
+- Files:
+  - Modify: `docs/specs/prd.md`
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `docs/specs/data-model.md`
+  - Modify: `docs/specs/candidate-lifecycle-and-payload.md`
+  - Modify: `docs/specs/acceptance-scenarios.md`
+  - Modify: `docs/agents/agent-write-instruction-pack.md`
+  - Modify: `backend/src/kinlayer_backend/models.py`
+  - Add: `backend/alembic/versions/20260612_0008_llm_curation_jobs.py`
+  - Add: `backend/src/kinlayer_backend/schemas/curation.py`
+  - Add: `backend/src/kinlayer_backend/services/curation.py`
+  - Add: `backend/src/kinlayer_backend/repositories/curation.py`
+  - Add: `backend/src/kinlayer_backend/api/curation.py`
+  - Modify: `backend/src/kinlayer_backend/main.py`
+  - Modify: `backend/src/kinlayer_backend/config.py`
+  - Modify: `backend/src/kinlayer_backend/cli.py`
+  - Modify: `frontend/src/routes/Settings.tsx`
+  - Modify: `frontend/src/routes/Candidates.tsx`
+  - Test: `backend/tests/test_candidates_api.py`
+  - Add: `backend/tests/test_curation_api.py`
+  - Add: `backend/tests/test_curation_service.py`
+  - Modify: `scripts/smoke-acceptance-api.py`
+- Design:
+  - This is an optional post-MVP feature and must remain disabled by default.
+  - LLM-assisted curation may analyze already stored Kinlayer data to propose schema cleanup, structured fact promotion, edge/observation reclassification, duplicate/merge candidates, or conflict/supersede candidates.
+  - LLM-assisted curation must never write canonical records directly. It can only create reviewable candidates or curation suggestions that pass the same T049 schema guard and candidate review workflow as agent submissions.
+  - Curation jobs must be explicit user-initiated or scheduled only after opt-in configuration. They should support dry-run mode, bounded scope, and visible job history.
+  - The LLM prompt should receive bounded, policy-safe, redacted input: record IDs/refs, current typed fields, bounded excerpts, ontology lists, and instruction-pack constraints. Do not send secrets, bearer tokens, full raw conversations, or unbounded context.
+  - Every LLM output must be schema-validated, passed through T049, and stored with provider/model/config metadata, prompt/version hash, source record refs, and review status.
+  - Curation should prefer conservative suggestions. If confidence is low or schema guard rejects output, store a diagnostic result instead of a candidate.
+  - The UI should surface curation output in the candidate/review flow, not as hidden background mutation.
+- Acceptance Criteria:
+  - [ ] Curation config is disabled by default and Settings clearly shows whether optional LLM curation is enabled.
+  - [ ] API/CLI can start a curation dry run over a bounded set of people/facts/edges/observations.
+  - [ ] Curation jobs record status, scope, model/provider metadata, started/finished timestamps, and redacted diagnostics.
+  - [ ] LLM output is rejected unless it matches the expected curation suggestion schema.
+  - [ ] All candidate-producing curation outputs pass T049 before persistence.
+  - [ ] Curation can propose structured fact promotion candidates for General Profile Facts without directly mutating the original facts.
+  - [ ] Curation can propose edge/observation cleanup candidates without inventing ontology values.
+  - [ ] Curation can propose merge/conflict/supersede candidates where the underlying candidate types support review.
+  - [ ] Rejected or invalid LLM outputs are inspectable in job diagnostics and do not create candidates.
+  - [ ] Tests cover disabled-by-default behavior, dry-run no-persistence, schema-invalid LLM output, T049 rejection propagation, candidate creation on valid output, and no direct canonical writes.
+- Notes:
+  - This is intentionally the last-priority item in the current plan. Build deterministic write guidance, schema guardrails, diagnostics, and manual/review workflows first.
+  - The value of this task is maintenance assistance, not trust. Human review remains the promotion boundary.
+  - This task may reuse embedding/provider configuration concepts, but it should not be coupled to retrieval embeddings.
+
+---
+
 ## Dependency Flow
 
 ```mermaid
@@ -1088,4 +1451,30 @@ flowchart TD
   T042 --> T045
   T043 --> T045
   T044 --> T045
+  T024 --> T046
+  T026 --> T046
+  T032 --> T046
+  T012 --> T047
+  T016 --> T047
+  T017 --> T047
+  T024 --> T047
+  T035 --> T048
+  T047 --> T048
+  T036 --> T049
+  T037 --> T049
+  T047 --> T049
+  T048 --> T049
+  T033 --> T050
+  T034 --> T050
+  T039 --> T050
+  T049 --> T050
+  T012 --> T051
+  T016 --> T051
+  T048 --> T051
+  T049 --> T051
+  T040 --> T052
+  T045 --> T052
+  T049 --> T052
+  T050 --> T052
+  T051 --> T052
 ```
