@@ -212,7 +212,7 @@ MVP integration is local HTTP API + CLI wrapper.
 - AI agents can call HTTP directly or invoke CLI.
 - MCP, Hermes plugin/tool adapters, and runtime memory hooks are later integration work.
 
-Future integration notes are tracked in `agent-integration-notes.md` and are non-blocking for MVP implementation.
+Future integration notes are tracked in `../agents/agent-integration-notes.md` and are non-blocking for MVP implementation.
 
 ---
 
@@ -776,7 +776,7 @@ Minimum verification artifacts:
 
 ## 18. Implementation Plan
 
-Implementation is vertical-slice based, specified in `implementation-plan.md`.
+Implementation is vertical-slice based, specified in `../../implementation-plan.md`.
 
 Slices:
 
@@ -796,7 +796,7 @@ Each slice must leave the product runnable and verify at least one real workflow
 
 ## 19. Related Specification Documents
 
-- `interview-ledger.md` — active decision ledger.
+- `../archive/planning/interview-ledger.md` — historical decision ledger.
 - `ontology-design.md` — ontology registry, edge-vs-observation boundary, and seed registry values.
 - `context-output-contract.md` — retrieval output layers, Context Pack, Person Context Card, recent context, and surface policy contract.
 - `candidate-lifecycle-and-payload.md` — candidate statuses, accept behavior, common envelope, typed payload schemas, and candidate actions.
@@ -805,8 +805,8 @@ Each slice must leave the product runnable and verify at least one real workflow
 - `cli-spec.md` — MVP CLI command set and raw API escape hatch.
 - `web-ui-spec.md` — minimal Web UI screens and behavior.
 - `acceptance-scenarios.md` — journey-level MVP acceptance scenarios and exit bar.
-- `implementation-plan.md` — vertical implementation slices and execution baseline.
-- `agent-integration-notes.md` — future skill/plugin/tool/MCP/runtime-hook integration notes; non-blocking for MVP.
+- `../../implementation-plan.md` — vertical implementation slices and execution baseline.
+- `../agents/agent-integration-notes.md` — future skill/plugin/tool/MCP/runtime-hook integration notes; non-blocking for MVP.
 
 ---
 
@@ -817,8 +817,8 @@ For implementation work, use this PRD together with:
 ```text
 api-spec.md
 data-model.md
-implementation-plan.md
+../../implementation-plan.md
 acceptance-scenarios.md
 ```
 
-If a conflict exists, prefer the more specific spec document and update `interview-ledger.md` / PRD accordingly.
+If a conflict exists, prefer the more specific spec document and update the PRD accordingly. Historical rationale can remain in `../archive/planning/interview-ledger.md`.

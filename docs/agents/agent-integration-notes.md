@@ -2,7 +2,7 @@
 
 - Status: Draft v0.1
 - Scope: Future integration with Hermes/Som, other AI agents, skills, plugins/tools, MCP, and memory-provider hooks
-- Parent PRD: `prd.md`
+- Parent PRD: `../specs/prd.md`
 
 ---
 

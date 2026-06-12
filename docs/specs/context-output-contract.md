@@ -2,7 +2,7 @@
 
 - Status: Draft v0.2
 - Parent PRD: `prd.md`
-- Related docs: `api-spec.md`, `data-model.md`, `interview-ledger.md`
+- Related docs: `api-spec.md`, `data-model.md`, `../archive/planning/interview-ledger.md`
 
 ---
 

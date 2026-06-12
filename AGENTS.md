@@ -6,6 +6,7 @@
 - Kinlayer defaults must avoid those bindings: API `127.0.0.1:8765`, Web `127.0.0.1:5173`, Postgres host port `127.0.0.1:15432`.
 - Use subagents proactively for independent research, parallelizable tasks, and review passes; keep each delegated task focused and self-contained.
 - Keep edits tightly scoped to the user's request; do not add unrelated cleanup or broad refactors.
+- Keep root Markdown sparse: `README.md`, `implementation-plan.md`, and `AGENTS.md` stay at repo root. Active product/API/model/CLI/Web specs live under `docs/specs/`, agent integration notes live under `docs/agents/`, and superseded planning or handoff material belongs under `docs/archive/planning/`.
 - For frontend or UI changes, verify the result directly in a browser or equivalent visual check when feasible before reporting completion.
 - When a web browser is needed, prefer the Codex in-app browser first; use external browsers only when the task requires the user's profile, cookies, extensions, existing tabs, or the in-app browser cannot complete it.
 - When opening local browser targets, normalize bare addresses such as `localhost:3000`, `127.0.0.1:5173`, or `[::1]:5173` to explicit `http://...` URLs before using the Codex in-app browser.

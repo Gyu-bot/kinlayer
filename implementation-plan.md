@@ -67,7 +67,8 @@ Scripts and docs:
 
 - `scripts/`: smoke scripts for local API/CLI/Web acceptance checks.
 - `README.md`: current runbook and verification commands.
-- `acceptance-scenarios.md`: journey-level exit bar; add fixture-level examples only when behavior stabilizes.
+- `docs/README.md`: documentation map and active/archive boundaries.
+- `docs/specs/acceptance-scenarios.md`: journey-level exit bar; add fixture-level examples only when behavior stabilizes.
 
 ---
 
@@ -109,6 +110,17 @@ Scripts and docs:
 | T032 | People profile edit Web UI | High | Done | T031 |
 | T033 | Structured contact and identity facts | High | Done | T032 |
 | T034 | Agent-compatible profile fact updates | High | Done | T033 |
+| T035 | AI agent vs Kinlayer responsibility boundary docs | Critical | Ready | T034 |
+| T036 | Agent-facing entity resolution API | High | Ready | T020, T035 |
+| T037 | Agent candidate provenance and correction audit hardening | Critical | Ready | T016, T017, T035 |
+| T038 | Atomic canonical write transactions | Critical | Backlog | T037 |
+| T039 | Candidate review UI provenance and action gating | High | Backlog | T019, T037 |
+| T040 | Post-turn integration examples and acceptance smoke | High | Backlog | T035, T036, T038, T039 |
+| T041 | Person merge policy and contract docs | Critical | Ready | T035 |
+| T042 | Duplicate detection and merge-candidate creation | High | Backlog | T036, T041 |
+| T043 | Atomic person merge execution API | Critical | Backlog | T038, T041 |
+| T044 | Merge review CLI and Web workflow | High | Backlog | T039, T043 |
+| T045 | Merge acceptance fixtures and retrieval verification | High | Backlog | T042, T043, T044 |
 
 ---
 
@@ -204,7 +216,7 @@ Scripts and docs:
   - [x] `entity_facts.fact_type` is validated against registry-backed seed/config values.
   - [x] Model indexes include entity type, canonical name, confirmation status, protected self uniqueness, alias normalized name, and trgm search where applicable.
 - Notes:
-  - Use latest PRD/API decisions over stale `data-model.md` open questions: fact types are registry-backed, and `canonical_record_ref` remains string-based later.
+  - Use latest PRD/API decisions over stale `docs/specs/data-model.md` open questions: fact types are registry-backed, and `canonical_record_ref` remains string-based later.
 
 #### Task T007. Entity, alias, and fact API
 - Priority: Critical
@@ -219,7 +231,7 @@ Scripts and docs:
   - [x] DELETE operations apply soft-delete/deprecated semantics, not physical purge.
   - [x] Optional bearer token protection applies to every new endpoint.
 - Notes:
-  - API behavior must follow `api-spec.md` and keep Web/CLI as clients.
+  - API behavior must follow `docs/specs/api-spec.md` and keep Web/CLI as clients.
 
 #### Task T008. Protected self bootstrap
 - Priority: Critical
@@ -577,11 +589,11 @@ Scripts and docs:
 - Depends on: T028, T029
 - Acceptance Criteria:
   - [x] `README.md` explains fresh setup, Docker startup, migrations, CLI usage, Web URL, token mode, and verification commands.
-  - [x] `api-spec.md` matches implemented endpoint names and request/response shapes.
-  - [x] `data-model.md` matches implemented schema and closed decisions.
-  - [x] `cli-spec.md` matches implemented commands.
-  - [x] `web-ui-spec.md` matches implemented screens.
-  - [x] `acceptance-scenarios.md` includes fixture-level expected checks where useful.
+  - [x] `docs/specs/api-spec.md` matches implemented endpoint names and request/response shapes.
+  - [x] `docs/specs/data-model.md` matches implemented schema and closed decisions.
+  - [x] `docs/specs/cli-spec.md` matches implemented commands.
+  - [x] `docs/specs/web-ui-spec.md` matches implemented screens.
+  - [x] `docs/specs/acceptance-scenarios.md` includes fixture-level expected checks where useful.
   - [x] No docs refer to obsolete implementation sequencing.
 - Notes:
   - Update product/spec docs only for real contract changes or drift discovered during implementation.
@@ -673,6 +685,339 @@ uv run kinlayer status --json
 
 ---
 
+## Issue #1: Post-Turn Agent Boundary Hardening
+
+#### Task T035. AI agent vs Kinlayer responsibility boundary docs
+- Priority: Critical
+- Status: Ready
+- Depends on: T034
+- Files:
+  - Modify: `docs/agents/agent-integration-notes.md`
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `docs/specs/candidate-lifecycle-and-payload.md`
+  - Modify: `docs/specs/context-output-contract.md`
+  - Modify: `docs/specs/acceptance-scenarios.md`
+  - Modify: `docs/README.md`
+- Acceptance Criteria:
+  - [ ] Docs state the product boundary in one canonical sentence: AI agents interpret current-turn user-authored text and propose candidates/corrections; Kinlayer validates, stores, retrieves, reviews, and canonicalizes.
+  - [ ] Docs explicitly state Kinlayer does not run an LLM for post-turn extraction and must not perform open-ended personhood, fictional/public-figure, or relationship-relevance classification.
+  - [ ] Post-turn hook contract says automatic extraction evidence may use only current-turn user-authored messages.
+  - [ ] Docs forbid assistant messages, tool output, retrieved context packs/cards, system/developer/skill prompts, logs, compacted summaries, and previous memory output as candidate evidence.
+  - [ ] Evidence excerpt guidance says submitted excerpts must be user-authored substrings or bounded user-authored snippets, not agent-generated interpretations.
+  - [ ] Exclusion taxonomy covers fictional characters, public figures, hypothetical examples, generic groups/professions, AI agents/bots/models, and the user as a normal person entity.
+  - [ ] Pronoun-only policy says references like `that person`, `그 사람`, `걔`, and `그분` must not create a new entity or update an existing entity without a reliable current-turn user-provided identifier.
+  - [ ] Candidate planning policy distinguishes AI inference, explicit correction, ambiguous/low-confidence context, multiple entity matches, and no-op decisions.
+  - [ ] Dry-run/audit expectations list mentions found, exclusions, entity-resolution results, planned candidates, no-op reasons, and redacted/log-safe metadata.
+  - [ ] Docs clarify that agent-side thresholds are adapter configuration, not Kinlayer core behavior.
+- Notes:
+  - This task is documentation-first and should not add an agent runtime hook.
+  - Treat `needs_clarification` as a candidate status/action, not a `candidate_type`, unless a later API design explicitly proves a new type is necessary.
+  - Keep examples bilingual where helpful because Korean relationship references are first-class product examples.
+
+#### Task T036. Agent-facing entity resolution API
+- Priority: High
+- Status: Ready
+- Depends on: T020, T035
+- Files:
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `backend/src/kinlayer_backend/api/entities.py`
+  - Modify: `backend/src/kinlayer_backend/schemas/entities.py`
+  - Modify: `backend/src/kinlayer_backend/services/entities.py`
+  - Modify: `backend/src/kinlayer_backend/repositories/entities.py`
+  - Modify: `backend/src/kinlayer_backend/cli.py`
+  - Test: `backend/tests/test_entities_api.py`
+  - Test: `backend/tests/test_cli.py`
+- Acceptance Criteria:
+  - [ ] `POST /api/entities/resolve` accepts `surface`, optional `aliases`, optional `relation_hint`, optional `entity_type`, and `source`.
+  - [ ] Resolve response returns `matches`, `ambiguity`, and per-match `entity_id`, `display_name`, `score`, and `match_reasons`.
+  - [ ] Deterministic matching covers exact display name, canonical name, exact alias, normalized alias, and fuzzy name/alias matches available in the current DB layer.
+  - [ ] The endpoint may use embeddings or retrieval hints when available, but it must not call an LLM or decide whether a mention is fictional/public/relationship-relevant.
+  - [ ] Ambiguity states distinguish `no_match`, `single_strong_match`, `multiple_close_matches`, and `low_confidence_match`.
+  - [ ] Protected `self` may be returned only when explicitly requested by system role or when the request clearly targets self; normal person resolution must not silently target `self`.
+  - [ ] CLI exposes an agent-callable JSON command for entity resolution.
+  - [ ] Tests cover no match, single exact alias match, multiple ambiguous matches, protected self exclusion, and API token protection.
+- Notes:
+  - This is a support primitive for agents. It should return evidence for agent decisions, not make the final write/no-write decision.
+  - If a full vector resolver is too large for this slice, ship deterministic scoring first and leave vector expansion behind the same response contract.
+
+#### Task T037. Agent candidate provenance and correction audit hardening
+- Priority: Critical
+- Status: Ready
+- Depends on: T016, T017, T035
+- Files:
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `docs/specs/candidate-lifecycle-and-payload.md`
+  - Modify: `backend/src/kinlayer_backend/schemas/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/services/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/schemas/corrections.py`
+  - Modify: `backend/src/kinlayer_backend/services/corrections.py`
+  - Modify: `backend/src/kinlayer_backend/models.py`
+  - Add: `backend/alembic/versions/20260612_0005_agent_provenance_contract.py`
+  - Test: `backend/tests/test_candidates_api.py`
+  - Test: `backend/tests/test_corrections_api.py`
+- Acceptance Criteria:
+  - [ ] Agent-submitted candidates require at least one evidence item unless `created_by` is `user` and the candidate is explicitly manual.
+  - [ ] Agent-submitted evidence requires an existing episode, non-empty excerpt, confidence in `[0, 1]`, and provenance fields sufficient to trace source type/ref.
+  - [ ] Evidence validation rejects missing episode IDs, empty excerpts, nonexistent episodes, and excerpts attached to unsupported source types with the common `validation_error` shape.
+  - [ ] Docs and API examples show `source_message_id` and `source_turn_id` in `source_ref` or structured provenance fields when the agent runtime can provide them.
+  - [ ] Correction apply separates the user-authored correction source from the API submitter, for example `source_actor = user` and `submitted_by = ai_agent`.
+  - [ ] Direct correction apply still requires `correction_source.user_explicit = true`.
+  - [ ] Direct correction apply rejects ambiguous targets by requiring exactly one supported `old_record_ref`.
+  - [ ] Tests prove agent-inferred corrections with `user_explicit = false` are rejected and must enter candidates.
+  - [ ] Tests prove explicit correction evidence records the user as the correction source while preserving the submitting agent/runtime identity.
+- Notes:
+  - Do not try to cryptographically prove user-authored excerpts in this slice. Make the contract explicit and store enough provenance for later hash/offset verification.
+  - If schema changes are needed, preserve backwards-compatible reads for existing local data where practical.
+
+#### Task T038. Atomic canonical write transactions
+- Priority: Critical
+- Status: Backlog
+- Depends on: T037
+- Files:
+  - Modify: `backend/src/kinlayer_backend/repositories/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/repositories/entities.py`
+  - Modify: `backend/src/kinlayer_backend/repositories/relationships.py`
+  - Modify: `backend/src/kinlayer_backend/services/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/services/corrections.py`
+  - Test: `backend/tests/test_candidates_api.py`
+  - Test: `backend/tests/test_corrections_api.py`
+- Acceptance Criteria:
+  - [ ] Candidate accept writes canonical record, copies evidence, sets `canonical_record_ref`, and resolves candidate in one transaction.
+  - [ ] Candidate edit-accept validates edited payload and performs the same canonical write transaction atomically.
+  - [ ] Correction apply writes the replacement record, creates the correction episode, links evidence, supersedes the old record, and returns refs in one transaction.
+  - [ ] Repository helpers no longer commit mid-operation when called from candidate/correction service flows.
+  - [ ] Failure-injection tests prove a simulated evidence-link failure leaves no accepted candidate and no orphan canonical record.
+  - [ ] Failure-injection tests prove a simulated correction failure leaves the old record active and no replacement record visible.
+  - [ ] Existing API/CLI smoke behavior remains unchanged for successful accept/edit-accept/correction flows.
+- Notes:
+  - This task is about DB consistency, not API shape changes.
+  - Prefer explicit service-level transaction boundaries over broad hidden commits inside repository helpers.
+
+#### Task T039. Candidate review UI provenance and action gating
+- Priority: High
+- Status: Backlog
+- Depends on: T019, T037
+- Files:
+  - Modify: `frontend/src/routes/Candidates.tsx`
+  - Modify: `frontend/src/api/client.ts`
+  - Modify: `frontend/src/types/candidates.ts`
+  - Modify: `frontend/src/styles.css`
+  - Test: `frontend/src/App.test.tsx`
+  - Test: `frontend/src/api/client.test.ts`
+  - Modify: `scripts/web-smoke-checklist.md`
+- Acceptance Criteria:
+  - [ ] `/candidates` status filter includes every lifecycle status: `pending`, `accepted`, `edited_accepted`, `rejected`, `archived`, `needs_clarification`, and `superseded`.
+  - [ ] Candidate detail displays `created_by`, `confidence`, `suggested_action`, `target_entity_id`, `canonical_record_ref`, `supersedes_candidate_id`, and `supersedes_record_ref` where present.
+  - [ ] Evidence panel displays excerpt, confidence, episode ID, source type, source ref, source description, body hash, and actor when returned by the API.
+  - [ ] UI disables or hides Accept/Edit-accept for review-only candidate types such as `merge`, `conflict`, and `supersede` when the server cannot canonicalize them directly.
+  - [ ] UI exposes Reject, Archive, Needs clarification, and Supersede actions only when valid for the selected candidate status.
+  - [ ] UI shows server validation errors clearly when a lifecycle action is rejected.
+  - [ ] Browser or equivalent visual verification confirms candidate evidence and action gating are inspectable.
+- Notes:
+  - Keep the UI a control plane. Do not add LLM explanations, generated advice, or automatic extraction controls.
+  - Use existing API endpoints first; add backend response fields only if the UI cannot inspect required provenance through current data.
+
+#### Task T040. Post-turn integration examples and acceptance smoke
+- Priority: High
+- Status: Backlog
+- Depends on: T035, T036, T038, T039
+- Files:
+  - Modify: `docs/agents/agent-integration-notes.md`
+  - Modify: `docs/specs/acceptance-scenarios.md`
+  - Modify: `README.md`
+  - Modify: `scripts/smoke-acceptance-api.py`
+  - Modify: `scripts/smoke-acceptance-cli.sh`
+  - Test: `backend/tests/test_candidates_api.py`
+  - Test: `backend/tests/test_corrections_api.py`
+  - Test: `backend/tests/test_context_api.py`
+- Acceptance Criteria:
+  - [ ] Docs include example flow for named person: `민지한테 답장 뭐라 하지?` resolves or creates candidates without direct canonical write.
+  - [ ] Docs include example flow for pronoun-only ambiguity: `그 사람이 또 연락했어` becomes no-op or `needs_clarification`, never a new entity.
+  - [ ] Docs include example flow for explicit correction: `Alex는 직장 동료가 아니라 사촌이야` uses correction apply only when target is unambiguous.
+  - [ ] Docs include example flow for public figure/news subject and fictional/example/generic group mentions that produce no Kinlayer candidate.
+  - [ ] API smoke submits an agent-like episode and candidate with required provenance, accepts it, and verifies canonical evidence linkage.
+  - [ ] API smoke verifies explicit correction provenance and corrected retrieval behavior after correction apply.
+  - [ ] CLI smoke covers entity resolve, candidate submit/list/show, candidate accept/reject/clarify, and correction apply.
+  - [ ] Context retrieve/pack smoke proves rejected and ambiguous candidates do not surface as trusted confirmed context.
+  - [ ] Final verification runs backend tests, CLI/API smoke, frontend tests/build, and browser verification for `/candidates` when frontend changes are included.
+- Notes:
+  - This is the exit bar for GitHub Issue #1.
+  - Agent-side post-turn hooks, skills, plugins, and MCP adapters remain outside Kinlayer core unless a later task explicitly scopes them.
+
+---
+
+## Person Entity Merge and Duplicate Control
+
+#### Task T041. Person merge policy and contract docs
+- Priority: Critical
+- Status: Ready
+- Depends on: T035
+- Files:
+  - Modify: `docs/specs/prd.md`
+  - Modify: `docs/specs/data-model.md`
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `docs/specs/candidate-lifecycle-and-payload.md`
+  - Modify: `docs/specs/context-output-contract.md`
+  - Modify: `docs/specs/web-ui-spec.md`
+  - Modify: `docs/agents/agent-integration-notes.md`
+  - Modify: `implementation-plan.md`
+- Design:
+  - Merge is a user-reviewed canonical maintenance operation, not an automatic AI write.
+  - The default flow is: duplicate signal -> `merge` candidate -> review diff -> accept/edit-accept -> atomic merge execution.
+  - Source entity is never hard-deleted. It becomes `status = merged` or equivalent deprecated state and records a durable pointer to the target entity.
+  - Target entity remains canonical. Aliases, facts, relationships, observations, evidence references, graph edges, and retrieval surfaces are rewired or copied according to an explicit merge plan.
+  - Protected `self` can never be merged into another entity or receive a normal person merge unless a future protected-self-specific operation is designed.
+  - Merge is reversible only through explicit audit data and follow-up repair operations; do not promise one-click undo in MVP.
+- Acceptance Criteria:
+  - [ ] Docs define `source_entity_id`, `target_entity_id`, `merge_plan`, `field_conflict_policy`, and `merged_entity_ref` semantics.
+  - [ ] Docs state that AI agents may propose merge candidates but must not directly merge people.
+  - [ ] Docs state that pronoun-only or weak identity similarity may create a clarification/merge candidate, not a direct merge.
+  - [ ] Docs specify protected self constraints and reject any merge involving `system_role = self` unless both sides are the same self record.
+  - [ ] Docs define conflict handling for display name, canonical name, sensitivity, AI use policy, profile facts, aliases, active edges, and observations.
+  - [ ] Docs define retrieval behavior after merge: old source IDs resolve or redirect to target, source does not appear as a separate active person, and context cards include merged aliases/provenance.
+  - [ ] Candidate payload examples include a merge candidate with evidence and confidence.
+- Notes:
+  - Use `merge` candidate type already present in candidate schemas; do not introduce a separate duplicate table unless implementation pressure appears.
+  - This task is design-only and should keep implementation out of docs except precise contracts.
+
+#### Task T042. Duplicate detection and merge-candidate creation
+- Priority: High
+- Status: Backlog
+- Depends on: T036, T041
+- Files:
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `backend/src/kinlayer_backend/schemas/entities.py`
+  - Modify: `backend/src/kinlayer_backend/services/entities.py`
+  - Modify: `backend/src/kinlayer_backend/repositories/entities.py`
+  - Modify: `backend/src/kinlayer_backend/api/entities.py`
+  - Modify: `backend/src/kinlayer_backend/services/candidates.py`
+  - Test: `backend/tests/test_entities_api.py`
+  - Test: `backend/tests/test_candidates_api.py`
+- Design:
+  - Extend entity resolution output with duplicate-oriented signals without changing the agent write boundary.
+  - Add `POST /api/entities/duplicate-candidates` for explicit duplicate checks while keeping `POST /api/entities/resolve` focused on single-mention resolution.
+  - Duplicate scoring should combine exact alias/name overlap, normalized name overlap, fuzzy/trigram similarity, shared relationship hints, recent context hints, and optional embedding similarity where available.
+  - The endpoint should return ranked possible duplicates and recommended next action: `no_match`, `use_existing_entity`, `create_merge_candidate`, or `needs_clarification`.
+  - Creating a merge candidate must require evidence/provenance under the same agent evidence rules as T037.
+- Acceptance Criteria:
+  - [ ] Duplicate detection returns no result for unrelated people with different names and no alias/context overlap.
+  - [ ] Duplicate detection flags exact alias/name overlap as a strong duplicate signal.
+  - [ ] Duplicate detection flags fuzzy Korean/English name variants as possible duplicates without auto-merging.
+  - [ ] API can create a `merge` candidate from a duplicate detection result with `source_entity_id`, `target_entity_id`, `reason`, `fields_to_merge`, and `risk_notes`.
+  - [ ] Agent-submitted duplicate/merge candidates require evidence and never bypass review.
+  - [ ] Tests cover strong duplicate, possible duplicate, ambiguous multiple duplicate, and protected self rejection.
+- Notes:
+  - This task detects and proposes. It must not mutate canonical entity references.
+  - Keep thresholds conservative. False negatives are safer than false positive merges.
+
+#### Task T043. Atomic person merge execution API
+- Priority: Critical
+- Status: Backlog
+- Depends on: T038, T041
+- Files:
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `backend/src/kinlayer_backend/models.py`
+  - Add: `backend/alembic/versions/20260612_0006_person_merge_records.py`
+  - Modify: `backend/src/kinlayer_backend/schemas/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/services/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/services/entities.py`
+  - Modify: `backend/src/kinlayer_backend/repositories/entities.py`
+  - Modify: `backend/src/kinlayer_backend/services/retrieval.py`
+  - Modify: `backend/src/kinlayer_backend/services/context.py`
+  - Test: `backend/tests/test_candidates_api.py`
+  - Test: `backend/tests/test_entities_api.py`
+  - Test: `backend/tests/test_context_api.py`
+  - Test: `backend/tests/test_retrieval_engine.py`
+- Design:
+  - Accepting a `merge` candidate executes a service-level transaction that rewires selected records and marks the source entity merged.
+  - Store a durable merge audit record, for example `entity_merges`, with source entity, target entity, candidate ID, merge plan, conflict decisions, actor, timestamp, and previous references needed for investigation.
+  - Default merge plan:
+    - aliases: copy non-conflicting source aliases to target and deprecate duplicates;
+    - facts: copy or reassign non-conflicting facts; conflicting facts become `conflict` candidates or remain attached to the merged source entity for later manual review;
+    - edges: re-point source edges to target unless that creates self-edge or duplicate edge conflicts;
+    - observations: re-point subject/related entity references to target and preserve evidence links;
+    - source entity: mark merged/deprecated and store target ref.
+  - All merge rewrites must preserve `source_candidate_id`, evidence links, created timestamps where meaningful, and auditability.
+- Acceptance Criteria:
+  - [ ] Accepting a merge candidate performs alias/fact/edge/observation/source-entity updates in one transaction.
+  - [ ] Merge execution rejects source equals target.
+  - [ ] Merge execution rejects protected self as source or target for normal person merge.
+  - [ ] Merge execution handles duplicate aliases without creating unique constraint conflicts.
+  - [ ] Merge execution prevents invalid self-edges or duplicate active edges.
+  - [ ] Merge execution creates or updates a durable audit record that links back to the accepted candidate.
+  - [ ] Source entity is hidden from normal active people lists after merge.
+  - [ ] Context retrieve, context pack, context card, and graph use the target entity after merge.
+  - [ ] Failure-injection tests prove partial merge rewrites roll back completely.
+- Notes:
+  - Prefer re-pointing references over copying records when it preserves evidence and timestamps cleanly.
+  - Do not physically delete the source entity in MVP.
+
+#### Task T044. Merge review CLI and Web workflow
+- Priority: High
+- Status: Backlog
+- Depends on: T039, T043
+- Files:
+  - Modify: `docs/specs/cli-spec.md`
+  - Modify: `docs/specs/web-ui-spec.md`
+  - Modify: `backend/src/kinlayer_backend/cli.py`
+  - Modify: `frontend/src/routes/Candidates.tsx`
+  - Modify: `frontend/src/routes/PeopleList.tsx`
+  - Modify: `frontend/src/routes/PersonDetail.tsx`
+  - Modify: `frontend/src/api/client.ts`
+  - Modify: `frontend/src/types/candidates.ts`
+  - Modify: `frontend/src/types/entities.ts`
+  - Test: `backend/tests/test_cli.py`
+  - Test: `frontend/src/App.test.tsx`
+  - Modify: `scripts/web-smoke-checklist.md`
+- Design:
+  - CLI should support duplicate inspection and merge candidate review in JSON-first form for agents and operators.
+  - Web should expose merge as a review workflow from candidate detail and, if practical, from person detail as "compare/merge with another person".
+  - The review UI should show side-by-side source and target summaries: names, aliases, profile facts, relationships, observations, evidence count, sensitivity, policy, and conflict warnings.
+  - Accept should be disabled until the reviewer confirms the target and acknowledges conflict/risk notes.
+- Acceptance Criteria:
+  - [ ] CLI can list duplicate candidates or run duplicate detection for a person.
+  - [ ] CLI can show a merge candidate with source/target summaries and JSON payload.
+  - [ ] CLI can accept/reject/archive/clarify merge candidates using existing candidate lifecycle commands.
+  - [ ] Web candidate detail renders merge candidates with source/target comparison instead of raw JSON only.
+  - [ ] Web shows clear warnings for protected self, conflicts, duplicate edges, and irreversible audit implications.
+  - [ ] Web hides merged source entities from default people list but allows inspection through direct link or archived/merged filter.
+  - [ ] Browser verification confirms side-by-side review, accept flow, and post-merge people/context state.
+- Notes:
+  - Do not add drag-and-drop or bulk merge UI in MVP.
+  - Keep all state changes API-backed; no Web-only merge behavior.
+
+#### Task T045. Merge acceptance fixtures and retrieval verification
+- Priority: High
+- Status: Backlog
+- Depends on: T042, T043, T044
+- Files:
+  - Modify: `docs/specs/acceptance-scenarios.md`
+  - Modify: `README.md`
+  - Modify: `scripts/load-acceptance-fixtures.py`
+  - Modify: `scripts/smoke-acceptance-api.py`
+  - Modify: `scripts/smoke-acceptance-cli.sh`
+  - Modify: `scripts/web-smoke-checklist.md`
+  - Test: `backend/tests/test_candidates_api.py`
+  - Test: `backend/tests/test_context_api.py`
+  - Test: `backend/tests/test_graph_ontology_api.py`
+- Design:
+  - Add an end-to-end fixture with two duplicate people, overlapping aliases, one conflicting fact, one relationship edge, one observation, and evidence on both sides.
+  - Verify the safe path: duplicate detection proposes merge candidate, reviewer accepts with explicit merge plan, source becomes merged, target receives safe aliases/context, conflicts remain reviewable.
+  - Verify the unsafe path: protected self merge and ambiguous multiple-target merge are rejected or clarified.
+- Acceptance Criteria:
+  - [ ] Acceptance scenarios include duplicate AI-created person records and user-reviewed merge.
+  - [ ] API smoke verifies merge candidate creation, accept, audit record, source merged status, and target context continuity.
+  - [ ] CLI smoke verifies duplicate detection and merge candidate lifecycle commands.
+  - [ ] Context smoke proves merged source context appears under target and source does not rank as a separate active person.
+  - [ ] Graph smoke proves source/target duplicate nodes do not both appear as active people after merge.
+  - [ ] Web smoke checklist covers merge review and merged source visibility.
+  - [ ] Final verification includes backend tests, API smoke, CLI smoke, frontend tests/build, and browser verification for merge UI.
+- Notes:
+  - This is the exit bar for person merge functionality.
+  - Keep merge fixtures deterministic and small enough to debug by hand.
+
+---
+
 ## Dependency Flow
 
 ```mermaid
@@ -720,4 +1065,27 @@ flowchart TD
   T029 --> T031
   T030 --> T031
   T031 --> T032 --> T033 --> T034
+  T034 --> T035
+  T020 --> T036
+  T035 --> T036
+  T016 --> T037
+  T017 --> T037
+  T035 --> T037
+  T037 --> T038
+  T019 --> T039
+  T037 --> T039
+  T035 --> T040
+  T036 --> T040
+  T038 --> T040
+  T039 --> T040
+  T035 --> T041
+  T036 --> T042
+  T041 --> T042
+  T038 --> T043
+  T041 --> T043
+  T039 --> T044
+  T043 --> T044
+  T042 --> T045
+  T043 --> T045
+  T044 --> T045
 ```
