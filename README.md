@@ -142,7 +142,7 @@ Web UI의 MVP 화면은 다음과 같습니다.
 
 ## 로컬 우선 설계
 
-Kinlayer는 기본적으로 `127.0.0.1`에 바인딩되는 로컬 인스턴스입니다.
+Kinlayer는 로컬 또는 self-hosted 환경에서 실행하는 개인 관계 맥락 레이어입니다. Docker Compose 기본값은 Web UI와 API를 같은 네트워크의 다른 기기에서도 접속할 수 있게 호스트 인터페이스에 공개하고, Postgres만 `127.0.0.1`에 묶어 둡니다.
 
 MVP에는 사용자 계정, 로그인 세션, 조직, 워크스페이스 멤버십, 클라우드 동기화가 없습니다. 대신 로컬 환경에서 필요한 경우 `KINLAYER_API_TOKEN`으로 간단한 bearer token 보호를 켤 수 있습니다.
 
@@ -179,21 +179,25 @@ docker compose up -d --build
 
 API 컨테이너는 시작할 때 DB 마이그레이션을 자동 적용하고, protected self entity가 없으면 `.env`의 `KINLAYER_SELF_NAME` 값으로 생성합니다.
 
-실행 후 Web UI는 다음 주소에서 열립니다.
+실행 후 같은 머신에서는 다음 주소를 사용합니다.
 
 ```text
 http://127.0.0.1:5173
-```
-
-API는 다음 주소에서 동작합니다.
-
-```text
 http://127.0.0.1:8765
 ```
 
+같은 로컬 네트워크의 다른 기기에서는 서버 머신의 IP를 넣어 접속합니다.
+
+```text
+http://<server-ip>:5173
+http://<server-ip>:8765
+```
+
+Web UI를 `http://<server-ip>:5173`으로 열면 기본 API 주소도 같은 host의 `:8765`를 사용합니다. 다른 API 주소를 강제로 쓰고 싶으면 `.env`에 `VITE_KINLAYER_API_URL`을 설정하고 컨테이너를 다시 올립니다.
+
 로컬 bearer token은 기본 설치에 필요하지 않습니다. `.env`의 `KINLAYER_API_TOKEN`을 비워두면 Web UI와 API를 바로 사용할 수 있습니다.
 
-같은 머신이나 로컬 네트워크에서 접근 제한을 걸고 싶을 때만 `.env`에 값을 넣고 컨테이너를 다시 올립니다.
+로컬 네트워크에 API를 공개하는 경우에는 `.env`에 값을 넣고 컨테이너를 다시 올리는 것을 권장합니다.
 
 ```dotenv
 KINLAYER_API_TOKEN=원하는-로컬-토큰

@@ -97,7 +97,7 @@ describe("App route shell", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", {level: 1, name: "Settings"})).toBeInTheDocument(),
     );
-    expect(screen.getAllByText("http://127.0.0.1:8765").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("http://localhost:8765").length).toBeGreaterThan(0);
     expect(screen.getByText("Local token configured")).toBeInTheDocument();
     expect(screen.getAllByText("openai_compatible").length).toBeGreaterThan(0);
     expect(screen.getAllByText("text-embedding-3-small").length).toBeGreaterThan(0);

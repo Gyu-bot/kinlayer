@@ -20,7 +20,29 @@ import type {
 import type {Candidate, CandidateFilters} from "../types/candidates";
 import type {EgoGraph, GraphFilters} from "../types/graph";
 
-const apiUrl = import.meta.env.VITE_KINLAYER_API_URL ?? "http://127.0.0.1:8765";
+type LocationLike = Pick<Location, "protocol" | "hostname">;
+
+export function resolveApiUrl(configuredUrl?: string, locationLike?: LocationLike) {
+  const trimmed = configuredUrl?.trim();
+  if (trimmed) {
+    return trimmed.replace(/\/$/, "");
+  }
+
+  const currentLocation =
+    locationLike ?? (typeof window === "undefined" ? undefined : window.location);
+  if (!currentLocation?.hostname) {
+    return "http://127.0.0.1:8765";
+  }
+
+  const protocol = currentLocation.protocol === "https:" ? "https:" : "http:";
+  const hostname = currentLocation.hostname;
+  const host = hostname.includes(":") && !hostname.startsWith("[")
+    ? `[${hostname}]`
+    : hostname;
+  return `${protocol}//${host}:8765`;
+}
+
+const apiUrl = resolveApiUrl(import.meta.env.VITE_KINLAYER_API_URL);
 const envApiToken = import.meta.env.VITE_KINLAYER_API_TOKEN;
 const localApiTokenKey = "kinlayer.apiToken";
 

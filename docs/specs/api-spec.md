@@ -121,11 +121,13 @@ Response:
 
 Purpose: protected, non-secret effective config summary.
 
+Docker Compose 기본 실행에서는 `bind_host`가 `0.0.0.0`으로 보고됩니다. CLI `kinlayer serve`의 기본 host는 CLI spec을 따릅니다.
+
 Response:
 
 ```json
 {
-  "bind_host": "127.0.0.1",
+  "bind_host": "0.0.0.0",
   "auth_token_configured": true,
   "embedding": {
     "provider": "local_sentence_transformers",

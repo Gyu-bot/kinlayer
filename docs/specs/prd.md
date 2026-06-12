@@ -323,10 +323,11 @@ one protected self entity
 no users/sessions/login UI
 ```
 
-Server binds to:
+Docker Compose network exposure:
 
 ```text
-127.0.0.1 by default
+Web/API published on host ports 5173/8765 for same-LAN access
+Postgres published on 127.0.0.1:15432 only
 ```
 
 Optional bearer token:

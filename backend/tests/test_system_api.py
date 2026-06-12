@@ -70,6 +70,38 @@ def test_cors_preflight_is_allowed_with_optional_token(database_url: str) -> Non
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
 
 
+def test_cors_preflight_allows_lan_web_origin(database_url: str) -> None:
+    client = TestClient(create_app({"api_token": "secret", "database_url": database_url}))
+
+    response = client.options(
+        "/api/entities",
+        headers={
+            "Origin": "http://192.168.1.38:5173",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://192.168.1.38:5173"
+
+
+def test_cors_preflight_rejects_unrelated_public_origin(database_url: str) -> None:
+    client = TestClient(create_app({"api_token": "secret", "database_url": database_url}))
+
+    response = client.options(
+        "/api/entities",
+        headers={
+            "Origin": "http://example.com:5173",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+
+
 def test_app_can_start_before_entity_migrations(database_url: str) -> None:
     with TestClient(create_app({"database_url": database_url})) as client:
         response = client.get("/api/system/version")

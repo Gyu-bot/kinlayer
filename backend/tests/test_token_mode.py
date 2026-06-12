@@ -58,6 +58,16 @@ def test_compose_passes_embedding_environment_to_api_container() -> None:
     assert "KINLAYER_EMBEDDING_DIM" not in compose
 
 
+def test_compose_exposes_web_and_api_beyond_loopback_while_postgres_stays_local() -> None:
+    compose = Path("docker-compose.yml").read_text()
+
+    assert '"127.0.0.1:15432:5432"' in compose
+    assert '"8765:8765"' in compose
+    assert '"5173:5173"' in compose
+    assert '"127.0.0.1:8765:8765"' not in compose
+    assert '"127.0.0.1:5173:5173"' not in compose
+
+
 def test_api_container_runs_migrations_before_serving() -> None:
     dockerfile = Path("backend/Dockerfile").read_text()
     entrypoint = Path("backend/docker-entrypoint.sh").read_text()

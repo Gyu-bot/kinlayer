@@ -147,8 +147,8 @@ Scripts and docs:
 - Acceptance Criteria:
   - [x] `docker-compose.yml` defines Postgres, API, and Web services.
   - [x] Postgres uses a pgvector-capable image and exposes host port `127.0.0.1:15432`.
-  - [x] API exposes host port `127.0.0.1:8765`.
-  - [x] Web exposes host port `127.0.0.1:5173`.
+  - [x] API exposes host port `8765` beyond loopback.
+  - [x] Web exposes host port `5173` beyond loopback.
   - [x] Docker startup was verified without conflicting with honcho `8000`, `6379`, or `5432`.
   - [x] Frontend app shell renders through the Codex in-app browser.
 - Notes:

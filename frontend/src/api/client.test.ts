@@ -6,6 +6,7 @@ import {
   packContext,
   isLocalApiTokenConfigured,
   request,
+  resolveApiUrl,
   retrieveContext,
   setLocalApiToken,
 } from "./client";
@@ -30,7 +31,7 @@ describe("API client", () => {
 
     expect(isLocalApiTokenConfigured()).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8765/api/system/config",
+      "http://localhost:8765/api/system/config",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer local-secret",
@@ -40,6 +41,33 @@ describe("API client", () => {
 
     clearLocalApiToken();
     expect(isLocalApiTokenConfigured()).toBe(false);
+  });
+
+  it("uses the current web hostname for the default API URL", () => {
+    expect(
+      resolveApiUrl(undefined, {
+        protocol: "http:",
+        hostname: "192.168.1.38",
+      }),
+    ).toBe("http://192.168.1.38:8765");
+  });
+
+  it("keeps bracketed IPv6 hostnames valid for the default API URL", () => {
+    expect(
+      resolveApiUrl(undefined, {
+        protocol: "http:",
+        hostname: "[::1]",
+      }),
+    ).toBe("http://[::1]:8765");
+  });
+
+  it("keeps an explicitly configured API URL", () => {
+    expect(
+      resolveApiUrl("http://127.0.0.1:8765", {
+        protocol: "http:",
+        hostname: "192.168.1.38",
+      }),
+    ).toBe("http://127.0.0.1:8765");
   });
 
   it("raises common API errors with status, code, message, and details", async () => {
@@ -94,7 +122,7 @@ describe("API client", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "http://127.0.0.1:8765/api/context/retrieve",
+      "http://localhost:8765/api/context/retrieve",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -108,7 +136,7 @@ describe("API client", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://127.0.0.1:8765/api/context/pack",
+      "http://localhost:8765/api/context/pack",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({

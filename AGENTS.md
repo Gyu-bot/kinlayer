@@ -3,7 +3,7 @@
 - When the user writes in Korean, respond in Korean unless they ask otherwise.
 - Before changing local services, Docker, network, or host settings, inspect the current state first and only change what is necessary.
 - Before starting test Docker containers, re-check the current honcho Docker ports and avoid conflicts with active host bindings: honcho-api `127.0.0.1:8000->8000/tcp`, honcho-redis `127.0.0.1:6379->6379/tcp`, honcho-database `127.0.0.1:5432->5432/tcp`; honcho-deriver exposes `8000/tcp` internally only.
-- Kinlayer defaults must avoid those bindings: API `127.0.0.1:8765`, Web `127.0.0.1:5173`, Postgres host port `127.0.0.1:15432`.
+- Kinlayer defaults must avoid those bindings: API host port `8765`, Web host port `5173`, Postgres host port `127.0.0.1:15432`. Web/API are intentionally reachable from the local network; Postgres stays loopback-only.
 - Use subagents proactively for independent research, parallelizable tasks, and review passes; keep each delegated task focused and self-contained.
 - Keep edits tightly scoped to the user's request; do not add unrelated cleanup or broad refactors.
 - Keep root Markdown sparse: `README.md`, `implementation-plan.md`, and `AGENTS.md` stay at repo root. Active product/API/model/CLI/Web specs live under `docs/specs/`, agent integration notes live under `docs/agents/`, and superseded planning or handoff material belongs under `docs/archive/planning/`.

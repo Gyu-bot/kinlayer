@@ -30,7 +30,7 @@ services:
       KINLAYER_SELF_NAME: ${KINLAYER_SELF_NAME:-Self}
       KINLAYER_EMBEDDING_API_KEY: ${KINLAYER_EMBEDDING_API_KEY:-}
     ports:
-      - "127.0.0.1:8765:8765"
+      - "8765:8765"
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,9 +40,9 @@ services:
       context: ./frontend
     container_name: kinlayer-web
     environment:
-      VITE_KINLAYER_API_URL: http://127.0.0.1:8765
+      VITE_KINLAYER_API_URL: ${VITE_KINLAYER_API_URL:-}
     ports:
-      - "127.0.0.1:5173:5173"
+      - "5173:5173"
     depends_on:
       - api
 

@@ -28,6 +28,17 @@ from kinlayer_backend.services.entities import EntityService
 from kinlayer_backend.services.ontology import seed_ontology_values
 
 PUBLIC_PATHS = {"/api/system/health", "/api/system/version"}
+LOCAL_WEB_ORIGIN_REGEX = (
+    r"^https?://("
+    r"localhost|"
+    r"127(?:\.\d{1,3}){3}|"
+    r"\[::1\]|"
+    r"10(?:\.\d{1,3}){3}|"
+    r"172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|"
+    r"192\.168(?:\.\d{1,3}){2}|"
+    r"100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}"
+    r"):5173$"
+)
 
 
 def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
@@ -50,6 +61,7 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+        allow_origin_regex=LOCAL_WEB_ORIGIN_REGEX,
         allow_methods=["*"],
         allow_headers=["*"],
     )
