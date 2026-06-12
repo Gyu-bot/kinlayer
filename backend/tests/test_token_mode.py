@@ -51,11 +51,20 @@ def test_compose_passes_optional_api_token_to_api_container() -> None:
 def test_compose_passes_embedding_environment_to_api_container() -> None:
     compose = Path("docker-compose.yml").read_text()
 
-    assert "KINLAYER_EMBEDDING_PROVIDER" in compose
-    assert "KINLAYER_EMBEDDING_API_URL" in compose
     assert "KINLAYER_EMBEDDING_API_KEY" in compose
-    assert "KINLAYER_EMBEDDING_MODEL" in compose
-    assert "KINLAYER_EMBEDDING_DIM" in compose
+    assert "KINLAYER_EMBEDDING_PROVIDER" not in compose
+    assert "KINLAYER_EMBEDDING_API_URL" not in compose
+    assert "KINLAYER_EMBEDDING_MODEL" not in compose
+    assert "KINLAYER_EMBEDDING_DIM" not in compose
+
+
+def test_api_container_runs_migrations_before_serving() -> None:
+    dockerfile = Path("backend/Dockerfile").read_text()
+    entrypoint = Path("backend/docker-entrypoint.sh").read_text()
+
+    assert 'CMD ["sh", "backend/docker-entrypoint.sh"]' in dockerfile
+    assert "uv run alembic upgrade head" in entrypoint
+    assert "exec uv run uvicorn kinlayer_backend.main:app" in entrypoint
 
 
 def test_compose_persists_postgres_data_in_named_volume() -> None:

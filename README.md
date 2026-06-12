@@ -175,9 +175,9 @@ cp .env.example .env
 
 ```bash
 docker compose up -d --build
-docker compose exec api uv run alembic upgrade head
-docker compose exec api uv run kinlayer init --self-name "나" --json
 ```
+
+API 컨테이너는 시작할 때 DB 마이그레이션을 자동 적용하고, protected self entity가 없으면 `.env`의 `KINLAYER_SELF_NAME` 값으로 생성합니다.
 
 실행 후 Web UI는 다음 주소에서 열립니다.
 
@@ -191,44 +191,42 @@ API는 다음 주소에서 동작합니다.
 http://127.0.0.1:8765
 ```
 
-로컬 bearer token 보호를 켜려면 `.env`에 값을 넣고 컨테이너를 다시 올립니다.
+로컬 bearer token은 기본 설치에 필요하지 않습니다. `.env`의 `KINLAYER_API_TOKEN`을 비워두면 Web UI와 API를 바로 사용할 수 있습니다.
+
+같은 머신이나 로컬 네트워크에서 접근 제한을 걸고 싶을 때만 `.env`에 값을 넣고 컨테이너를 다시 올립니다.
 
 ```dotenv
 KINLAYER_API_TOKEN=원하는-로컬-토큰
 ```
 
-토큰을 켠 뒤에는 Web UI의 `/settings`에서 같은 값을 Local API token으로 저장해야 관계 데이터 화면을 볼 수 있습니다. token 값은 저장 후 다시 표시되지 않습니다.
+토큰을 켠 경우에만 Web UI의 `/settings`에서 같은 값을 Local API token으로 저장해야 관계 데이터 화면을 볼 수 있습니다. token 값은 저장 후 다시 표시되지 않습니다.
 
 ## OpenAI embedding 설정
 
 OpenAI-compatible embedding API key는 Web UI에 직접 입력하지 않습니다. 서버 컨테이너가 읽는 `.env`에 설정합니다.
 
 ```dotenv
-KINLAYER_EMBEDDING_PROVIDER=openai_compatible
-KINLAYER_EMBEDDING_API_URL=https://api.openai.com/v1/embeddings
 KINLAYER_EMBEDDING_API_KEY=sk-...
-KINLAYER_EMBEDDING_MODEL=text-embedding-3-small
-KINLAYER_EMBEDDING_DIM=1536
 ```
 
-`.env`를 수정한 뒤에는 API 컨테이너를 다시 빌드/시작합니다.
+API key만 설정하면 OpenAI-compatible embedding이 켜집니다. provider는 `openai_compatible`, API URL은 `https://api.openai.com/v1/embeddings`, model은 `text-embedding-3-small`, dimension은 `1536`을 기본값으로 사용합니다.
+
+`.env`를 수정한 뒤에는 컨테이너를 다시 빌드/시작합니다.
 
 ```bash
-docker compose up -d --build api web
-docker compose exec api uv run alembic upgrade head
+docker compose up -d --build
 ```
 
 설정이 반영되면 `/settings`에서 embedding provider, model, dimension, API URL configured, API key configured 상태를 확인할 수 있습니다. API key 실제 값은 화면에 표시하지 않습니다.
 
 ## 업데이트
 
-새 버전으로 업데이트할 때는 최신 코드를 받은 뒤 컨테이너를 다시 빌드하고 마이그레이션을 적용합니다.
+새 버전으로 업데이트할 때는 최신 코드를 받은 뒤 컨테이너를 다시 빌드합니다. 필요한 DB 마이그레이션은 API 컨테이너 시작 시 자동 적용됩니다.
 
 ```bash
 git pull
 docker compose pull postgres
 docker compose up -d --build
-docker compose exec api uv run alembic upgrade head
 ```
 
 일시 중지는 컨테이너만 멈춥니다.

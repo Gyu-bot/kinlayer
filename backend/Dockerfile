@@ -11,4 +11,4 @@ RUN pip install --no-cache-dir uv \
 
 EXPOSE 8765
 
-CMD ["uv", "run", "uvicorn", "kinlayer_backend.main:app", "--host", "0.0.0.0", "--port", "8765"]
+CMD ["sh", "backend/docker-entrypoint.sh"]

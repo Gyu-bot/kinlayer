@@ -23,6 +23,8 @@ from kinlayer_backend.api.system import router as system_router
 from kinlayer_backend.api.relationships import router as relationships_router
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_session_maker
+from kinlayer_backend.repositories.entities import EntityRepository
+from kinlayer_backend.services.entities import EntityService
 from kinlayer_backend.services.ontology import seed_ontology_values
 
 PUBLIC_PATHS = {"/api/system/health", "/api/system/version"}
@@ -34,8 +36,12 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         with app.state.session_factory() as session:
-            if inspect(session.get_bind()).has_table("ontology_registry_values"):
+            inspector = inspect(session.get_bind())
+            has_ontology = inspector.has_table("ontology_registry_values")
+            if has_ontology:
                 seed_ontology_values(session)
+            if settings.bootstrap_self and has_ontology and inspector.has_table("entities"):
+                _ensure_protected_self(session, settings.self_name)
         yield
 
     app = FastAPI(title="Kinlayer", version="0.1.0", lifespan=lifespan)
@@ -79,3 +85,20 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
 
 
 app = create_app()
+
+
+def _ensure_protected_self(session, self_name: str) -> None:
+    if EntityRepository(session).find_self():
+        return
+    EntityService(session).create_entity(
+        {
+            "entity_type": "person",
+            "display_name": self_name,
+            "created_by": "system",
+            "system_role": "self",
+            "is_system": True,
+            "confirmation_status": "confirmed",
+            "sensitivity": "medium",
+            "ai_use_policy": "cautious_use",
+        }
+    )

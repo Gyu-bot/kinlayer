@@ -143,33 +143,9 @@ export function Settings() {
           <h3>Server .env</h3>
           <dl className="definition-list compact env-list">
             <div>
-              <dt>Provider</dt>
-              <dd>
-                <code>KINLAYER_EMBEDDING_PROVIDER</code>
-              </dd>
-            </div>
-            <div>
-              <dt>API URL</dt>
-              <dd>
-                <code>KINLAYER_EMBEDDING_API_URL</code>
-              </dd>
-            </div>
-            <div>
               <dt>API key</dt>
               <dd>
                 <code>KINLAYER_EMBEDDING_API_KEY</code>
-              </dd>
-            </div>
-            <div>
-              <dt>Model</dt>
-              <dd>
-                <code>KINLAYER_EMBEDDING_MODEL</code>
-              </dd>
-            </div>
-            <div>
-              <dt>Dim</dt>
-              <dd>
-                <code>KINLAYER_EMBEDDING_DIM</code>
               </dd>
             </div>
           </dl>

@@ -104,11 +104,11 @@ describe("App route shell", () => {
     expect(screen.getByText("Embedding API URL")).toBeInTheDocument();
     expect(screen.getByText("Embedding API key")).toBeInTheDocument();
     expect(screen.getByText("Server .env")).toBeInTheDocument();
-    expect(screen.getByText("KINLAYER_EMBEDDING_PROVIDER")).toBeInTheDocument();
-    expect(screen.getByText("KINLAYER_EMBEDDING_API_URL")).toBeInTheDocument();
     expect(screen.getByText("KINLAYER_EMBEDDING_API_KEY")).toBeInTheDocument();
-    expect(screen.getByText("KINLAYER_EMBEDDING_MODEL")).toBeInTheDocument();
-    expect(screen.getByText("KINLAYER_EMBEDDING_DIM")).toBeInTheDocument();
+    expect(screen.queryByText("KINLAYER_EMBEDDING_PROVIDER")).not.toBeInTheDocument();
+    expect(screen.queryByText("KINLAYER_EMBEDDING_API_URL")).not.toBeInTheDocument();
+    expect(screen.queryByText("KINLAYER_EMBEDDING_MODEL")).not.toBeInTheDocument();
+    expect(screen.queryByText("KINLAYER_EMBEDDING_DIM")).not.toBeInTheDocument();
     expect(screen.getAllByText("Configured").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("client_contact")).toBeInTheDocument();
     expect(screen.getByText("recent_interaction")).toBeInTheDocument();

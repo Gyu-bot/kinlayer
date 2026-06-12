@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import check_database
+from kinlayer_backend.services.embeddings import DEFAULT_LOCAL_MODEL
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -38,7 +39,7 @@ def _embedding_config(settings: Settings) -> dict[str, Any]:
     model = (
         settings.embedding_model
         if provider != "local_sentence_transformers"
-        else settings.embedding_model or "dragonkue/multilingual-e5-small-ko-v2"
+        else settings.embedding_model or DEFAULT_LOCAL_MODEL
     )
     status = "disabled"
     if provider == "openai_compatible":
