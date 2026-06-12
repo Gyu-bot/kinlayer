@@ -399,6 +399,61 @@ def test_edit_accept_validates_edited_payload_and_writes_edited_record(client) -
     assert observation["content"] == "Edited concise follow-up preference."
 
 
+def test_profile_field_candidate_accept_writes_structured_fact_and_context_card(client) -> None:
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "profile_field",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.email",
+                "fact_type": "email",
+                "content": "alex@example.com",
+                "value": {"kind": "work", "email": "alex@example.com"},
+                "claim_type": "fact",
+                "sensitivity": "high",
+                "ai_use_policy": "ask_before_use",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex said alex@example.com is the best work email.",
+                    "confidence": 0.8,
+                }
+            ],
+            "confidence": 0.8,
+            "sensitivity": "high",
+            "created_by": "ai_agent",
+        },
+    )
+    assert candidate.status_code == 201
+
+    accepted = client.post(f"/api/candidates/{candidate.json()['id']}/accept")
+
+    assert accepted.status_code == 200
+    assert accepted.json()["canonical_record_ref"].startswith("entity_facts:")
+    fact_id = accepted.json()["canonical_record_ref"].split(":", 1)[1]
+    fact = client.get(f"/api/entity-facts/{fact_id}").json()
+    assert fact["fact_type"] == "email"
+    assert fact["content"] == "alex@example.com"
+    assert fact["value"] == {
+        "field_path": "profile.email",
+        "value": {"kind": "work", "email": "alex@example.com"},
+    }
+    assert fact["claim_type"] == "fact"
+    assert fact["confidence"] == 0.8
+    assert fact["sensitivity"] == "high"
+    assert fact["ai_use_policy"] == "ask_before_use"
+    assert fact["source_candidate_id"] == candidate.json()["id"]
+
+    context_card = client.get(f"/api/entities/{alex['id']}/context-card").json()
+    assert [item["id"] for item in context_card["profile_facts"]] == [fact_id]
+
+
 def test_accept_supported_candidate_types_write_matching_canonical_records(
     client,
     database_url,

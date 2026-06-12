@@ -46,3 +46,20 @@ def test_compose_passes_optional_api_token_to_api_container() -> None:
     compose = Path("docker-compose.yml").read_text()
 
     assert "KINLAYER_API_TOKEN" in compose
+
+
+def test_compose_passes_embedding_environment_to_api_container() -> None:
+    compose = Path("docker-compose.yml").read_text()
+
+    assert "KINLAYER_EMBEDDING_PROVIDER" in compose
+    assert "KINLAYER_EMBEDDING_API_URL" in compose
+    assert "KINLAYER_EMBEDDING_API_KEY" in compose
+    assert "KINLAYER_EMBEDDING_MODEL" in compose
+    assert "KINLAYER_EMBEDDING_DIM" in compose
+
+
+def test_compose_persists_postgres_data_in_named_volume() -> None:
+    compose = Path("docker-compose.yml").read_text()
+
+    assert "kinlayer-postgres-data:/var/lib/postgresql/data" in compose
+    assert "kinlayer-postgres-data:" in compose

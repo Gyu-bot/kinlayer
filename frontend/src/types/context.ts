@@ -1,3 +1,5 @@
+import type {EntityFact} from "./entities";
+
 export type ContextRequest = {
   query: string;
   entity_hints: string[];
@@ -33,6 +35,7 @@ export type MatchedEntity = {
   sensitivity: string;
   ai_use_policy: string;
   confirmation_status: string;
+  profile_facts: EntityFact[];
   observations: RetrievedObservation[];
 };
 

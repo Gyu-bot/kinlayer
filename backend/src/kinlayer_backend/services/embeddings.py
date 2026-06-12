@@ -46,6 +46,8 @@ class EmbeddingService:
             "model": self.model,
             "dim": self.settings.embedding_dim,
             "status": self._provider_status(),
+            "api_url_configured": bool(self.settings.embedding_api_url),
+            "api_key_configured": bool(self.settings.embedding_api_key),
             "observations": observation_counts,
         }
 

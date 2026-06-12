@@ -162,6 +162,7 @@ class ContextService:
     def _match_dict(self, match: RetrievalMatch) -> dict[str, Any]:
         return {
             **asdict(match),
+            "profile_facts": self._facts(match.entity_id),
             "observations": [
                 self._observation_dict(observation)
                 for observation in match.observations

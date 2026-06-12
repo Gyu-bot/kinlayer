@@ -295,6 +295,38 @@ strong {
   font-weight: 700;
 }
 
+.edit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.edit-grid label,
+.edit-row label {
+  display: grid;
+  gap: 7px;
+  color: #4d5d54;
+  font-weight: 700;
+}
+
+.edit-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.edit-stack {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.edit-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 10px;
+  align-items: end;
+}
+
 .status-chip {
   border: 1px solid #b9c7bd;
   border-radius: 999px;
@@ -426,6 +458,12 @@ strong {
   grid-template-columns: 90px minmax(0, 1fr);
 }
 
+.env-list code {
+  font-size: 0.86rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 pre {
   max-height: 360px;
   overflow: auto;
@@ -462,9 +500,11 @@ pre {
   .form-grid,
   .summary-grid,
   .settings-grid,
-  .ontology-grid,
-  .inline-form,
-  .debug-form,
+    .ontology-grid,
+    .inline-form,
+    .edit-grid,
+    .edit-row,
+    .debug-form,
   .debug-grid,
   .filter-grid,
   .review-grid,

@@ -153,6 +153,10 @@ class CandidateService:
         if candidate_type == "profile_field":
             self._entity(payload["entity_id"])
             validate_common(payload, self.session)
+            if payload.get("fact_type") and not is_allowed_registry_value(
+                self.session, "fact_type", payload["fact_type"]
+            ):
+                raise api_error(422, "validation_error", "Invalid fact_type.")
             return
         if candidate_type == "relationship_edge":
             self._validate_edge_payload(payload)
@@ -232,17 +236,20 @@ class CandidateService:
 
     def _write_profile_field(self, candidate: Candidate) -> str:
         payload = candidate.payload
+        content = payload.get("content")
+        if content is None:
+            content = str(payload.get("value", ""))
         fact_payload = {
             "entity_id": payload["entity_id"],
             "fact_type": payload.get("fact_type") or "important_context",
-            "content": str(payload.get("content", payload.get("value", ""))),
+            "content": str(content),
             "value": {
                 "field_path": payload.get("field_path"),
                 "value": payload.get("value"),
             },
             "claim_type": payload["claim_type"],
             "confidence": candidate.confidence,
-            "sensitivity": candidate.sensitivity,
+            "sensitivity": payload.get("sensitivity") or candidate.sensitivity,
             "ai_use_policy": payload.get("ai_use_policy", "cautious_use"),
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,

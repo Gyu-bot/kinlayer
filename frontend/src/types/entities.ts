@@ -34,11 +34,15 @@ export type EntityFact = {
   entity_id: string;
   fact_type: string;
   content: string;
+  value: Record<string, unknown> | null;
   claim_type: string;
   confidence: number;
   sensitivity: string;
   ai_use_policy: string;
   status: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  source_candidate_id: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -165,6 +169,8 @@ export type EmbeddingConfig = {
   model: string | null;
   dim: number | null;
   status: string;
+  api_url_configured: boolean;
+  api_key_configured: boolean;
 };
 
 export type SystemConfig = {

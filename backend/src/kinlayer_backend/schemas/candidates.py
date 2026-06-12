@@ -36,7 +36,11 @@ class ProfileFieldPayload(APIModel):
     entity_id: str
     field_path: str
     value: Any
+    fact_type: str | None = None
+    content: str | None = None
     claim_type: str
+    sensitivity: str | None = None
+    ai_use_policy: str | None = None
 
 
 class RelationshipEdgePayload(APIModel):

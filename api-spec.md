@@ -131,7 +131,9 @@ Response:
     "provider": "local_sentence_transformers",
     "model": "dragonkue/multilingual-e5-small-ko-v2",
     "dim": 384,
-    "status": "ready"
+    "status": "ready",
+    "api_url_configured": false,
+    "api_key_configured": false
   }
 }
 ```

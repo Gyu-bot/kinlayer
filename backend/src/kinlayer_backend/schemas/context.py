@@ -40,6 +40,7 @@ class MatchedEntityRead(APIModel):
     sensitivity: str
     ai_use_policy: str
     confirmation_status: str
+    profile_facts: list[EntityFactRead] = Field(default_factory=list)
     observations: list[RetrievedObservationRead] = Field(default_factory=list)
 
 

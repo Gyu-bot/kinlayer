@@ -14,6 +14,8 @@ class EmbeddingStatus(APIModel):
     model: str | None = None
     dim: int | None = None
     status: str
+    api_url_configured: bool = False
+    api_key_configured: bool = False
     observations: EmbeddingObservationCounts
 
 

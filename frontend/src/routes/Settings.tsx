@@ -123,6 +123,55 @@ export function Settings() {
               <dt>Status</dt>
               <dd>{embedding?.status ?? config?.embedding.status ?? "Loading"}</dd>
             </div>
+            <div>
+              <dt>Embedding API URL</dt>
+              <dd>
+                {embedding?.api_url_configured ?? config?.embedding.api_url_configured
+                  ? "Configured"
+                  : "Not configured"}
+              </dd>
+            </div>
+            <div>
+              <dt>Embedding API key</dt>
+              <dd>
+                {embedding?.api_key_configured ?? config?.embedding.api_key_configured
+                  ? "Configured"
+                  : "Not configured"}
+              </dd>
+            </div>
+          </dl>
+          <h3>Server .env</h3>
+          <dl className="definition-list compact env-list">
+            <div>
+              <dt>Provider</dt>
+              <dd>
+                <code>KINLAYER_EMBEDDING_PROVIDER</code>
+              </dd>
+            </div>
+            <div>
+              <dt>API URL</dt>
+              <dd>
+                <code>KINLAYER_EMBEDDING_API_URL</code>
+              </dd>
+            </div>
+            <div>
+              <dt>API key</dt>
+              <dd>
+                <code>KINLAYER_EMBEDDING_API_KEY</code>
+              </dd>
+            </div>
+            <div>
+              <dt>Model</dt>
+              <dd>
+                <code>KINLAYER_EMBEDDING_MODEL</code>
+              </dd>
+            </div>
+            <div>
+              <dt>Dim</dt>
+              <dd>
+                <code>KINLAYER_EMBEDDING_DIM</code>
+              </dd>
+            </div>
           </dl>
         </section>
       </div>

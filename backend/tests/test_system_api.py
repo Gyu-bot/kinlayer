@@ -15,6 +15,35 @@ def test_config_requires_optional_bearer_token(database_url: str) -> None:
     assert allowed.json()["auth_token_configured"] is True
 
 
+def test_config_reports_embedding_api_secret_state_without_exposing_secret(database_url: str) -> None:
+    client = TestClient(
+        create_app(
+            {
+                "database_url": database_url,
+                "embedding_provider": "openai_compatible",
+                "embedding_api_url": "https://api.openai.com/v1/embeddings",
+                "embedding_api_key": "openai-secret",
+                "embedding_model": "text-embedding-3-small",
+                "embedding_dim": 1536,
+            }
+        )
+    )
+
+    response = client.get("/api/system/config")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["embedding"] == {
+        "provider": "openai_compatible",
+        "model": "text-embedding-3-small",
+        "dim": 1536,
+        "status": "ready",
+        "api_url_configured": True,
+        "api_key_configured": True,
+    }
+    assert "openai-secret" not in response.text
+
+
 def test_health_and_version_remain_public_with_token(database_url: str) -> None:
     client = TestClient(create_app({"api_token": "secret", "database_url": database_url}))
 

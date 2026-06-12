@@ -234,20 +234,29 @@ candidate.canonical_record_ref = entity_aliases:<id>
 ```json
 {
   "entity_id": "...",
-  "field_path": "properties.role_note",
-  "value": "Former coworker from Acme Corp",
-  "claim_type": "fact"
+  "field_path": "profile.email",
+  "fact_type": "email",
+  "content": "alex@example.com",
+  "value": {
+    "kind": "work",
+    "email": "alex@example.com"
+  },
+  "claim_type": "fact",
+  "sensitivity": "high",
+  "ai_use_policy": "ask_before_use"
 }
 ```
 
 Accept result:
 
 ```text
-entity property updated or profile-field record created, depending on final data model
-candidate.canonical_record_ref = entities:<id> or entity_fields:<id>
+entity_facts row created
+candidate.canonical_record_ref = entity_facts:<id>
 ```
 
-Open issue: decide whether profile fields are embedded in `entities.properties` or normalized.
+Structured person profile fields use `entity_facts` as canonical storage. Supported structured
+fact types include `legal_name`, `birth_date`, `phone`, `email`, `address`, `organization`,
+`role`, and `memo`. Profile candidates may still use `important_context` for general notes.
 
 ### 7.4 `relationship_edge`
 

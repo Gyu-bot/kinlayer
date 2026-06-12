@@ -145,6 +145,37 @@ def observation_candidate(
     )
 
 
+def profile_fact_candidate(
+    client: SmokeClient,
+    target_id: str,
+    content: str,
+    source_ref: str,
+) -> dict[str, Any]:
+    source = episode(client, source_ref, content)
+    return client.post(
+        "/api/candidates",
+        {
+            "candidate_type": "profile_field",
+            "target_entity_id": target_id,
+            "payload": {
+                "entity_id": target_id,
+                "field_path": "profile.email",
+                "fact_type": "email",
+                "content": content,
+                "value": {"kind": "work", "email": content},
+                "claim_type": "fact",
+                "sensitivity": "high",
+                "ai_use_policy": "ask_before_use",
+            },
+            "evidence": [{"episode_id": source["id"], "excerpt": content, "confidence": 0.9}],
+            "confidence": 0.9,
+            "sensitivity": "high",
+            "suggested_action": "review",
+            "created_by": "ai_agent",
+        },
+    )
+
+
 def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
     self_id = fixtures["self_id"]
     alex_id = fixtures["people"]["alex"]
@@ -271,6 +302,29 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
         "candidate supersede failed",
     )
 
+    profile_candidate = profile_fact_candidate(
+        client,
+        minji_id,
+        f"acceptance-{stamp}@example.com",
+        f"profile-fact-{stamp}",
+    )
+    accepted_profile = client.post(f"/api/candidates/{profile_candidate['id']}/accept", {})
+    assert_true(
+        accepted_profile["canonical_record_ref"].startswith("entity_facts:"),
+        "profile fact candidate canonical ref failed",
+    )
+    profile_fact_id = accepted_profile["canonical_record_ref"].split(":", 1)[1]
+    profile_fact = client.get(f"/api/entity-facts/{profile_fact_id}")
+    assert_true(profile_fact["fact_type"] == "email", "profile fact candidate type not preserved")
+    patched_profile_fact = client.patch(
+        f"/api/entity-facts/{profile_fact_id}",
+        {"content": f"acceptance-patched-{stamp}@example.com"},
+    )
+    assert_true(
+        patched_profile_fact["content"] == f"acceptance-patched-{stamp}@example.com",
+        "profile fact canonical patch failed",
+    )
+
     correction = fixtures["correction"]
     assert_true(correction["new_record_ref"].startswith("observations:"), "correction apply fixture failed")
 
@@ -314,6 +368,7 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
     card = client.get(f"/api/entities/{minji_id}/context-card")
     assert_true(card["provenance_summary"]["evidence_count"] >= 1, "context card evidence missing")
     assert_true(fixtures["accepted_canonical_record_ref"].split(":", 1)[1] in json.dumps(card), "accepted evidence link missing")
+    assert_true(profile_fact_id in json.dumps(card), "accepted profile fact missing from context card")
 
     graph = client.get(f"/api/graph/ego/{self_id}?depth=1")
     assert_true(len(graph["nodes"]) >= 3 and len(graph["edges"]) >= 2, "ego graph missing fixture nodes/edges")

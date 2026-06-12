@@ -50,19 +50,23 @@ describe("App route shell", () => {
             bind_host: "127.0.0.1",
             auth_token_configured: false,
             embedding: {
-              provider: "disabled",
-              model: "local-test",
-              dim: 384,
-              status: "disabled",
+              provider: "openai_compatible",
+              model: "text-embedding-3-small",
+              dim: 1536,
+              status: "ready",
+              api_url_configured: true,
+              api_key_configured: true,
             },
           });
         }
         if (url.endsWith("/api/embeddings/status")) {
           return jsonResponse({
-            provider: "disabled",
-            model: "local-test",
-            dim: 384,
-            status: "disabled",
+            provider: "openai_compatible",
+            model: "text-embedding-3-small",
+            dim: 1536,
+            status: "ready",
+            api_url_configured: true,
+            api_key_configured: true,
             observations: {total: 0, pending: 0, failed: 0, embedded: 0},
           });
         }
@@ -95,10 +99,21 @@ describe("App route shell", () => {
     );
     expect(screen.getAllByText("http://127.0.0.1:8765").length).toBeGreaterThan(0);
     expect(screen.getByText("Local token configured")).toBeInTheDocument();
-    expect(screen.getByText("local-test")).toBeInTheDocument();
+    expect(screen.getAllByText("openai_compatible").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("text-embedding-3-small").length).toBeGreaterThan(0);
+    expect(screen.getByText("Embedding API URL")).toBeInTheDocument();
+    expect(screen.getByText("Embedding API key")).toBeInTheDocument();
+    expect(screen.getByText("Server .env")).toBeInTheDocument();
+    expect(screen.getByText("KINLAYER_EMBEDDING_PROVIDER")).toBeInTheDocument();
+    expect(screen.getByText("KINLAYER_EMBEDDING_API_URL")).toBeInTheDocument();
+    expect(screen.getByText("KINLAYER_EMBEDDING_API_KEY")).toBeInTheDocument();
+    expect(screen.getByText("KINLAYER_EMBEDDING_MODEL")).toBeInTheDocument();
+    expect(screen.getByText("KINLAYER_EMBEDDING_DIM")).toBeInTheDocument();
+    expect(screen.getAllByText("Configured").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("client_contact")).toBeInTheDocument();
     expect(screen.getByText("recent_interaction")).toBeInTheDocument();
     expect(screen.queryByText("local-secret")).not.toBeInTheDocument();
+    expect(screen.queryByText("openai-secret")).not.toBeInTheDocument();
   });
 
   it("renders retrieval debug results with Korean semantic metadata", async () => {
@@ -409,12 +424,240 @@ describe("App route shell", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
     );
-    expect(screen.getByText("friend")).toBeInTheDocument();
-    expect(screen.getByText("민지는 사용자와 오래 알고 지낸 친구다.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Relationship type edge-1")).toHaveValue("friend");
+    expect(screen.getByLabelText("Relationship claim edge-1")).toHaveValue(
+      "민지는 사용자와 오래 알고 지낸 친구다.",
+    );
     expect(screen.getByText("민지는 긴 설명보다 핵심 요약을 선호한다.")).toBeInTheDocument();
     expect(screen.getByText("최근 프로젝트 킥오프에 대해 후속 확인이 필요하다.")).toBeInTheDocument();
     expect(screen.getByText("Facts 1 / Edges 1 / Observations 2 / Evidence 3")).toBeInTheDocument();
     expect(screen.getByText("오래 알고 지낸 친구")).toBeInTheDocument();
+  });
+
+  it("edits person profile records through canonical APIs and refreshes context", async () => {
+    window.history.pushState({}, "", "/people/person-1");
+    let person = entityFixture({
+      id: "person-1",
+      display_name: "김민지",
+      properties: {short_note: "초기 메모"},
+    });
+    let aliases = [
+      {
+        id: "alias-1",
+        entity_id: "person-1",
+        alias: "민지",
+        normalized_alias: "민지",
+        status: "active",
+        confidence: 1,
+        created_by: "user",
+        created_at: "2026-06-10T00:00:00Z",
+        updated_at: "2026-06-10T00:00:00Z",
+      },
+    ];
+    let facts = [
+      {
+        id: "fact-1",
+        entity_id: "person-1",
+        fact_type: "email",
+        content: "old@example.com",
+        value: {kind: "work", email: "old@example.com"},
+        claim_type: "fact",
+        confidence: 1,
+        sensitivity: "medium",
+        ai_use_policy: "cautious_use",
+        status: "active",
+        created_by: "user",
+        created_at: "2026-06-10T00:00:00Z",
+        updated_at: "2026-06-10T00:00:00Z",
+      },
+    ];
+    let edges = [
+      {
+        id: "edge-1",
+        from_entity_id: "self-1",
+        to_entity_id: "person-1",
+        relation_type: "friend",
+        directed: false,
+        claim_text: "오랜 친구",
+        claim_type: "fact",
+        properties: {},
+        confidence: 1,
+        status: "active",
+        valid_from: null,
+        valid_to: null,
+        sensitivity: "medium",
+        ai_use_policy: "cautious_use",
+        created_by: "user",
+        invalidated_by_edge_id: null,
+        source_candidate_id: null,
+        first_seen_at: null,
+        last_seen_at: null,
+        created_at: "2026-06-10T00:00:00Z",
+        updated_at: "2026-06-10T00:00:00Z",
+      },
+    ];
+    let observations = [observationFixture({id: "obs-1", content: "삭제할 관찰"})];
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (url.endsWith("/api/entities/person-1") && !init?.method) {
+        return jsonResponse(person);
+      }
+      if (url.endsWith("/api/entities/person-1") && init?.method === "PATCH") {
+        person = {...person, ...body, properties: body.properties};
+        return jsonResponse(person);
+      }
+      if (url.endsWith("/api/entities/person-1/aliases") && !init?.method) {
+        return jsonResponse({items: aliases, limit: 200, offset: 0, total: aliases.length});
+      }
+      if (url.endsWith("/api/entities/person-1/aliases") && init?.method === "POST") {
+        aliases = [{...aliases[0], id: "alias-2", alias: body.alias}, ...aliases];
+        return jsonResponse(aliases[0]);
+      }
+      if (url.endsWith("/api/aliases/alias-1") && init?.method === "PATCH") {
+        aliases = aliases.map((alias) => (alias.id === "alias-1" ? {...alias, ...body} : alias));
+        return jsonResponse(aliases.find((alias) => alias.id === "alias-1"));
+      }
+      if (url.endsWith("/api/aliases/alias-1") && init?.method === "DELETE") {
+        aliases = aliases.filter((alias) => alias.id !== "alias-1");
+        return jsonResponse({...aliases[0], id: "alias-1", status: "deleted"});
+      }
+      if (url.includes("/api/entity-facts?")) {
+        return jsonResponse({items: facts, limit: 100, offset: 0, total: facts.length});
+      }
+      if (url.endsWith("/api/entity-facts") && init?.method === "POST") {
+        facts = [{id: "fact-2", created_at: "2026-06-10T00:00:00Z", updated_at: "2026-06-10T00:00:00Z", ...body}, ...facts];
+        return jsonResponse(facts[0]);
+      }
+      if (url.endsWith("/api/entity-facts/fact-1") && init?.method === "PATCH") {
+        facts = facts.map((fact) => (fact.id === "fact-1" ? {...fact, ...body} : fact));
+        return jsonResponse(facts.find((fact) => fact.id === "fact-1"));
+      }
+      if (url.endsWith("/api/entity-facts/fact-1") && init?.method === "DELETE") {
+        facts = facts.filter((fact) => fact.id !== "fact-1");
+        return jsonResponse({id: "fact-1", status: "deleted"});
+      }
+      if (url.endsWith("/api/edges") && init?.method === "POST") {
+        edges = [{id: "edge-2", status: "active", confidence: 1, ...body}, ...edges];
+        return jsonResponse(edges[0]);
+      }
+      if (url.endsWith("/api/edges/edge-1") && init?.method === "PATCH") {
+        edges = edges.map((edge) => (edge.id === "edge-1" ? {...edge, ...body} : edge));
+        return jsonResponse(edges.find((edge) => edge.id === "edge-1"));
+      }
+      if (url.endsWith("/api/edges/edge-1") && init?.method === "DELETE") {
+        edges = edges.filter((edge) => edge.id !== "edge-1");
+        return jsonResponse({id: "edge-1", status: "deleted"});
+      }
+      if (url.endsWith("/api/observations/obs-1") && init?.method === "DELETE") {
+        observations = [];
+        return jsonResponse(observationFixture({id: "obs-1", status: "deleted"}));
+      }
+      if (url.endsWith("/api/entities/person-1/context-card")) {
+        return jsonResponse(
+          contextCardFixture({
+            entity: person,
+            aliases,
+            profile_facts: facts,
+            relationship_edges: edges,
+            recent_context: observations,
+          }),
+        );
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByLabelText("Display name"), {target: {value: "김민지 수정"}});
+    fireEvent.change(screen.getByLabelText("Profile note"), {target: {value: "새 메모"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save profile"}));
+    await waitFor(() => expect(screen.getByRole("heading", {level: 1, name: "김민지 수정"})).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("New alias"), {target: {value: "MJ"}});
+    fireEvent.click(screen.getByRole("button", {name: "Add alias"}));
+    await waitFor(() => expect(screen.getByDisplayValue("MJ")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Alias alias-1"), {target: {value: "민지님"}});
+    fireEvent.click(screen.getByRole("button", {name: "Update alias alias-1"}));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/aliases/alias-1"))).toBe(true));
+
+    fireEvent.change(screen.getByLabelText("New structured fact content"), {
+      target: {value: "new@example.com"},
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Add structured fact"}));
+    await waitFor(() => expect(screen.getByDisplayValue("new@example.com")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Fact content fact-1"), {
+      target: {value: "updated@example.com"},
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Update fact fact-1"}));
+
+    fireEvent.change(screen.getByLabelText("Related entity ID"), {target: {value: "person-2"}});
+    fireEvent.change(screen.getByLabelText("Relationship note"), {target: {value: "협업 파트너"}});
+    fireEvent.click(screen.getByRole("button", {name: "Add relationship"}));
+    await waitFor(() => expect(screen.getByDisplayValue("협업 파트너")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Relationship claim edge-1"), {target: {value: "가까운 친구"}});
+    fireEvent.click(screen.getByRole("button", {name: "Update relationship edge-1"}));
+
+    fireEvent.click(screen.getByRole("button", {name: "Delete observation obs-1"}));
+    await waitFor(() => expect(screen.queryByText("삭제할 관찰")).not.toBeInTheDocument());
+
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/api/entities/person-1") && init?.method === "PATCH")).toBe(true);
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/api/entity-facts/fact-1") && init?.method === "PATCH")).toBe(true);
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/api/edges/edge-1") && init?.method === "PATCH")).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/entities/person-1/context-card"))).toBe(true);
+  });
+
+  it("shows validation errors while keeping the person detail form open", async () => {
+    window.history.pushState({}, "", "/people/person-1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith("/api/entities/person-1") && !init?.method) {
+          return jsonResponse(entityFixture({id: "person-1", display_name: "김민지"}));
+        }
+        if (url.endsWith("/api/entities/person-1/aliases")) {
+          return jsonResponse({items: [], limit: 200, offset: 0, total: 0});
+        }
+        if (url.includes("/api/entity-facts?")) {
+          return jsonResponse({items: [], limit: 100, offset: 0, total: 0});
+        }
+        if (url.endsWith("/api/entities/person-1/context-card")) {
+          return jsonResponse(contextCardFixture({entity: entityFixture({id: "person-1", display_name: "김민지"})}));
+        }
+        if (url.endsWith("/api/entity-facts") && init?.method === "POST") {
+          return Promise.resolve({
+            ok: false,
+            status: 422,
+            json: () =>
+              Promise.resolve({
+                error: {code: "validation_error", message: "Invalid fact_type.", details: {}},
+              }),
+          } as Response);
+        }
+        throw new Error(`Unexpected URL ${url}`);
+      }),
+    );
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByLabelText("New structured fact type"), {
+      target: {value: "unsupported_fact"},
+    });
+    fireEvent.change(screen.getByLabelText("New structured fact content"), {
+      target: {value: "bad"},
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Add structured fact"}));
+
+    await waitFor(() =>
+      expect(screen.getByText("validation_error: Invalid fact_type.")).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument();
   });
 
   it("renders candidate inbox filters, detail, actions, and edit-accept", async () => {

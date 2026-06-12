@@ -83,6 +83,66 @@ def test_entity_alias_and_fact_lifecycle(client) -> None:
     assert deleted_list.json()["total"] == 1
 
 
+def test_structured_profile_fact_types_are_validated_and_visible_in_context_card(client) -> None:
+    person = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex Kim", "created_by": "user"},
+    ).json()
+
+    ontology = client.get("/api/ontology")
+    assert ontology.status_code == 200
+    fact_types = {item["value"] for item in ontology.json()["fact_types"]}
+    assert {
+        "legal_name",
+        "birth_date",
+        "phone",
+        "email",
+        "address",
+        "organization",
+        "role",
+        "memo",
+    }.issubset(fact_types)
+
+    created = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": person["id"],
+            "fact_type": "email",
+            "content": "alex@example.com",
+            "value": {"kind": "work", "email": "alex@example.com"},
+            "claim_type": "fact",
+            "confidence": 0.87,
+            "sensitivity": "high",
+            "ai_use_policy": "ask_before_use",
+            "created_by": "user",
+        },
+    )
+
+    assert created.status_code == 201
+    body = created.json()
+    assert body["fact_type"] == "email"
+    assert body["value"] == {"kind": "work", "email": "alex@example.com"}
+    assert body["sensitivity"] == "high"
+    assert body["ai_use_policy"] == "ask_before_use"
+
+    invalid = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": person["id"],
+            "fact_type": "unsupported_contact",
+            "content": "Nope",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "validation_error"
+
+    context_card = client.get(f"/api/entities/{person['id']}/context-card")
+    assert context_card.status_code == 200
+    assert [fact["id"] for fact in context_card.json()["profile_facts"]] == [body["id"]]
+
+
 def test_controlled_values_use_common_validation_error(client) -> None:
     response = client.post(
         "/api/entities",

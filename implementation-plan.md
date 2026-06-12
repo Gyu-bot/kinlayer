@@ -106,9 +106,9 @@ Scripts and docs:
 | T029 | Optional token end-to-end hardening | High | Done | T025, T028 |
 | T030 | README and specification consistency pass | Medium | Done | T028, T029 |
 | T031 | MVP exit verification | Critical | Done | T028, T029, T030 |
-| T032 | People profile edit Web UI | High | Ready | T031 |
-| T033 | Structured contact and identity facts | High | Ready | T032 |
-| T034 | Agent-compatible profile fact updates | High | Ready | T033 |
+| T032 | People profile edit Web UI | High | Done | T031 |
+| T033 | Structured contact and identity facts | High | Done | T032 |
+| T034 | Agent-compatible profile fact updates | High | Done | T033 |
 
 ---
 
@@ -623,50 +623,53 @@ uv run kinlayer status --json
 
 #### Task T032. People profile edit Web UI
 - Priority: High
-- Status: Ready
+- Status: Done
 - Depends on: T031
 - Acceptance Criteria:
-  - [ ] `/people/:id` supports editing `display_name`, `sensitivity`, `ai_use_policy`, and editable profile note fields through the canonical API.
-  - [ ] `/people/:id` supports adding, editing, and deleting aliases.
-  - [ ] `/people/:id` supports adding, editing, and deleting structural relationship edges.
-  - [ ] `/people/:id` supports deleting observations through soft-delete semantics.
-  - [ ] Web edit actions refresh the context card so aliases, facts, relationships, observations, and provenance reflect the latest canonical state.
-  - [ ] Web edit actions use the same API endpoints available to CLI and agent callers; no Web-only state-changing path is introduced.
-  - [ ] Frontend tests cover successful edit/delete flows and common API validation errors.
-  - [ ] Browser verification confirms edits are visible on the person detail page without console errors.
+  - [x] `/people/:id` supports editing `display_name`, `sensitivity`, `ai_use_policy`, and editable profile note fields through the canonical API.
+  - [x] `/people/:id` supports adding, editing, and deleting aliases.
+  - [x] `/people/:id` supports adding, editing, and deleting structural relationship edges.
+  - [x] `/people/:id` supports deleting observations through soft-delete semantics.
+  - [x] Web edit actions refresh the context card so aliases, facts, relationships, observations, and provenance reflect the latest canonical state.
+  - [x] Web edit actions use the same API endpoints available to CLI and agent callers; no Web-only state-changing path is introduced.
+  - [x] Frontend tests cover successful edit/delete flows and common API validation errors.
+  - [x] Browser verification confirms edits are visible on the person detail page without console errors.
 - Notes:
   - Keep observation editing out of this slice unless required by a narrower follow-up. Deleting observations is enough for this task.
   - Protected self mutation rules still apply.
+  - Verified with `npm run test`, `npm run build`, and an in-app browser edit/delete pass against `/people/:id`.
 
 #### Task T033. Structured contact and identity facts
 - Priority: High
-- Status: Ready
+- Status: Done
 - Depends on: T032
 - Acceptance Criteria:
-  - [ ] Ontology seed/config values include structured person fact types for `legal_name`, `birth_date`, `phone`, `email`, `address`, `organization`, `role`, and `memo`.
-  - [ ] Existing `entity_facts` remains the canonical storage for structured person profile fields unless a later design proves a separate contact table is necessary.
-  - [ ] API validation accepts the structured fact types and continues to reject unknown fact types with the common `validation_error` shape.
-  - [ ] `/people/:id` groups structured profile facts separately from general profile facts.
-  - [ ] `/people/:id` supports adding, editing, and deleting structured profile facts.
-  - [ ] Structured fact writes preserve sensitivity, AI use policy, claim type, confidence, and evidence/provenance fields where applicable.
-  - [ ] Tests cover structured fact CRUD, validation, and context-card visibility.
+  - [x] Ontology seed/config values include structured person fact types for `legal_name`, `birth_date`, `phone`, `email`, `address`, `organization`, `role`, and `memo`.
+  - [x] Existing `entity_facts` remains the canonical storage for structured person profile fields unless a later design proves a separate contact table is necessary.
+  - [x] API validation accepts the structured fact types and continues to reject unknown fact types with the common `validation_error` shape.
+  - [x] `/people/:id` groups structured profile facts separately from general profile facts.
+  - [x] `/people/:id` supports adding, editing, and deleting structured profile facts.
+  - [x] Structured fact writes preserve sensitivity, AI use policy, claim type, confidence, and evidence/provenance fields where applicable.
+  - [x] Tests cover structured fact CRUD, validation, and context-card visibility.
 - Notes:
   - Do not add multi-user contact ownership, account sync, or advanced phone/email normalization in this slice.
   - Store contact values as canonical facts first; add specialized columns only after concrete query or validation pressure appears.
+  - Verified with targeted backend entity/context tests, full `uv run pytest`, `npm run test`, and `npm run build`.
 
 #### Task T034. Agent-compatible profile fact updates
 - Priority: High
-- Status: Ready
+- Status: Done
 - Depends on: T033
 - Acceptance Criteria:
-  - [ ] Agent-compatible candidate payloads can propose adding or changing structured person facts.
-  - [ ] Candidate accept and edit-accept can write structured fact canonical records and return `canonical_record_ref`.
-  - [ ] Explicit correction apply can supersede or replace structured profile facts without candidate review when `correction_source.user_explicit = true`.
-  - [ ] CLI commands or documented JSON payload examples cover structured profile fact candidate submission and explicit correction.
-  - [ ] Context retrieve, context pack, and context card reflect accepted or explicitly corrected structured facts.
-  - [ ] Smoke coverage verifies a profile fact added through an agent-compatible payload is inspectable and editable in Web UI.
+  - [x] Agent-compatible candidate payloads can propose adding or changing structured person facts.
+  - [x] Candidate accept and edit-accept can write structured fact canonical records and return `canonical_record_ref`.
+  - [x] Explicit correction apply can supersede or replace structured profile facts without candidate review when `correction_source.user_explicit = true`.
+  - [x] CLI commands or documented JSON payload examples cover structured profile fact candidate submission and explicit correction.
+  - [x] Context retrieve, context pack, and context card reflect accepted or explicitly corrected structured facts.
+  - [x] Smoke coverage verifies a profile fact added through an agent-compatible payload is inspectable and editable in Web UI.
 - Notes:
   - Agent-inferred changes still go through candidates; direct correction remains reserved for explicit user corrections.
+  - Verified with candidate/context/correction tests, updated API smoke coverage, and browser inspection of an agent-accepted profile fact on the Web detail page.
 
 ---
 

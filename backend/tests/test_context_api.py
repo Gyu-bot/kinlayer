@@ -180,6 +180,64 @@ def test_context_pack_excludes_superseded_observations_by_default(client) -> Non
     assert superseded["content"] not in pack_text
 
 
+def test_context_retrieve_and_pack_include_active_structured_profile_facts(client) -> None:
+    alex = create_person(client, "Alex Kim")
+    old_fact = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "email",
+            "content": "old@example.com",
+            "claim_type": "fact",
+            "sensitivity": "high",
+            "ai_use_policy": "ask_before_use",
+            "created_by": "user",
+        },
+    ).json()
+    correction = client.post(
+        "/api/corrections/apply",
+        json={
+            "old_record_ref": f"entity_facts:{old_fact['id']}",
+            "new_record": {
+                "record_type": "entity_facts",
+                "payload": {
+                    "entity_id": alex["id"],
+                    "fact_type": "email",
+                    "content": "alex.new@example.com",
+                    "claim_type": "fact",
+                    "sensitivity": "high",
+                    "ai_use_policy": "ask_before_use",
+                },
+            },
+            "correction_source": {
+                "source_type": "agent_conversation",
+                "user_explicit": True,
+                "excerpt": "Actually, Alex's email is alex.new@example.com.",
+            },
+            "created_by": "ai_agent",
+        },
+    )
+    assert correction.status_code == 200
+
+    retrieve = client.post(
+        "/api/context/retrieve",
+        json={"query": "Alex email", "entity_hints": [alex["id"]]},
+    )
+    pack = client.post(
+        "/api/context/pack",
+        json={"query": "Alex email", "entity_hints": [alex["id"]]},
+    )
+
+    assert retrieve.status_code == 200
+    facts = retrieve.json()["matched_entities"][0]["profile_facts"]
+    assert [fact["content"] for fact in facts] == ["alex.new@example.com"]
+    assert facts[0]["fact_type"] == "email"
+    assert facts[0]["ai_use_policy"] == "ask_before_use"
+    assert "old@example.com" not in retrieve.text
+    assert "alex.new@example.com" in pack.text
+    assert "old@example.com" not in pack.text
+
+
 def test_context_pack_low_confidence_or_ambiguity_asks_clarifying_question(client) -> None:
     alex = create_person(client, "Alex Kim")
     alexander = create_person(client, "Alexander Kim")

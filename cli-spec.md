@@ -152,6 +152,44 @@ Expected behavior:
 - create candidate and candidate_evidence rows;
 - return candidate id.
 
+Structured profile fact candidate example:
+
+```json
+{
+  "candidate_type": "profile_field",
+  "target_entity_id": "person-123",
+  "payload": {
+    "entity_id": "person-123",
+    "field_path": "profile.email",
+    "fact_type": "email",
+    "content": "alex@example.com",
+    "value": {
+      "kind": "work",
+      "email": "alex@example.com"
+    },
+    "claim_type": "fact",
+    "sensitivity": "high",
+    "ai_use_policy": "ask_before_use"
+  },
+  "evidence": [
+    {
+      "episode_id": "episode-123",
+      "excerpt": "Alex said alex@example.com is the best work email.",
+      "confidence": 0.8
+    }
+  ],
+  "confidence": 0.8,
+  "sensitivity": "high",
+  "suggested_action": "review",
+  "created_by": "ai_agent"
+}
+```
+
+```bash
+kinlayer candidate submit profile-email-candidate.json --json
+kinlayer candidate accept <candidate_id> --json
+```
+
 ### `candidate list`
 
 Lists candidates.
@@ -211,6 +249,44 @@ Options:
 
 ```bash
 --note TEXT
+```
+
+## 6.1 Explicit Correction Examples
+
+Explicit user corrections may bypass candidate review only when
+`correction_source.user_explicit` is `true`.
+
+Structured profile fact correction example:
+
+```json
+{
+  "old_record_ref": "entity_facts:old-fact-id",
+  "new_record": {
+    "record_type": "entity_facts",
+    "payload": {
+      "entity_id": "person-123",
+      "fact_type": "email",
+      "content": "alex.new@example.com",
+      "value": {
+        "kind": "work",
+        "email": "alex.new@example.com"
+      },
+      "claim_type": "fact",
+      "sensitivity": "high",
+      "ai_use_policy": "ask_before_use"
+    }
+  },
+  "correction_source": {
+    "source_type": "agent_conversation",
+    "user_explicit": true,
+    "excerpt": "Actually, Alex's work email is alex.new@example.com."
+  },
+  "created_by": "ai_agent"
+}
+```
+
+```bash
+kinlayer correction apply profile-email-correction.json --json
 ```
 
 ---

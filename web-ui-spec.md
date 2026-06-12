@@ -255,6 +255,8 @@ Required sections:
 - optional bearer token configured/not configured state;
 - embedding provider status;
 - active embedding model and dimension;
+- OpenAI-compatible embedding API URL/API key configured state without displaying secret values;
+- server `.env` key names for embedding setup, including provider, API URL, API key, model, and dimension;
 - ontology registry read-only lists:
   - entity types;
   - fact types;

@@ -137,13 +137,56 @@ export async function getPerson(id: string) {
   return request<Entity>(`/api/entities/${id}`);
 }
 
+export async function updatePerson(id: string, input: Record<string, unknown>) {
+  return request<Entity>(`/api/entities/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function getAliases(id: string) {
   return request<ListResponse<EntityAlias>>(`/api/entities/${id}/aliases`);
+}
+
+export async function createAlias(id: string, input: Record<string, unknown>) {
+  return request<EntityAlias>(`/api/entities/${id}/aliases`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateAlias(aliasId: string, input: Record<string, unknown>) {
+  return request<EntityAlias>(`/api/aliases/${aliasId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteAlias(aliasId: string) {
+  return request<EntityAlias>(`/api/aliases/${aliasId}`, {method: "DELETE"});
 }
 
 export async function getFacts(id: string) {
   const params = new URLSearchParams({entity_id: id, status: "active", limit: "100"});
   return request<ListResponse<EntityFact>>(`/api/entity-facts?${params.toString()}`);
+}
+
+export async function createFact(input: Record<string, unknown>) {
+  return request<EntityFact>("/api/entity-facts", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateFact(factId: string, input: Record<string, unknown>) {
+  return request<EntityFact>(`/api/entity-facts/${factId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteFact(factId: string) {
+  return request<EntityFact>(`/api/entity-facts/${factId}`, {method: "DELETE"});
 }
 
 export async function createPerson(input: CreatePersonInput) {
@@ -240,11 +283,26 @@ export async function createEdge(input: Record<string, unknown>) {
   });
 }
 
+export async function updateEdge(edgeId: string, input: Record<string, unknown>) {
+  return request<EntityEdge>(`/api/edges/${edgeId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteEdge(edgeId: string) {
+  return request<EntityEdge>(`/api/edges/${edgeId}`, {method: "DELETE"});
+}
+
 export async function createObservation(input: Record<string, unknown>) {
   return request<Observation>("/api/observations", {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export async function deleteObservation(observationId: string) {
+  return request<Observation>(`/api/observations/${observationId}`, {method: "DELETE"});
 }
 
 export async function getContextCard(id: string) {

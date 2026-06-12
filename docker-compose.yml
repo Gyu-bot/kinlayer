@@ -8,6 +8,8 @@ services:
       POSTGRES_DB: kinlayer
     ports:
       - "127.0.0.1:15432:5432"
+    volumes:
+      - kinlayer-postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kinlayer -d kinlayer"]
       interval: 5s
@@ -24,6 +26,11 @@ services:
       KINLAYER_BIND_HOST: 0.0.0.0
       KINLAYER_API_PORT: 8765
       KINLAYER_API_TOKEN: ${KINLAYER_API_TOKEN:-}
+      KINLAYER_EMBEDDING_PROVIDER: ${KINLAYER_EMBEDDING_PROVIDER:-}
+      KINLAYER_EMBEDDING_API_URL: ${KINLAYER_EMBEDDING_API_URL:-}
+      KINLAYER_EMBEDDING_API_KEY: ${KINLAYER_EMBEDDING_API_KEY:-}
+      KINLAYER_EMBEDDING_MODEL: ${KINLAYER_EMBEDDING_MODEL:-}
+      KINLAYER_EMBEDDING_DIM: ${KINLAYER_EMBEDDING_DIM:-}
     ports:
       - "127.0.0.1:8765:8765"
     depends_on:
@@ -40,3 +47,6 @@ services:
       - "127.0.0.1:5173:5173"
     depends_on:
       - api
+
+volumes:
+  kinlayer-postgres-data:
