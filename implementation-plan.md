@@ -1061,6 +1061,7 @@ uv run kinlayer status --json
   - Keep Graph edge labels concise and human-readable while using canonical edge IDs only as React Flow internal node/edge keys.
   - Preserve HTTP API as the canonical state-changing layer; no Web-only relationship or ID mapping state is allowed.
 - Acceptance Criteria:
+  - [x] `/people` provides explicit display-name open actions for each person; normal button text does not expose entity UUIDs.
   - [x] `/people/:id` no longer shows alias, fact, relationship, or observation UUIDs in visible labels or button text.
   - [x] `/people/:id` relationship creation uses a person picker/search instead of a raw `Related entity ID` input.
   - [x] `/people/:id` relationship creation and editing use ontology-backed edge type controls; users cannot type arbitrary relation strings in the normal UI.
@@ -1086,7 +1087,7 @@ uv run kinlayer status --json
   - Debug screens may expose raw IDs only when the user explicitly opens a technical/raw section; do not make IDs the primary workflow input.
   - Relationship observations such as care points, cautions, communication preferences, and recent interactions remain observations, not edge types.
   - Follow-up audit expanded ontology-backed controls beyond relationship type to fact type, observation type, sensitivity, AI use policy, and candidate type where those values already exist in `/api/ontology`.
-  - Completed with ontology-backed relationship/fact/observation/policy/candidate selects, display-name selectors, default ID hiding in People/Candidates/Graph/Retrieval Debug, frontend/browser smoke coverage, and a backend endpoint-mismatch regression test. No relationship service change was required because patch validation already reuses endpoint compatibility checks.
+  - Completed with ontology-backed relationship/fact/observation/policy/candidate selects, display-name selectors, explicit People open buttons, default ID hiding in People/Candidates/Graph/Retrieval Debug, frontend/browser smoke coverage, and a backend endpoint-mismatch regression test. No relationship service change was required because patch validation already reuses endpoint compatibility checks.
   - Verification completed: `npm test -- --run App.test.tsx src/api/client.test.ts`; `npm run build`; `UV_CACHE_DIR=/private/tmp/kinlayer-uv-cache uv run pytest backend/tests/test_relationships_api.py`; `git diff --check`.
   - Browser verification covered `/people/new`, `/people`, `/candidates`, `/graph`, and `/people/:id` against local acceptance fixtures; no browser console errors were observed, and temporary Kinlayer services were stopped afterward.
 

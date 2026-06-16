@@ -6,6 +6,7 @@ Run after `scripts/load-acceptance-fixtures.py` against the local stack.
   - People table loads without visible error.
   - Search and status/sensitivity filters are visible; sensitivity options come from ontology policy values.
   - Alias preview, relationship summary, status, sensitivity, and last referenced columns render.
+  - Each person row has an explicit display-name open button that navigates to detail without showing UUIDs.
 - `/people/new`
   - Person form renders.
   - Optional initial relationship and initial observation fields are visible.

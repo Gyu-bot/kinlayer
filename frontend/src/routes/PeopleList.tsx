@@ -143,11 +143,16 @@ export function PeopleList({onNavigate}: Props) {
               <th>Policy</th>
               <th>Relationships</th>
               <th>Last referenced</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {people.map((person) => (
-              <tr key={person.id} onClick={() => onNavigate(`/people/${person.id}`)}>
+              <tr
+                className="clickable-row"
+                key={person.id}
+                onClick={() => onNavigate(`/people/${person.id}`)}
+              >
                 <td>
                   <strong>{person.display_name}</strong>
                   <span>
@@ -160,11 +165,23 @@ export function PeopleList({onNavigate}: Props) {
                 <td>{person.ai_use_policy}</td>
                 <td>{summariesByPerson[person.id] ?? "Loading"}</td>
                 <td>{person.last_referenced_at ?? "None"}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onNavigate(`/people/${person.id}`);
+                    }}
+                  >
+                    Open {person.display_name}
+                  </button>
+                </td>
               </tr>
             ))}
             {!loading && people.length === 0 ? (
               <tr>
-                <td colSpan={6}>No people found.</td>
+                <td colSpan={7}>No people found.</td>
               </tr>
             ) : null}
           </tbody>

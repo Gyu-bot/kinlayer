@@ -1601,6 +1601,9 @@ describe("App route shell", () => {
           total: 1,
         });
       }
+      if (url.endsWith("/api/entities/person-1")) {
+        return jsonResponse(entityFixture({id: "person-1", display_name: "김민지"}));
+      }
       if (url.endsWith("/api/entities/person-1/aliases")) {
         return jsonResponse({
           items: [
@@ -1654,6 +1657,9 @@ describe("App route shell", () => {
           }),
         );
       }
+      if (url.includes("/api/entity-facts?")) {
+        return jsonResponse({items: [], limit: 100, offset: 0, total: 0});
+      }
       throw new Error(`Unexpected URL ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -1664,6 +1670,7 @@ describe("App route shell", () => {
     expect(screen.getByText("민지")).toBeInTheDocument();
     expect(screen.getByText("1 relationships / 1 recent")).toBeInTheDocument();
     expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
+    expect(screen.queryByText("person-1")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Status filter"), {target: {value: "active"}});
     fireEvent.change(screen.getByLabelText("Sensitivity filter"), {target: {value: "high"}});
     await waitFor(() =>
@@ -1674,6 +1681,8 @@ describe("App route shell", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=high"))).toBe(
       true,
     );
+    fireEvent.click(screen.getByRole("button", {name: "Open 김민지"}));
+    await waitFor(() => expect(window.location.pathname).toBe("/people/person-1"));
   });
 
   it("keeps people visible when row context summaries fail", async () => {

@@ -64,7 +64,9 @@ Required behavior:
 - search by name/alias using API-backed query;
 - filter by status/sensitivity where API supports it;
 - create button linking to `/people/new`;
-- click row/card to open `/people/:id`.
+- open each person through an explicit display-name action, such as `Open {display_name}`,
+  while keeping the entity ID internal;
+- click row/card to open `/people/:id` as a secondary shortcut.
 
 MVP non-goals:
 

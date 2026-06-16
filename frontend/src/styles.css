@@ -336,6 +336,10 @@ strong {
   font-weight: 700;
 }
 
+.clickable-row {
+  cursor: pointer;
+}
+
 .ontology-list h3 {
   margin: 0 0 10px;
   font-size: 0.95rem;
