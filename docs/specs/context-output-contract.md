@@ -16,6 +16,11 @@ Core principle:
 
 > Kinlayer is a deterministic context packager, not an LLM situation-reasoning engine.
 
+Context output is not write evidence. Agents must not reuse Context Packs, Context Cards, retrieval
+debug output, logs, compacted summaries, or previous memory output as candidate/correction evidence.
+Automatic post-turn writes may use only current-turn user-authored source text, and submitted
+excerpts should be bounded user-authored substrings rather than agent-generated interpretations.
+
 ---
 
 ## 2. Output Layers

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from kinlayer_backend.database import get_session
 from kinlayer_backend.repositories.ontology import OntologyRepository
 from kinlayer_backend.schemas.ontology import (
+    EdgeTypeDiagnosticsRead,
     EdgeTypeList,
     ObservationTypeList,
     OntologyRead,
@@ -26,6 +27,11 @@ def get_ontology(session: SessionDep):
 @router.get("/api/ontology/edge-types", response_model=EdgeTypeList)
 def get_edge_types(session: SessionDep):
     return {"items": OntologyRepository(session).edge_types()}
+
+
+@router.get("/api/ontology/edge-type-diagnostics", response_model=EdgeTypeDiagnosticsRead)
+def get_edge_type_diagnostics(session: SessionDep):
+    return OntologyReadService(session).edge_type_diagnostics()
 
 
 @router.get("/api/ontology/observation-types", response_model=ObservationTypeList)

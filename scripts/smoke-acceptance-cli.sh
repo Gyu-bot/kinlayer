@@ -8,6 +8,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 fixture_json="$TMP_DIR/fixtures.json"
 person_json="$TMP_DIR/person.json"
 candidate_json="$TMP_DIR/candidate.json"
+invalid_candidate_json="$TMP_DIR/candidate-invalid-edge.json"
 candidate_edit_json="$TMP_DIR/candidate-edit.json"
 second_candidate_json="$TMP_DIR/candidate-second.json"
 correction_json="$TMP_DIR/correction.json"
@@ -72,6 +73,33 @@ uv run kinlayer candidate list --status pending --json > "$TMP_DIR/candidate-lis
 uv run kinlayer candidate show "$candidate_id" --json > "$TMP_DIR/candidate-show.json"
 uv run kinlayer candidate accept "$candidate_id" --json > "$TMP_DIR/candidate-accept.json"
 accepted_ref="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['canonical_record_ref'])" "$TMP_DIR/candidate-accept.json")"
+
+python3 - "$invalid_candidate_json" "$minji_id" "$self_id" <<'PY'
+import json
+import sys
+
+path, person_id, self_id = sys.argv[1:4]
+payload = {
+    "candidate_type": "relationship_edge",
+    "target_entity_id": person_id,
+    "payload": {
+        "from_entity_id": self_id,
+        "to_entity_id": person_id,
+        "relation_type": "reply_strategy",
+        "claim_text": "CLI smoke invalid relationship edge.",
+        "claim_type": "fact",
+    },
+    "confidence": 0.5,
+    "sensitivity": "medium",
+    "suggested_action": "review",
+    "created_by": "ai_agent",
+}
+open(path, "w").write(json.dumps(payload))
+PY
+if uv run kinlayer candidate submit "$invalid_candidate_json" --json > "$TMP_DIR/candidate-invalid-edge.out" 2> "$TMP_DIR/candidate-invalid-edge.err"; then
+  echo "Invalid relationship_edge candidate unexpectedly succeeded." >&2
+  exit 1
+fi
 
 python3 - "$second_candidate_json" "$minji_id" "$self_id" "$episode_id" <<'PY'
 import json
@@ -157,6 +185,7 @@ uv run kinlayer correction apply "$correction_json" --json > "$correction_result
 echo "== CLI agent write operations =="
 uv run kinlayer agent-operations list --json > "$TMP_DIR/agent-operations-list.json"
 uv run kinlayer agent-operations export --limit 50 > "$TMP_DIR/agent-operations-export.jsonl"
+uv run kinlayer ontology edge-diagnostics --json > "$TMP_DIR/edge-diagnostics.json"
 
 echo "== CLI context, graph, and embeddings =="
 uv run kinlayer retrieve "민지 한국어 요약 회의 확인" --entity-hint "$minji_id" --json > "$TMP_DIR/retrieve.json"
@@ -181,8 +210,15 @@ assert json.load(open(root / "candidate-accept.json"))["canonical_record_ref"].s
 assert json.load(open(root / "candidate-edit-accept.json"))["status"] == "edited_accepted"
 assert json.load(open(root / "correction-result.json"))["new_record_ref"].startswith("observations:")
 assert json.load(open(root / "agent-operations-list.json"))["total"] >= 1
+assert any(
+    item["operation_type"] == "candidate_submit"
+    and item["result_status"] == "rejected"
+    and item["request_summary"].get("relation_type") == "reply_strategy"
+    for item in json.load(open(root / "agent-operations-list.json"))["items"]
+)
 first_export_line = open(root / "agent-operations-export.jsonl").readline()
 assert json.loads(first_export_line)["schema_version"] == "agent_write_operations.v1"
+assert "relation_types" in json.load(open(root / "edge-diagnostics.json"))
 assert any(item["entity_id"] == minji_id for item in json.load(open(root / "retrieve.json"))["matched_entities"])
 assert "context_pack" in json.load(open(root / "context-pack.json"))
 assert json.load(open(root / "context-card.json"))["entity"]["id"] == minji_id

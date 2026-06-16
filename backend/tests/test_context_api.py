@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_db_engine
 from kinlayer_backend.main import create_app
-from kinlayer_backend.models import Base
+from kinlayer_backend.models import Base, EntityEdge
 
 
 def create_person(client, name: str, **overrides) -> dict:
@@ -286,6 +286,43 @@ def test_context_card_returns_entity_relationship_context_and_provenance(client)
     assert card["provenance_summary"]["fact_count"] == 1
     assert card["retrieval_hints"]["entity_id"] == alex["id"]
     assert "AK" in card["retrieval_hints"]["aliases"]
+
+
+def test_context_card_excludes_invalid_legacy_edge_types(client) -> None:
+    user = create_person(client, "User", system_role="self", is_system=True)
+    alex = create_person(client, "Alex Kim")
+    organization = client.post(
+        "/api/entities",
+        json={"entity_type": "organization", "display_name": "Acme", "created_by": "user"},
+    ).json()
+    valid = create_edge(client, user["id"], alex["id"])
+    with client.app.state.session_factory() as session:
+        session.add(
+            EntityEdge(
+                from_entity_id=user["id"],
+                to_entity_id=alex["id"],
+                relation_type="reply_strategy",
+                claim_text="Legacy invalid edge.",
+                claim_type="fact",
+                created_by="ai_agent",
+            )
+        )
+        session.add(
+            EntityEdge(
+                from_entity_id=user["id"],
+                to_entity_id=organization["id"],
+                relation_type="client_contact",
+                claim_text="Legacy endpoint mismatch edge.",
+                claim_type="fact",
+                created_by="ai_agent",
+            )
+        )
+        session.commit()
+
+    response = client.get(f"/api/entities/{alex['id']}/context-card")
+
+    assert response.status_code == 200
+    assert [edge["id"] for edge in response.json()["relationship_edges"]] == [valid["id"]]
 
 
 def test_context_endpoints_obey_optional_api_token(database_url) -> None:

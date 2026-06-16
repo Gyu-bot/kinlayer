@@ -1,7 +1,13 @@
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from kinlayer_backend.models import AllowedEdgeType, AllowedObservationType, OntologyRegistryValue
+from kinlayer_backend.models import (
+    AllowedEdgeType,
+    AllowedObservationType,
+    Entity,
+    EntityEdge,
+    OntologyRegistryValue,
+)
 from kinlayer_backend.repositories.ontology import OntologyRepository
 
 REGISTRY_SEEDS: dict[str, list[tuple[str, str, str]]] = {
@@ -208,6 +214,7 @@ def is_allowed_registry_value(session: Session, category: str, value: str) -> bo
 
 class OntologyReadService:
     def __init__(self, session: Session):
+        self.session = session
         self.repository = OntologyRepository(session)
 
     def all_ontology(self) -> dict:
@@ -226,3 +233,65 @@ class OntologyReadService:
             "claim_types": self.repository.registry_values("claim_type"),
             "candidate_types": self.repository.registry_values("candidate_type"),
         }
+
+    def edge_type_diagnostics(self) -> dict:
+        allowed_by_relation_type = {
+            row.relation_type: row
+            for row in self.session.execute(
+                select(AllowedEdgeType).where(AllowedEdgeType.active.is_(True))
+            ).scalars()
+        }
+        rows = self.session.execute(
+            select(
+                EntityEdge.relation_type,
+                func.count(),
+                func.sum(case((EntityEdge.status == "active", 1), else_=0)),
+            )
+            .group_by(EntityEdge.relation_type)
+            .order_by(EntityEdge.relation_type)
+        ).all()
+        relation_types = [
+            {
+                "relation_type": relation_type,
+                "exists_in_allowed_edge_types": relation_type in allowed_by_relation_type,
+                "edge_count": count,
+                "active_edge_count": active_count or 0,
+            }
+            for relation_type, count, active_count in rows
+        ]
+
+        invalid_edges = []
+        statement = select(EntityEdge).order_by(EntityEdge.created_at.desc())
+        for edge in self.session.execute(statement).scalars().all():
+            from_entity = self.session.get(Entity, edge.from_entity_id)
+            to_entity = self.session.get(Entity, edge.to_entity_id)
+            edge_type = allowed_by_relation_type.get(edge.relation_type)
+            edge_type_match = "active_allowed_edge_type"
+            if not edge_type:
+                edge_type_match = "missing_allowed_edge_type"
+            elif (
+                not from_entity
+                or not to_entity
+                or from_entity.entity_type != edge_type.from_entity_type
+                or to_entity.entity_type != edge_type.to_entity_type
+            ):
+                edge_type_match = "endpoint_type_mismatch"
+            if edge_type_match == "active_allowed_edge_type":
+                continue
+            invalid_edges.append(
+                {
+                    "edge_id": edge.id,
+                    "relation_type": edge.relation_type,
+                    "edge_type_match": edge_type_match,
+                    "from_entity_id": edge.from_entity_id,
+                    "to_entity_id": edge.to_entity_id,
+                    "from_entity_type": from_entity.entity_type if from_entity else None,
+                    "to_entity_type": to_entity.entity_type if to_entity else None,
+                    "status": edge.status,
+                    "created_by": edge.created_by,
+                    "source_candidate_id": edge.source_candidate_id,
+                    "created_at": edge.created_at,
+                    "updated_at": edge.updated_at,
+                }
+            )
+        return {"relation_types": relation_types, "invalid_edges": invalid_edges}

@@ -8,6 +8,7 @@ from kinlayer_backend.schemas.common import APIModel, ListResponse
 
 class AgentWriteOperationRead(APIModel):
     id: str
+    audit_id: str
     operation_type: str
     source_path: str
     actor: str

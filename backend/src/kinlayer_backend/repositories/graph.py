@@ -1,7 +1,7 @@
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
-from kinlayer_backend.models import Entity, EntityEdge
+from kinlayer_backend.models import AllowedEdgeType, Entity, EntityEdge
 
 
 class GraphRepository:
@@ -26,7 +26,21 @@ class GraphRepository:
             filters.append(EntityEdge.relation_type == relation_type)
         if sensitivity:
             filters.append(EntityEdge.sensitivity == sensitivity)
-        statement = select(EntityEdge).where(*filters).order_by(EntityEdge.created_at.desc())
+        from_entity = aliased(Entity)
+        to_entity = aliased(Entity)
+        statement = (
+            select(EntityEdge)
+            .join(AllowedEdgeType, AllowedEdgeType.relation_type == EntityEdge.relation_type)
+            .join(from_entity, from_entity.id == EntityEdge.from_entity_id)
+            .join(to_entity, to_entity.id == EntityEdge.to_entity_id)
+            .where(
+                *filters,
+                AllowedEdgeType.active.is_(True),
+                from_entity.entity_type == AllowedEdgeType.from_entity_type,
+                to_entity.entity_type == AllowedEdgeType.to_entity_type,
+            )
+            .order_by(EntityEdge.created_at.desc())
+        )
         return self.session.execute(statement).scalars().all()
 
     def entities_by_id(self, entity_ids: set[str]) -> list[Entity]:

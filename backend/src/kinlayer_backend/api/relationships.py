@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
@@ -20,6 +21,7 @@ from kinlayer_backend.schemas.relationships import (
     ObservationRead,
 )
 from kinlayer_backend.services.relationships import RelationshipService
+from kinlayer_backend.services.agent_operation_exports import AgentOperationService
 
 router = APIRouter(tags=["relationships"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -34,7 +36,24 @@ def observation_payload(session: Session, observation):
 
 @router.post("/api/edges", response_model=EdgeRead, status_code=201)
 def create_edge(payload: EdgeCreate, session: SessionDep):
-    return RelationshipService(session).create_edge(payload.model_dump())
+    body = payload.model_dump()
+    try:
+        edge = RelationshipService(session).create_edge(body)
+    except HTTPException as exc:
+        AgentOperationService(session).record_edge_failure(
+            body,
+            operation_type="edge_create",
+            source_path="/api/edges",
+            exc=exc,
+        )
+        raise
+    AgentOperationService(session).record_edge_success(
+        body,
+        edge_id=edge.id,
+        operation_type="edge_create",
+        source_path="/api/edges",
+    )
+    return edge
 
 
 @router.get("/api/edges", response_model=EdgeList)
@@ -73,7 +92,35 @@ def patch_edge(edge_id: str, payload: EdgePatch, session: SessionDep):
     edge = RelationshipRepository(session).get_edge(edge_id)
     if not edge:
         raise api_error(404, "not_found", "Edge not found.")
-    return RelationshipService(session).patch_edge(edge, payload.model_dump(exclude_unset=True))
+    body = {
+        "from_entity_id": edge.from_entity_id,
+        "to_entity_id": edge.to_entity_id,
+        "created_by": "api_user",
+        **payload.model_dump(exclude_unset=True),
+    }
+    try:
+        edge = RelationshipService(session).patch_edge(edge, payload.model_dump(exclude_unset=True))
+    except HTTPException as exc:
+        AgentOperationService(session).record_edge_failure(
+            body,
+            operation_type="edge_update",
+            source_path=f"/api/edges/{edge_id}",
+            exc=exc,
+            edge_id=edge_id,
+        )
+        raise
+    AgentOperationService(session).record_edge_success(
+        {
+            "from_entity_id": edge.from_entity_id,
+            "to_entity_id": edge.to_entity_id,
+            "created_by": "api_user",
+            **payload.model_dump(exclude_unset=True),
+        },
+        edge_id=edge.id,
+        operation_type="edge_update",
+        source_path=f"/api/edges/{edge_id}",
+    )
+    return edge
 
 
 @router.delete("/api/edges/{edge_id}", response_model=EdgeRead)

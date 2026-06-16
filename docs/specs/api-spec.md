@@ -11,6 +11,10 @@
 
 Kinlayer's HTTP API is the canonical capability layer.
 
+Product boundary: AI agents interpret current-turn user-authored text and propose candidates or
+explicit corrections; Kinlayer validates, stores, retrieves, reviews, and canonicalizes relationship
+context.
+
 Agent-facing write behavior is specified in `../agents/agent-write-instruction-pack.md`. In
 particular, agent-visible relationship type, API `relation_type`, candidate
 `relationship_edge.relation_type`, and graph edge labels are ontology edge types from
@@ -31,6 +35,13 @@ Rules:
 - Health/version remain public.
 - DELETE means soft delete/archive semantics in MVP, not physical purge.
 - Context APIs retrieve/package context; they do not write final advice or natural-language briefings.
+- Kinlayer does not run an LLM for post-turn extraction and does not classify open-ended
+  personhood, fictional/public-figure status, or relationship relevance.
+- Agent-submitted write evidence must come from current-turn user-authored source text. Assistant
+  messages, tool output, retrieved context packs/cards, system/developer/skill prompts, logs,
+  compacted summaries, and previous memory output are not valid evidence.
+- Agent-side confidence thresholds and extraction policies are adapter configuration, not core API
+  behavior.
 
 ---
 
@@ -838,6 +849,48 @@ Returns all seed registries.
 
 ### `GET /api/ontology/edge-types`
 
+Returns active ontology edge types. UI-visible relationship type, API `relation_type`, candidate
+`relationship_edge.relation_type`, and graph edge labels must all derive from these values.
+
+### `GET /api/ontology/edge-type-diagnostics`
+
+Purpose: inspect existing `entity_edges.relation_type` values and find legacy rows whose relation
+type is missing from active `allowed_edge_types`.
+
+Response:
+
+```json
+{
+  "relation_types": [
+    {
+      "relation_type": "client_contact",
+      "exists_in_allowed_edge_types": true,
+      "edge_count": 3,
+      "active_edge_count": 2
+    }
+  ],
+  "invalid_edges": [
+    {
+      "edge_id": "edge-id",
+      "relation_type": "reply_strategy",
+      "edge_type_match": "missing_allowed_edge_type",
+      "from_entity_id": "person-1",
+      "to_entity_id": "person-2",
+      "from_entity_type": "person",
+      "to_entity_type": "person",
+      "status": "active",
+      "created_by": "ai_agent",
+      "source_candidate_id": "candidate-id",
+      "created_at": "2026-06-12T00:00:00Z",
+      "updated_at": "2026-06-12T00:00:00Z"
+    }
+  ]
+}
+```
+
+This endpoint is read-only. It reports invalid legacy rows with either
+`missing_allowed_edge_type` or `endpoint_type_mismatch`, but does not repair or rewrite them.
+
 ### `GET /api/ontology/observation-types`
 
 ### `GET /api/ontology/entity-fact-types`
@@ -890,7 +943,9 @@ Response:
 
 ## 17. Agent Write Operations
 
-Purpose: inspect and export what AI agents attempted to write into Kinlayer and what happened to those attempts.
+Purpose: inspect and export what AI agents attempted to write into Kinlayer and what happened to
+those attempts. Direct edge create/update attempts are also included when Kinlayer can identify the
+submitting actor because relation-type enforcement is part of the same write-integrity audit trail.
 
 Scope is write-only. These endpoints do not export context-pack/retrieval reads, full prompts, raw conversation transcripts, bearer tokens, API keys, or ordinary container logs.
 
@@ -915,14 +970,19 @@ Response:
   "items": [
     {
       "id": "audit-id",
+      "audit_id": "audit-id",
       "operation_type": "candidate_submit",
       "source_path": "/api/candidates",
       "actor": "ai_agent",
       "result_status": "success",
       "api_error_code": null,
-      "request_summary": {"candidate_type": "observation"},
+      "request_summary": {"candidate_type": "relationship_edge", "relation_type": "client_contact"},
       "diagnostics": {},
-      "related_refs": {},
+      "related_refs": {
+        "edge_type_match": "active_allowed_edge_type",
+        "from_entity_id": "person-1",
+        "to_entity_id": "person-2"
+      },
       "candidate_id": "candidate-id",
       "correction_id": null,
       "episode_id": "episode-id",

@@ -295,6 +295,9 @@ entity_edges
 Notes:
 
 - `relation_type` must exist in `allowed_edge_types`.
+- Graph, context card, and retrieval read paths exclude active legacy edge rows whose
+  `relation_type` is missing from active `allowed_edge_types` or whose endpoint entity types no
+  longer match the active edge type; diagnostics report those rows for explicit repair decisions.
 - Pending relationship proposals live in `candidates`, not active `entity_edges`.
 - Edge types should remain structural. Advisory/contextual items belong in `observations`.
 
@@ -624,7 +627,11 @@ agent_write_operation_audits
 Rules:
 
 - include agent candidate submit/accept/edit-accept and correction apply attempts;
+- include direct edge create/update attempts when `created_by` or the existing edge actor can be traced;
 - include rejected validation attempts when the route can safely identify `created_by = ai_agent`;
+- relationship write audit rows include submitted `relation_type`, endpoint entity refs/types when
+  available, and an `edge_type_match` diagnostic such as `active_allowed_edge_type`,
+  `missing_allowed_edge_type`, or `endpoint_type_mismatch`;
 - do not store full prompts, bearer tokens, API keys, raw conversation transcripts, or unbounded request bodies;
 - retrieval/context-pack reads are not agent write operations.
 

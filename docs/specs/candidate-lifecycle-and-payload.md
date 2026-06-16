@@ -19,6 +19,21 @@ Core principle:
 
 > AI agents may propose relationship context, but candidate review determines what becomes canonical and what can be retrieved or surfaced as trusted context.
 
+Product boundary:
+
+> AI agents interpret current-turn user-authored text and propose candidates or explicit corrections; Kinlayer validates, stores, retrieves, reviews, and canonicalizes relationship context.
+
+Kinlayer does not run an LLM for post-turn extraction or decide open-ended personhood,
+fictional/public-figure status, or relationship relevance. Agent-submitted candidates and
+corrections must use current-turn user-authored evidence excerpts. Do not use assistant messages,
+tool output, retrieved context packs/cards, system/developer/skill prompts, logs, compacted
+summaries, previous memory output, or agent-generated interpretations as evidence.
+
+Agents should produce no write or a clarification path for fictional characters, public figures,
+hypothetical examples, generic groups/professions, AI agents/bots/models, the protected self as an
+ordinary person entity, and pronoun-only mentions without a reliable current-turn user-provided
+identifier.
+
 ---
 
 ## 2. Candidate Granularity

@@ -61,7 +61,18 @@ class RelationshipService:
     def patch_edge(self, edge: EntityEdge, payload: dict[str, Any]) -> EntityEdge:
         validate_common(payload, self.session)
         if "relation_type" in payload and payload["relation_type"]:
-            self._edge_type(payload["relation_type"])
+            from_entity = self._entity(edge.from_entity_id)
+            to_entity = self._entity(edge.to_entity_id)
+            edge_type = self._edge_type(payload["relation_type"])
+            if (
+                from_entity.entity_type != edge_type.from_entity_type
+                or to_entity.entity_type != edge_type.to_entity_type
+            ):
+                raise api_error(
+                    422,
+                    "validation_error",
+                    "Relation endpoint entity types do not match.",
+                )
         for key, value in payload.items():
             setattr(edge, key, value)
         self.repository.commit_refresh(edge)

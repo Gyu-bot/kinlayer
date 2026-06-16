@@ -4,10 +4,11 @@ from dataclasses import asdict
 from typing import Any
 
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from kinlayer_backend.api.errors import api_error
 from kinlayer_backend.models import (
+    AllowedEdgeType,
     EdgeEvidence,
     Entity,
     EntityAlias,
@@ -195,14 +196,22 @@ class ContextService:
         return self.session.execute(statement).scalars().all()
 
     def _edges(self, entity_id: str) -> list[EntityEdge]:
+        from_entity = aliased(Entity)
+        to_entity = aliased(Entity)
         statement = (
             select(EntityEdge)
+            .join(AllowedEdgeType, AllowedEdgeType.relation_type == EntityEdge.relation_type)
+            .join(from_entity, from_entity.id == EntityEdge.from_entity_id)
+            .join(to_entity, to_entity.id == EntityEdge.to_entity_id)
             .where(
                 or_(
                     EntityEdge.from_entity_id == entity_id,
                     EntityEdge.to_entity_id == entity_id,
                 ),
                 EntityEdge.status == "active",
+                AllowedEdgeType.active.is_(True),
+                from_entity.entity_type == AllowedEdgeType.from_entity_type,
+                to_entity.entity_type == AllowedEdgeType.to_entity_type,
             )
             .order_by(EntityEdge.created_at.desc())
         )

@@ -20,6 +20,37 @@ Kinlayer MVP should focus on the core product:
 
 Deep agent-runtime integrations should not block MVP implementation. They should be treated as follow-up adapter work once the core APIs stabilize.
 
+Canonical product boundary:
+
+> AI agents interpret current-turn user-authored text and propose candidates or explicit corrections; Kinlayer validates, stores, retrieves, reviews, and canonicalizes relationship context.
+
+Kinlayer core does not run an LLM for post-turn extraction. It must not perform open-ended
+personhood classification, fictional/public-figure classification, or relationship-relevance
+classification over conversation text. Those decisions belong to the calling agent or adapter, and
+the agent-side thresholds for those decisions are adapter configuration, not Kinlayer core behavior.
+
+Automatic post-turn extraction may use only current-turn user-authored messages as write evidence.
+Agents and adapters must not use assistant messages, tool output, retrieved Kinlayer context packs or
+cards, system/developer/skill prompts, logs, compacted summaries, or previous memory output as
+candidate or correction evidence. Evidence excerpts submitted to Kinlayer should be user-authored
+substrings or bounded user-authored snippets, not agent-generated interpretations.
+
+No-write and clarification exclusions include fictional characters, public figures, hypothetical
+examples, generic groups/professions, AI agents/bots/models, the protected self as an ordinary person
+entity, and pronoun-only references such as `that person`, `그 사람`, `걔`, or `그분` without a
+reliable current-turn user-provided identifier.
+
+Candidate planning should distinguish:
+
+- AI inference, which enters review as a candidate;
+- explicit user correction, which may use direct correction apply when the target is unambiguous;
+- ambiguous or low-confidence context, which should produce no write or `needs_clarification`;
+- multiple entity matches, which should not silently choose one entity;
+- no-op decisions, which should be recorded only in dry-run/audit diagnostics when available.
+
+Dry-run and audit diagnostics should list found mentions, exclusions, entity-resolution results,
+planned candidates, no-op reasons, and redacted/log-safe metadata.
+
 ---
 
 ## 2. Integration Principle
