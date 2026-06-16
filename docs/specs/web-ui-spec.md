@@ -21,6 +21,11 @@ It is not the canonical capability layer. The HTTP API owns canonical capabiliti
 
 No Web-only state-changing capability is allowed.
 
+By default, the Web UI should present names, summaries, ontology labels, status, policy, and
+bounded excerpts rather than raw UUIDs or internal record refs. IDs may still be used in URLs,
+React keys, API payloads, and explicit raw/debug affordances, but they should not be the normal
+visible workflow input or label.
+
 ---
 
 ## 2. MVP Screens
@@ -88,6 +93,10 @@ Expected behavior:
 - creates `entities` row;
 - creates aliases if provided;
 - creates optional initial edge/observation through API;
+- loads initial relationship type choices from ontology edge types and submits the selected
+  canonical `relation_type`;
+- loads profile fact type, initial observation type, sensitivity, and AI use policy choices from
+  ontology registries or policy values and submits canonical values;
 - redirects to `/people/:id` after creation.
 
 MVP non-goals:
@@ -120,10 +129,14 @@ Required sections:
 3. Profile facts
    - list active `entity_facts`;
    - show claim_type/confidence/policy.
+   - use ontology-backed fact type, sensitivity, and AI use policy controls for creation and edit
+     flows.
 
 4. Relationship edges
    - list active edges to/from this person;
-   - show relation_type, direction, confidence, status.
+   - show ontology-backed relationship type, direction, confidence, status;
+   - use person selectors for related people while storing entity IDs internally;
+   - hide edge IDs from default row labels and button text.
 
 5. Observations
    - list observations where subject or related entity includes this person;
@@ -131,18 +144,20 @@ Required sections:
 
 6. Evidence/provenance panel
    - show source episode metadata and bounded excerpts for selected fact/edge/observation;
+   - show record type and excerpt/summary before any technical record ref;
    - no full raw archive display in MVP.
 
 Current MVP actions:
 
 - navigate back to `/people`;
 - inspect context card, evidence, policy, and relationship/observation sections.
-
-Future API-backed actions:
-
 - patch entity summary fields;
 - add/deprecate alias;
 - soft delete/deprecate canonical records through DELETE endpoints;
+- add and update relationship edges with ontology-backed relationship type, sensitivity, and AI
+  use policy controls;
+- add and update profile facts with ontology-backed fact type, sensitivity, and AI use policy
+  controls;
 - open related candidates if applicable.
 
 MVP non-goals:
@@ -160,8 +175,12 @@ Purpose: candidate inbox and review surface.
 Required behavior:
 
 - list candidates with status, candidate_type, target entity, confidence, sensitivity, created_by, created_at;
+- replace candidate IDs in the default list/detail with candidate summaries, type, status,
+  confidence, target summary, and timestamps;
 - filter by status/type/sensitivity;
-- show candidate detail drawer/panel with payload, evidence excerpts, suggested action;
+- show candidate detail drawer/panel with evidence excerpts and suggested action;
+- keep raw/edit payload JSON behind an explicit raw payload affordance so internal entity IDs are not
+  visible by default;
 - actions:
   - accept;
   - edit-accept;
@@ -193,11 +212,13 @@ Required behavior:
 - call `GET /api/graph/ego/{entity_id}`;
 - render generic graph response with React Flow adapter;
 - support filters:
-  - relation_type;
+  - relation_type from ontology edge types, plus an all-types option;
   - status;
   - sensitivity;
 - node click opens person detail side panel;
 - edge click opens edge detail/evidence side panel.
+- detail panels show names, relationship labels, direction, status, sensitivity, and confidence
+  without raw entity or edge IDs by default.
 
 MVP official support:
 
@@ -224,8 +245,8 @@ Required behavior:
 - input fields:
   - query;
   - situation;
-  - focal_entity_id;
-  - candidate entity IDs / entity_hints;
+  - focal entity selector;
+  - candidate entity selector / entity_hints;
 - call `POST /api/context/retrieve`;
 - call `POST /api/context/pack`;
 - display:
@@ -235,7 +256,8 @@ Required behavior:
   - confidence band;
   - suggested_response_policy;
   - context buckets;
-  - raw debug metadata when returned.
+  - debug metadata keyed by display names where practical;
+  - raw retrieval payload only behind an explicit raw/debug affordance.
 
 MVP non-goals:
 

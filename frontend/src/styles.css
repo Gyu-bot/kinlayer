@@ -393,6 +393,12 @@ strong {
   gap: 8px;
 }
 
+.stacked-selects {
+  display: grid;
+  gap: 8px;
+  min-width: 150px;
+}
+
 .graph-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.6fr);

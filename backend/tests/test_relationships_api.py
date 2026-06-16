@@ -1,3 +1,10 @@
+from sqlalchemy.orm import Session
+
+from kinlayer_backend.config import Settings
+from kinlayer_backend.database import create_db_engine
+from kinlayer_backend.models import AllowedEdgeType
+
+
 def create_person(client, name: str) -> dict:
     response = client.post(
         "/api/entities",
@@ -169,6 +176,48 @@ def test_edge_create_and_patch_write_relationship_audit_records(client) -> None:
     assert patch_rejected["actor"] == "api_user"
     assert patch_rejected["related_refs"]["edge_id"] == edge["id"]
     assert patch_rejected["related_refs"]["edge_type_match"] == "missing_allowed_edge_type"
+
+
+def test_edge_patch_rejects_relation_type_endpoint_mismatch(client, database_url) -> None:
+    engine = create_db_engine(Settings(database_url=database_url))
+    with Session(engine) as session:
+        session.add(
+            AllowedEdgeType(
+                relation_type="organization_contact",
+                from_entity_type="organization",
+                to_entity_type="person",
+                directed_default=True,
+                allowed_properties_schema={},
+                description="Organization contact",
+                examples=[],
+                active=True,
+            )
+        )
+        session.commit()
+
+    user = create_person(client, "User")
+    alex = create_person(client, "Alex")
+    created = client.post(
+        "/api/edges",
+        json={
+            "from_entity_id": user["id"],
+            "to_entity_id": alex["id"],
+            "relation_type": "client_contact",
+            "claim_text": "Alex is a client contact.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    )
+    assert created.status_code == 201
+
+    patched = client.patch(
+        f"/api/edges/{created.json()['id']}",
+        json={"relation_type": "organization_contact"},
+    )
+
+    assert patched.status_code == 422
+    assert patched.json()["error"]["code"] == "validation_error"
+    assert patched.json()["error"]["message"] == "Relation endpoint entity types do not match."
 
 
 def test_observation_lifecycle_stores_related_entities_and_soft_deletes(client) -> None:

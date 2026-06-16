@@ -1,6 +1,14 @@
-import {FormEvent, useState} from "react";
+import {FormEvent, useEffect, useState} from "react";
 
-import {createPerson} from "../api/client";
+import {createPerson, getOntology} from "../api/client";
+import {
+  edgeTypeOptions,
+  normalizeOptionValue,
+  observationTypeOptions,
+  optionsWithCurrent,
+  registryOptions,
+  type SelectOption,
+} from "../ontologyOptions";
 
 type Props = {
   onNavigate: (path: string) => void;
@@ -12,14 +20,41 @@ export function NewPerson({onNavigate}: Props) {
   const [sensitivity, setSensitivity] = useState("medium");
   const [aiUsePolicy, setAiUsePolicy] = useState("cautious_use");
   const [shortNote, setShortNote] = useState("");
-  const [factType, setFactType] = useState("organization");
+  const [factType, setFactType] = useState("");
   const [factContent, setFactContent] = useState("");
-  const [initialRelationshipType, setInitialRelationshipType] = useState("knows");
+  const [initialRelationshipType, setInitialRelationshipType] = useState("");
   const [initialRelationshipNote, setInitialRelationshipNote] = useState("");
-  const [initialObservationType, setInitialObservationType] = useState("recent_interaction");
+  const [initialObservationType, setInitialObservationType] = useState("");
   const [initialObservation, setInitialObservation] = useState("");
+  const [factTypeOptions, setFactTypeOptions] = useState<SelectOption[]>([]);
+  const [edgeTypes, setEdgeTypes] = useState<SelectOption[]>([]);
+  const [observationTypes, setObservationTypes] = useState<SelectOption[]>([]);
+  const [sensitivityOptions, setSensitivityOptions] = useState<SelectOption[]>([]);
+  const [policyOptions, setPolicyOptions] = useState<SelectOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    getOntology()
+      .then((ontology) => {
+        const nextFactTypes = registryOptions(ontology.fact_types);
+        const nextEdgeTypes = edgeTypeOptions(ontology.edge_types);
+        const nextObservationTypes = observationTypeOptions(ontology.observation_types);
+        const nextSensitivityOptions = registryOptions(ontology.policies.sensitivity_levels);
+        const nextPolicyOptions = registryOptions(ontology.policies.ai_use_policies);
+        setFactTypeOptions(nextFactTypes);
+        setEdgeTypes(nextEdgeTypes);
+        setObservationTypes(nextObservationTypes);
+        setSensitivityOptions(nextSensitivityOptions);
+        setPolicyOptions(nextPolicyOptions);
+        setFactType((current) => normalizeOptionValue(current, nextFactTypes));
+        setInitialRelationshipType((current) => normalizeOptionValue(current, nextEdgeTypes));
+        setInitialObservationType((current) => normalizeOptionValue(current, nextObservationTypes));
+        setSensitivity((current) => normalizeOptionValue(current, nextSensitivityOptions));
+        setAiUsePolicy((current) => normalizeOptionValue(current, nextPolicyOptions));
+      })
+      .catch(() => undefined);
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -78,18 +113,21 @@ export function NewPerson({onNavigate}: Props) {
           <label>
             <span>Sensitivity</span>
             <select value={sensitivity} onChange={(e) => setSensitivity(e.target.value)}>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
+              {optionsWithCurrent(sensitivityOptions, sensitivity).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
           <label>
             <span>AI use policy</span>
             <select value={aiUsePolicy} onChange={(e) => setAiUsePolicy(e.target.value)}>
-              <option value="freely_use">freely_use</option>
-              <option value="cautious_use">cautious_use</option>
-              <option value="ask_before_use">ask_before_use</option>
-              <option value="never_surface">never_surface</option>
+              {optionsWithCurrent(policyOptions, aiUsePolicy).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
         </div>
@@ -101,13 +139,11 @@ export function NewPerson({onNavigate}: Props) {
           <label>
             <span>Profile fact type</span>
             <select value={factType} onChange={(e) => setFactType(e.target.value)}>
-              <option value="organization">organization</option>
-              <option value="role">role</option>
-              <option value="job">job</option>
-              <option value="relationship_note">relationship_note</option>
-              <option value="important_context">important_context</option>
-              <option value="external_handle">external_handle</option>
-              <option value="location_hint">location_hint</option>
+              {optionsWithCurrent(factTypeOptions, factType).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
           <label>
@@ -124,12 +160,11 @@ export function NewPerson({onNavigate}: Props) {
                 value={initialRelationshipType}
                 onChange={(e) => setInitialRelationshipType(e.target.value)}
               >
-                <option value="knows">knows</option>
-                <option value="friend">friend</option>
-                <option value="family">family</option>
-                <option value="coworker">coworker</option>
-                <option value="client_contact">client_contact</option>
-                <option value="collaborated_with">collaborated_with</option>
+                {optionsWithCurrent(edgeTypes, initialRelationshipType).map((edgeType) => (
+                  <option key={edgeType.value} value={edgeType.value}>
+                    {edgeType.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label>
@@ -150,12 +185,11 @@ export function NewPerson({onNavigate}: Props) {
                 value={initialObservationType}
                 onChange={(e) => setInitialObservationType(e.target.value)}
               >
-                <option value="recent_interaction">recent_interaction</option>
-                <option value="communication_preference">communication_preference</option>
-                <option value="relationship_context">relationship_context</option>
-                <option value="caution">caution</option>
-                <option value="care_point">care_point</option>
-                <option value="user_preference_about_person">user_preference_about_person</option>
+                {optionsWithCurrent(observationTypes, initialObservationType).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label>

@@ -186,9 +186,71 @@ describe("App route shell", () => {
     expect(screen.queryByText("openai-secret")).not.toBeInTheDocument();
   });
 
+  it("loads new-person controlled select values from ontology", async () => {
+    window.history.pushState({}, "", "/people/new");
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/api/ontology")) {
+        return jsonResponse(
+          ontologyFixture({
+            fact_types: [
+              {value: "birthday", label: "Birthday", support_level: "supported"},
+              {value: "contact_note", label: "Contact note", support_level: "supported"},
+            ],
+            edge_types: [
+              {relation_type: "vendor_contact", description: "Vendor contact"},
+              {relation_type: "client_contact", description: "Client contact"},
+            ],
+            observation_types: [
+              {observation_type: "follow_up_context", description: "Follow-up context"},
+              {observation_type: "care_point", description: "Care point"},
+            ],
+            policies: {
+              sensitivity_levels: [
+                {value: "high", label: "High", support_level: "supported"},
+              ],
+              ai_use_policies: [
+                {value: "ask_before_use", label: "Ask before use", support_level: "supported"},
+              ],
+              claim_types: [],
+              candidate_types: [],
+            },
+          }),
+        );
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByRole("option", {name: "Vendor contact"})).toBeInTheDocument();
+    expect(screen.getByLabelText("Initial relationship type")).toHaveValue("vendor_contact");
+    expect(screen.getByLabelText("Sensitivity")).toHaveValue("high");
+    expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
+    expect(screen.getByLabelText("AI use policy")).toHaveValue("ask_before_use");
+    expect(screen.getByRole("option", {name: "Ask before use"})).toBeInTheDocument();
+    expect(screen.getByLabelText("Profile fact type")).toHaveValue("birthday");
+    expect(screen.getByRole("option", {name: "Birthday"})).toBeInTheDocument();
+    expect(screen.getByLabelText("Initial observation type")).toHaveValue("follow_up_context");
+    expect(screen.getByRole("option", {name: "Follow-up context"})).toBeInTheDocument();
+    expect(screen.queryByRole("option", {name: "user_preference_about_person"})).not.toBeInTheDocument();
+  });
+
   it("renders retrieval debug results with Korean semantic metadata", async () => {
     window.history.pushState({}, "", "/retrieval-debug");
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/entities?entity_type=person&limit=50")) {
+        return jsonResponse({
+          items: [
+            entityFixture({id: "self-1", display_name: "Self", system_role: "self"}),
+            entityFixture({id: "person-1", display_name: "김민지"}),
+            entityFixture({id: "person-2", display_name: "박서연"}),
+          ],
+          limit: 50,
+          offset: 0,
+          total: 3,
+        });
+      }
       if (url.endsWith("/api/context/retrieve")) {
         expect(init?.method).toBe("POST");
         expect(JSON.parse(String(init?.body))).toMatchObject({
@@ -298,10 +360,12 @@ describe("App route shell", () => {
       target: {value: "민지와 다음 미팅 전에 확인할 내용"},
     });
     fireEvent.change(screen.getByLabelText("Situation"), {target: {value: "follow_up"}});
-    fireEvent.change(screen.getByLabelText("Focal entity ID"), {target: {value: "self-1"}});
-    fireEvent.change(screen.getByLabelText("Candidate entity IDs"), {
-      target: {value: "person-1, person-2"},
+    await waitFor(() => expect(screen.getByLabelText("Focal entity")).toHaveValue("self-1"));
+    const candidateSelect = screen.getByLabelText("Candidate entities") as HTMLSelectElement;
+    Array.from(candidateSelect.options).forEach((option) => {
+      option.selected = option.value === "person-1" || option.value === "person-2";
     });
+    fireEvent.change(candidateSelect);
     fireEvent.click(screen.getByRole("button", {name: "Run debug"}));
 
     await waitFor(() => expect(screen.getAllByText("김민지").length).toBeGreaterThan(0));
@@ -312,12 +376,25 @@ describe("App route shell", () => {
     expect(screen.getAllByText(/semantic_similarity/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/\"semantic\": 0.62/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/\"embedding_provider\": \"local\"/).length).toBeGreaterThan(0);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/api/context/")).length).toBe(2);
   });
 
   it("creates a person with optional relationship and observation bootstrap", async () => {
     window.history.pushState({}, "", "/people/new");
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/ontology")) {
+        return jsonResponse(
+          ontologyFixture({
+            edge_types: [{relation_type: "friend", description: "Friend"}],
+            observation_types: [
+              {observation_type: "recent_interaction", description: "Recent interaction"},
+            ],
+            fact_types: [
+              {value: "organization", label: "Organization", support_level: "supported"},
+            ],
+          }),
+        );
+      }
       if (url.endsWith("/api/entities?entity_type=person&system_role=self&limit=1")) {
         return jsonResponse({
           items: [entityFixture({id: "self-1", display_name: "Me", system_role: "self"})],
@@ -353,6 +430,7 @@ describe("App route shell", () => {
 
     render(<App />);
 
+    await screen.findByRole("option", {name: "Friend"});
     fireEvent.change(screen.getByLabelText("Display name"), {target: {value: "박서연"}});
     fireEvent.change(screen.getByLabelText("Initial relationship type"), {
       target: {value: "friend"},
@@ -494,14 +572,150 @@ describe("App route shell", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
     );
-    expect(screen.getByLabelText("Relationship type edge-1")).toHaveValue("friend");
-    expect(screen.getByLabelText("Relationship claim edge-1")).toHaveValue(
+    expect(screen.getByLabelText("Relationship type friend")).toHaveValue("friend");
+    expect(screen.getByLabelText("Relationship claim friend")).toHaveValue(
       "민지는 사용자와 오래 알고 지낸 친구다.",
     );
     expect(screen.getByText("민지는 긴 설명보다 핵심 요약을 선호한다.")).toBeInTheDocument();
     expect(screen.getByText("최근 프로젝트 킥오프에 대해 후속 확인이 필요하다.")).toBeInTheDocument();
     expect(screen.getByText("Facts 1 / Edges 1 / Observations 2 / Evidence 3")).toBeInTheDocument();
     expect(screen.getByText("오래 알고 지낸 친구")).toBeInTheDocument();
+  });
+
+  it("hides technical record IDs on person detail default controls", async () => {
+    window.history.pushState({}, "", "/people/person-1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.endsWith("/api/entities/person-1")) {
+          return jsonResponse(entityFixture({id: "person-1", display_name: "김민지"}));
+        }
+        if (url.endsWith("/api/entities/person-1/aliases")) {
+          return jsonResponse({
+            items: [
+              {
+                id: "alias-technical-id",
+                entity_id: "person-1",
+                alias: "민지",
+                normalized_alias: "민지",
+                status: "active",
+                confidence: 1,
+                created_by: "user",
+                created_at: "2026-06-10T00:00:00Z",
+                updated_at: "2026-06-10T00:00:00Z",
+              },
+            ],
+            limit: 200,
+            offset: 0,
+            total: 1,
+          });
+        }
+        if (url.includes("/api/entity-facts?")) {
+          return jsonResponse({
+            items: [
+              {
+                id: "fact-technical-id",
+                entity_id: "person-1",
+                fact_type: "email",
+                content: "minji@example.com",
+                value: null,
+                claim_type: "fact",
+                confidence: 1,
+                sensitivity: "medium",
+                ai_use_policy: "cautious_use",
+                status: "active",
+                created_by: "user",
+                created_at: "2026-06-10T00:00:00Z",
+                updated_at: "2026-06-10T00:00:00Z",
+              },
+            ],
+            limit: 100,
+            offset: 0,
+            total: 1,
+          });
+        }
+        if (url.endsWith("/api/ontology")) {
+          return jsonResponse(ontologyFixture());
+        }
+        if (url.endsWith("/api/entities?entity_type=person&limit=50")) {
+          return jsonResponse({
+            items: [
+              entityFixture({id: "person-1", display_name: "김민지"}),
+              entityFixture({id: "person-2", display_name: "박서연"}),
+            ],
+            limit: 50,
+            offset: 0,
+            total: 2,
+          });
+        }
+        if (url.endsWith("/api/entities/person-1/context-card")) {
+          return jsonResponse(
+            contextCardFixture({
+              entity: entityFixture({id: "person-1", display_name: "김민지"}),
+              relationship_edges: [
+                {
+                  id: "edge-technical-id",
+                  from_entity_id: "self-1",
+                  to_entity_id: "person-1",
+                  relation_type: "friend",
+                  directed: false,
+                  claim_text: "오래 알고 지낸 친구",
+                  claim_type: "fact",
+                  properties: {},
+                  confidence: 0.9,
+                  status: "active",
+                  valid_from: null,
+                  valid_to: null,
+                  sensitivity: "medium",
+                  ai_use_policy: "cautious_use",
+                  created_by: "user",
+                  invalidated_by_edge_id: null,
+                  source_candidate_id: null,
+                  first_seen_at: null,
+                  last_seen_at: null,
+                  created_at: "2026-06-10T00:00:00Z",
+                  updated_at: "2026-06-10T00:00:00Z",
+                },
+              ],
+              recent_context: [
+                observationFixture({
+                  id: "observation-technical-id",
+                  content: "최근 프로젝트 후속 확인이 필요하다.",
+                }),
+              ],
+              provenance_summary: {
+                fact_count: 1,
+                edge_count: 1,
+                observation_count: 1,
+                evidence_count: 1,
+                evidence: [
+                  {
+                    record_type: "edge",
+                    record_id: "provenance-technical-id",
+                    episode_id: "episode-technical-id",
+                    excerpt: "오래 알고 지낸 친구",
+                    confidence: 0.9,
+                    created_at: "2026-06-10T00:00:00Z",
+                  },
+                ],
+              },
+            }),
+          );
+        }
+        throw new Error(`Unexpected URL ${url}`);
+      }),
+    );
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/alias-technical-id/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/fact-technical-id/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/edge-technical-id/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/observation-technical-id/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/provenance-technical-id/)).not.toBeInTheDocument();
   });
 
   it("edits person profile records through canonical APIs and refreshes context", async () => {
@@ -579,6 +793,39 @@ describe("App route shell", () => {
       if (url.endsWith("/api/entities/person-1/aliases") && !init?.method) {
         return jsonResponse({items: aliases, limit: 200, offset: 0, total: aliases.length});
       }
+      if (url.endsWith("/api/entities?entity_type=person&limit=50")) {
+        return jsonResponse({
+          items: [
+            entityFixture({id: "person-1", display_name: "김민지"}),
+            entityFixture({id: "person-2", display_name: "박서연"}),
+          ],
+          limit: 50,
+          offset: 0,
+          total: 2,
+        });
+      }
+      if (url.endsWith("/api/ontology")) {
+        return jsonResponse(
+          ontologyFixture({
+            fact_types: [
+              {value: "email", label: "Email", support_level: "supported"},
+              {value: "birthday", label: "Birthday", support_level: "supported"},
+            ],
+            policies: {
+              sensitivity_levels: [
+                {value: "medium", label: "Medium", support_level: "supported"},
+                {value: "high", label: "High", support_level: "supported"},
+              ],
+              ai_use_policies: [
+                {value: "cautious_use", label: "Cautious use", support_level: "supported"},
+                {value: "ask_before_use", label: "Ask before use", support_level: "supported"},
+              ],
+              claim_types: [],
+              candidate_types: [],
+            },
+          }),
+        );
+      }
       if (url.endsWith("/api/entities/person-1/aliases") && init?.method === "POST") {
         aliases = [{...aliases[0], id: "alias-2", alias: body.alias}, ...aliases];
         return jsonResponse(aliases[0]);
@@ -642,6 +889,14 @@ describe("App route shell", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
     );
+    const profileSensitivity = screen.getByLabelText("Sensitivity");
+    const profilePolicy = screen.getByLabelText("AI use policy");
+    expect(profileSensitivity).toHaveValue("medium");
+    expect(within(profileSensitivity).getByRole("option", {name: "High"})).toBeInTheDocument();
+    expect(profilePolicy).toHaveValue("cautious_use");
+    expect(within(profilePolicy).getByRole("option", {name: "Ask before use"})).toBeInTheDocument();
+    expect(screen.getByLabelText("New structured fact type")).toHaveValue("email");
+    expect(screen.getAllByRole("option", {name: "Birthday"}).length).toBeGreaterThan(0);
     fireEvent.change(screen.getByLabelText("Display name"), {target: {value: "김민지 수정"}});
     fireEvent.change(screen.getByLabelText("Profile note"), {target: {value: "새 메모"}});
     fireEvent.click(screen.getByRole("button", {name: "Save profile"}));
@@ -650,34 +905,170 @@ describe("App route shell", () => {
     fireEvent.change(screen.getByLabelText("New alias"), {target: {value: "MJ"}});
     fireEvent.click(screen.getByRole("button", {name: "Add alias"}));
     await waitFor(() => expect(screen.getByDisplayValue("MJ")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText("Alias alias-1"), {target: {value: "민지님"}});
-    fireEvent.click(screen.getByRole("button", {name: "Update alias alias-1"}));
+    fireEvent.change(screen.getAllByLabelText("Alias")[1], {target: {value: "민지님"}});
+    fireEvent.click(screen.getAllByRole("button", {name: "Update alias"})[1]);
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/aliases/alias-1"))).toBe(true));
 
     fireEvent.change(screen.getByLabelText("New structured fact content"), {
       target: {value: "new@example.com"},
     });
+    fireEvent.change(screen.getByLabelText("New structured fact type"), {
+      target: {value: "birthday"},
+    });
+    fireEvent.change(screen.getByLabelText("New structured fact sensitivity"), {
+      target: {value: "high"},
+    });
+    fireEvent.change(screen.getByLabelText("New structured fact AI use policy"), {
+      target: {value: "ask_before_use"},
+    });
     fireEvent.click(screen.getByRole("button", {name: "Add structured fact"}));
     await waitFor(() => expect(screen.getByDisplayValue("new@example.com")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText("Fact content fact-1"), {
+    expect(
+      fetchMock.mock.calls.some(([url, init]) => {
+        if (!String(url).endsWith("/api/entity-facts") || init?.method !== "POST") {
+          return false;
+        }
+        const body = JSON.parse(String(init.body));
+        return (
+          body.fact_type === "birthday" &&
+          body.sensitivity === "high" &&
+          body.ai_use_policy === "ask_before_use"
+        );
+      }),
+    ).toBe(true);
+    fireEvent.change(screen.getByLabelText("Fact content email"), {
       target: {value: "updated@example.com"},
     });
-    fireEvent.click(screen.getByRole("button", {name: "Update fact fact-1"}));
+    fireEvent.change(screen.getByLabelText("Fact sensitivity email"), {target: {value: "high"}});
+    fireEvent.change(screen.getByLabelText("Fact AI use policy email"), {
+      target: {value: "ask_before_use"},
+    });
+    fireEvent.click(screen.getAllByRole("button", {name: "Update fact"})[0]);
 
-    fireEvent.change(screen.getByLabelText("Related entity ID"), {target: {value: "person-2"}});
+    fireEvent.change(screen.getByLabelText("Related person"), {target: {value: "person-2"}});
     fireEvent.change(screen.getByLabelText("Relationship note"), {target: {value: "협업 파트너"}});
+    fireEvent.change(screen.getByLabelText("Relationship sensitivity"), {
+      target: {value: "high"},
+    });
+    fireEvent.change(screen.getByLabelText("Relationship AI use policy"), {
+      target: {value: "ask_before_use"},
+    });
     fireEvent.click(screen.getByRole("button", {name: "Add relationship"}));
     await waitFor(() => expect(screen.getByDisplayValue("협업 파트너")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText("Relationship claim edge-1"), {target: {value: "가까운 친구"}});
-    fireEvent.click(screen.getByRole("button", {name: "Update relationship edge-1"}));
+    fireEvent.change(screen.getAllByLabelText("Relationship claim friend")[1], {target: {value: "가까운 친구"}});
+    fireEvent.change(screen.getAllByLabelText("Relationship sensitivity friend")[1], {
+      target: {value: "medium"},
+    });
+    fireEvent.change(screen.getAllByLabelText("Relationship AI use policy friend")[1], {
+      target: {value: "cautious_use"},
+    });
+    fireEvent.click(screen.getAllByRole("button", {name: "Update relationship"})[1]);
 
-    fireEvent.click(screen.getByRole("button", {name: "Delete observation obs-1"}));
+    fireEvent.click(screen.getByRole("button", {name: "Delete observation"}));
     await waitFor(() => expect(screen.queryByText("삭제할 관찰")).not.toBeInTheDocument());
 
     expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/api/entities/person-1") && init?.method === "PATCH")).toBe(true);
-    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/api/entity-facts/fact-1") && init?.method === "PATCH")).toBe(true);
-    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/api/edges/edge-1") && init?.method === "PATCH")).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([url, init]) => {
+        if (!String(url).endsWith("/api/entity-facts/fact-1") || init?.method !== "PATCH") {
+          return false;
+        }
+        const body = JSON.parse(String(init.body));
+        return body.sensitivity === "high" && body.ai_use_policy === "ask_before_use";
+      }),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([url, init]) => {
+        if (!String(url).endsWith("/api/edges/edge-1") || init?.method !== "PATCH") {
+          return false;
+        }
+        const body = JSON.parse(String(init.body));
+        return body.sensitivity === "medium" && body.ai_use_policy === "cautious_use";
+      }),
+    ).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/entities/person-1/context-card"))).toBe(true);
+  });
+
+  it("creates relationships from a person picker while submitting IDs internally", async () => {
+    window.history.pushState({}, "", "/people/person-1");
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (url.endsWith("/api/entities/person-1")) {
+        return jsonResponse(entityFixture({id: "person-1", display_name: "김민지"}));
+      }
+      if (url.endsWith("/api/entities/person-1/aliases")) {
+        return jsonResponse({items: [], limit: 200, offset: 0, total: 0});
+      }
+      if (url.includes("/api/entity-facts?")) {
+        return jsonResponse({items: [], limit: 100, offset: 0, total: 0});
+      }
+      if (url.endsWith("/api/entities/person-1/context-card")) {
+        return jsonResponse(contextCardFixture({entity: entityFixture({id: "person-1", display_name: "김민지"})}));
+      }
+      if (url.endsWith("/api/entities?entity_type=person&limit=50")) {
+        return jsonResponse({
+          items: [
+            entityFixture({id: "person-1", display_name: "김민지"}),
+            entityFixture({id: "person-2", display_name: "박서연"}),
+          ],
+          limit: 50,
+          offset: 0,
+          total: 2,
+        });
+      }
+      if (url.endsWith("/api/ontology")) {
+        return jsonResponse(
+          ontologyFixture({
+            edge_types: [
+              {relation_type: "friend", description: "Friend"},
+              {relation_type: "vendor_contact", description: "Vendor contact"},
+            ],
+            policies: {
+              sensitivity_levels: [
+                {value: "high", label: "High", support_level: "supported"},
+              ],
+              ai_use_policies: [],
+              claim_types: [],
+              candidate_types: [],
+            },
+          }),
+        );
+      }
+      if (url.endsWith("/api/edges") && init?.method === "POST") {
+        return jsonResponse({id: "edge-2", status: "active", confidence: 1, ...body});
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByLabelText("Related person"), {target: {value: "person-2"}});
+    fireEvent.change(screen.getByLabelText("Relationship type"), {
+      target: {value: "vendor_contact"},
+    });
+    fireEvent.change(screen.getByLabelText("Relationship note"), {target: {value: "벤더 담당자"}});
+    fireEvent.click(screen.getByRole("button", {name: "Add relationship"}));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) => String(url).endsWith("/api/edges") && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+    const edgeCall = fetchMock.mock.calls.find(
+      ([url, init]) => String(url).endsWith("/api/edges") && init?.method === "POST",
+    );
+    expect(JSON.parse(String(edgeCall?.[1]?.body))).toMatchObject({
+      from_entity_id: "person-1",
+      to_entity_id: "person-2",
+      relation_type: "vendor_contact",
+      claim_text: "벤더 담당자",
+    });
   });
 
   it("shows validation errors while keeping the person detail form open", async () => {
@@ -733,6 +1124,30 @@ describe("App route shell", () => {
   it("renders candidate inbox filters, detail, actions, and edit-accept", async () => {
     window.history.pushState({}, "", "/candidates");
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/ontology")) {
+        return jsonResponse(
+          ontologyFixture({
+            policies: {
+              sensitivity_levels: [
+                {value: "high", label: "High", support_level: "supported"},
+              ],
+              ai_use_policies: [],
+              claim_types: [],
+              candidate_types: [
+                {value: "observation", label: "Observation", support_level: "supported"},
+              ],
+            },
+          }),
+        );
+      }
+      if (url.includes("/api/entities?")) {
+        return jsonResponse({
+          items: [entityFixture({id: "person-1", display_name: "김민지"})],
+          limit: 50,
+          offset: 0,
+          total: 1,
+        });
+      }
       if (url.includes("/api/candidates?")) {
         const query = new URL(String(url)).searchParams;
         const filtered =
@@ -780,25 +1195,30 @@ describe("App route shell", () => {
 
     render(<App />);
 
-    await waitFor(() => expect(screen.getAllByText("candidate-1").length).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(screen.getAllByText(/후속 확인이 필요하다/).length).toBeGreaterThan(0),
+    );
     expect(screen.getAllByText(/후속 확인이 필요하다/).length).toBeGreaterThan(0);
     expect(screen.getByText("회의 말미에 다음 액션을 물었다.")).toBeInTheDocument();
+    expect(screen.getAllByText("김민지").length).toBeGreaterThan(0);
+    expect(screen.getByRole("option", {name: "Observation"})).toBeInTheDocument();
+    expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
+    expect(screen.queryByText("candidate-1")).not.toBeInTheDocument();
     expect(fetchMock.mock.calls[0][0]).toContain("/api/candidates?status=pending&limit=50");
 
     fireEvent.change(screen.getByLabelText("Candidate type"), {target: {value: "observation"}});
     fireEvent.change(screen.getByLabelText("Sensitivity"), {target: {value: "high"}});
     await waitFor(() =>
-      expect(screen.getAllByText("candidate-filtered").length).toBeGreaterThan(0),
-    );
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("candidate_type=observation"))).toBe(
-      true,
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("candidate_type=observation"))).toBe(
+        true,
+      ),
     );
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=high"))).toBe(
       true,
     );
 
     fireEvent.click(screen.getByRole("button", {name: "Accept"}));
-    await waitFor(() => expect(screen.getByText("observations:obs-1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("observations record")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", {name: "Reject"}));
     await waitFor(() => expect(screen.getAllByText("rejected").length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole("button", {name: "Archive"}));
@@ -808,6 +1228,8 @@ describe("App route shell", () => {
       expect(screen.getAllByText("needs_clarification").length).toBeGreaterThan(0),
     );
 
+    expect(screen.queryByLabelText("Edited payload JSON")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: "Show raw/edit payload"}));
     fireEvent.change(screen.getByLabelText("Edited payload JSON"), {target: {value: "{"}});
     fireEvent.click(screen.getByRole("button", {name: "Edit accept"}));
     expect(screen.getByText("Invalid edited payload JSON.")).toBeInTheDocument();
@@ -823,12 +1245,68 @@ describe("App route shell", () => {
       },
     });
     fireEvent.click(screen.getByRole("button", {name: "Edit accept"}));
-    await waitFor(() => expect(screen.getByText("observations:obs-edited")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("observations record")).toBeInTheDocument());
+  });
+
+  it("summarizes candidates without showing candidate IDs by default", async () => {
+    window.history.pushState({}, "", "/candidates");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("/api/entities?")) {
+          return jsonResponse({
+            items: [entityFixture({id: "person-1", display_name: "김민지"})],
+            limit: 50,
+            offset: 0,
+            total: 1,
+          });
+        }
+        if (url.includes("/api/candidates?")) {
+          return jsonResponse({
+            items: [candidateFixture({id: "candidate-technical-id"})],
+            limit: 50,
+            offset: 0,
+            total: 1,
+          });
+        }
+        throw new Error(`Unexpected URL ${url}`);
+      }),
+    );
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getAllByText("후속 확인이 필요하다.").length).toBeGreaterThan(0),
+    );
+    expect(screen.queryByText("candidate-technical-id")).not.toBeInTheDocument();
+    expect(screen.queryByText("candidate-1")).not.toBeInTheDocument();
+    expect(screen.queryByText("person-1")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Edited payload JSON")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Show raw/edit payload"})).toBeInTheDocument();
   });
 
   it("renders ego graph with filters and node and edge detail panels", async () => {
     window.history.pushState({}, "", "/graph");
     const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/api/ontology")) {
+        return jsonResponse(
+          ontologyFixture({
+            edge_types: [
+              {relation_type: "friend", description: "Friend"},
+              {relation_type: "coworker", description: "Coworker"},
+            ],
+            policies: {
+              sensitivity_levels: [
+                {value: "medium", label: "Medium", support_level: "supported"},
+                {value: "high", label: "High", support_level: "supported"},
+              ],
+              ai_use_policies: [],
+              claim_types: [],
+              candidate_types: [],
+            },
+          }),
+        );
+      }
       if (url.endsWith("/api/entities?entity_type=person&limit=50")) {
         return jsonResponse({
           items: [
@@ -904,6 +1382,8 @@ describe("App route shell", () => {
     render(<App />);
 
     await waitFor(() => expect(screen.getAllByText("김민지").length).toBeGreaterThan(0));
+    expect(screen.getByRole("option", {name: "Friend"})).toBeInTheDocument();
+    expect(screen.getByRole("option", {name: "Medium"})).toBeInTheDocument();
     expect(screen.getByText("박서연")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Relation type"), {target: {value: "friend"}});
     fireEvent.change(screen.getByLabelText("Sensitivity"), {target: {value: "medium"}});
@@ -917,14 +1397,202 @@ describe("App route shell", () => {
     );
 
     fireEvent.click(screen.getByRole("button", {name: "Node 김민지"}));
-    expect(screen.getByText("person-1")).toBeInTheDocument();
+    expect(screen.getAllByText("김민지").length).toBeGreaterThan(0);
+    expect(screen.queryByText("person-1")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", {name: "Edge friend"}));
-    expect(screen.getByText("edge-1")).toBeInTheDocument();
+    expect(screen.getByText("Self -> 김민지")).toBeInTheDocument();
+    expect(screen.queryByText("edge-1")).not.toBeInTheDocument();
+  });
+
+  it("uses ontology relationship filters and hides graph IDs by default", async () => {
+    window.history.pushState({}, "", "/graph");
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/api/ontology")) {
+        return jsonResponse(
+          ontologyFixture({
+            edge_types: [
+              {relation_type: "friend", description: "Friend"},
+              {relation_type: "vendor_contact", description: "Vendor contact"},
+            ],
+          }),
+        );
+      }
+      if (url.endsWith("/api/entities?entity_type=person&limit=50")) {
+        return jsonResponse({
+          items: [
+            entityFixture({id: "self-1", display_name: "Self", system_role: "self"}),
+            entityFixture({id: "person-1", display_name: "김민지"}),
+          ],
+          limit: 50,
+          offset: 0,
+          total: 2,
+        });
+      }
+      if (url.includes("/api/graph/ego/self-1")) {
+        return jsonResponse({
+          focal_entity_id: "self-1",
+          depth: 1,
+          nodes: [
+            {
+              entity_id: "self-1",
+              display_name: "Self",
+              entity_type: "person",
+              status: "active",
+              sensitivity: "medium",
+              is_focal: true,
+            },
+            {
+              entity_id: "person-1",
+              display_name: "김민지",
+              entity_type: "person",
+              status: "active",
+              sensitivity: "medium",
+              is_focal: false,
+            },
+          ],
+          edges: [
+            {
+              edge_id: "edge-technical-id",
+              from_entity_id: "self-1",
+              to_entity_id: "person-1",
+              relation_type: "friend",
+              directed: false,
+              status: "active",
+              confidence: 0.9,
+              sensitivity: "medium",
+            },
+          ],
+          filters_applied: {depth: 1},
+        });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByRole("option", {name: "Vendor contact"})).toBeInTheDocument();
+    expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Relation type"), {target: {value: "vendor_contact"}});
+    fireEvent.change(screen.getByLabelText("Sensitivity"), {target: {value: "high"}});
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([url]) => String(url).includes("relation_type=vendor_contact")),
+      ).toBe(true),
+    );
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=high"))).toBe(true);
+    fireEvent.click(screen.getByRole("button", {name: "Node 김민지"}));
+    expect(screen.queryByText("person-1")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: "Edge friend"}));
+    expect(screen.queryByText("edge-technical-id")).not.toBeInTheDocument();
+    expect(screen.queryByText(/self-1/)).not.toBeInTheDocument();
+  });
+
+  it("lets retrieval debug choose people by display name while submitting IDs internally", async () => {
+    window.history.pushState({}, "", "/retrieval-debug");
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/entities?entity_type=person&limit=50")) {
+        return jsonResponse({
+          items: [
+            entityFixture({id: "self-1", display_name: "Self", system_role: "self"}),
+            entityFixture({id: "person-1", display_name: "김민지"}),
+            entityFixture({id: "person-2", display_name: "박서연"}),
+          ],
+          limit: 50,
+          offset: 0,
+          total: 3,
+        });
+      }
+      if (url.endsWith("/api/context/retrieve")) {
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          focal_entity_id: "self-1",
+          entity_hints: ["person-1", "person-2"],
+        });
+        return jsonResponse({
+          matched_entities: [
+            {
+              entity_id: "person-1",
+              display_name: "김민지",
+              entity_type: "person",
+              score: 0.91,
+              confidence_band: "high",
+              match_reasons: ["semantic_similarity"],
+              score_breakdown: {semantic: 0.62},
+              penalties: {},
+              surface_bucket: "direct_surface",
+              sensitivity: "medium",
+              ai_use_policy: "cautious_use",
+              confirmation_status: "confirmed",
+              profile_facts: [],
+              observations: [],
+            },
+          ],
+          observations: [],
+          scores: {"person-1": 0.91},
+          match_reasons: {"person-1": ["semantic_similarity"]},
+          score_breakdown: {"person-1": {semantic: 0.62}},
+          ambiguity_detected: false,
+          debug: {embedding_provider: "local"},
+        });
+      }
+      if (url.endsWith("/api/context/pack")) {
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          focal_entity_id: "self-1",
+          entity_hints: ["person-1", "person-2"],
+        });
+        return jsonResponse({
+          context_pack: {
+            confidence: "high",
+            suggested_response_policy: "conditional_use",
+            ambiguity_detected: false,
+            matched_entities: [],
+            buckets: {direct_surface: []},
+            recent_context: [],
+            stable_context: [],
+            cautions: [],
+            provenance: [],
+          },
+          debug: {packing: "policy_bucketed"},
+        });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByLabelText("Focal entity")).toHaveValue("self-1");
+    const candidateSelect = screen.getByLabelText("Candidate entities") as HTMLSelectElement;
+    Array.from(candidateSelect.options).forEach((option) => {
+      option.selected = option.value === "person-1" || option.value === "person-2";
+    });
+    fireEvent.change(candidateSelect);
+    fireEvent.change(screen.getByLabelText("Query"), {target: {value: "민지와 다음 미팅"}});
+    fireEvent.click(screen.getByRole("button", {name: "Run debug"}));
+
+    await waitFor(() => expect(screen.getAllByText("김민지").length).toBeGreaterThan(0));
+    expect(screen.queryByLabelText("Focal entity ID")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Candidate entity IDs")).not.toBeInTheDocument();
+    expect(screen.queryByText("person-1")).not.toBeInTheDocument();
   });
 
   it("shows people filters and relationship context summaries", async () => {
     window.history.pushState({}, "", "/people");
     const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/api/ontology")) {
+        return jsonResponse(
+          ontologyFixture({
+            policies: {
+              sensitivity_levels: [
+                {value: "high", label: "High", support_level: "supported"},
+              ],
+              ai_use_policies: [],
+              claim_types: [],
+              candidate_types: [],
+            },
+          }),
+        );
+      }
       if (url.includes("/api/entities?")) {
         return jsonResponse({
           items: [entityFixture({id: "person-1", display_name: "김민지"})],
@@ -995,14 +1663,15 @@ describe("App route shell", () => {
     await waitFor(() => expect(screen.getAllByText("김민지").length).toBeGreaterThan(0));
     expect(screen.getByText("민지")).toBeInTheDocument();
     expect(screen.getByText("1 relationships / 1 recent")).toBeInTheDocument();
+    expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Status filter"), {target: {value: "active"}});
-    fireEvent.change(screen.getByLabelText("Sensitivity filter"), {target: {value: "medium"}});
+    fireEvent.change(screen.getByLabelText("Sensitivity filter"), {target: {value: "high"}});
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([url]) => String(url).includes("status=active"))).toBe(
         true,
       ),
     );
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=medium"))).toBe(
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=high"))).toBe(
       true,
     );
   });
@@ -1152,6 +1821,36 @@ function candidateFixture(overrides: Partial<Record<string, unknown>> = {}) {
     canonical_record_ref: null,
     supersedes_candidate_id: null,
     supersedes_record_ref: null,
+    ...overrides,
+  };
+}
+
+function ontologyFixture(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    entity_types: [{value: "person", label: "Person", support_level: "supported"}],
+    fact_types: [{value: "organization", label: "Organization", support_level: "supported"}],
+    edge_types: [
+      {relation_type: "friend", description: "Friend"},
+      {relation_type: "client_contact", description: "Client contact"},
+    ],
+    observation_types: [
+      {observation_type: "recent_interaction", description: "Recent interaction"},
+    ],
+    policies: {
+      sensitivity_levels: [
+        {value: "low", label: "Low", support_level: "supported"},
+        {value: "medium", label: "Medium", support_level: "supported"},
+        {value: "high", label: "High", support_level: "supported"},
+      ],
+      ai_use_policies: [
+        {value: "freely_use", label: "Freely use", support_level: "supported"},
+        {value: "cautious_use", label: "Cautious use", support_level: "supported"},
+        {value: "ask_before_use", label: "Ask before use", support_level: "supported"},
+        {value: "never_surface", label: "Never surface", support_level: "supported"},
+      ],
+      claim_types: [],
+      candidate_types: [],
+    },
     ...overrides,
   };
 }

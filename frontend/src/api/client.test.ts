@@ -3,12 +3,15 @@ import {beforeEach, describe, expect, it, vi} from "vitest";
 import {
   ApiError,
   clearLocalApiToken,
+  createEdge,
+  getOntology,
   packContext,
   isLocalApiTokenConfigured,
   request,
   resolveApiUrl,
   retrieveContext,
   setLocalApiToken,
+  updateEdge,
 } from "./client";
 
 describe("API client", () => {
@@ -149,5 +152,66 @@ describe("API client", () => {
         }),
       }),
     );
+  });
+
+  it("fetches ontology and submits canonical relationship type values", async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/ontology")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              entity_types: [],
+              fact_types: [],
+              edge_types: [
+                {
+                  relation_type: "vendor_contact",
+                  description: "Vendor contact",
+                  from_entity_type: "person",
+                  to_entity_type: "person",
+                  directed_default: false,
+                },
+              ],
+              observation_types: [],
+              policies: {
+                sensitivity_levels: [],
+                ai_use_policies: [],
+                claim_types: [],
+                candidate_types: [],
+              },
+            }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({id: "edge-1", ...JSON.parse(String(init?.body ?? "{}"))}),
+      } as Response);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ontology = await getOntology();
+    await createEdge({
+      from_entity_id: "self-1",
+      to_entity_id: "person-2",
+      relation_type: ontology.edge_types[0].relation_type,
+      claim_text: "Dana is the vendor contact.",
+      claim_type: "fact",
+      created_by: "user",
+    });
+    await updateEdge("edge-1", {relation_type: ontology.edge_types[0].relation_type});
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8765/api/ontology",
+      expect.any(Object),
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({
+      relation_type: "vendor_contact",
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toMatchObject({
+      relation_type: "vendor_contact",
+    });
   });
 });

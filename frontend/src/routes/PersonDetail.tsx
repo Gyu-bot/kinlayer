@@ -12,12 +12,21 @@ import {
   getAliases,
   getContextCard,
   getFacts,
+  getOntology,
   getPerson,
+  listPeople,
   updateAlias,
   updateEdge,
   updateFact,
   updatePerson,
 } from "../api/client";
+import {
+  edgeTypeOptions,
+  normalizeOptionValue,
+  optionsWithCurrent,
+  registryOptions,
+  type SelectOption,
+} from "../ontologyOptions";
 import type {ContextCard, Entity, EntityAlias, EntityEdge, EntityFact, Observation} from "../types/entities";
 
 type Props = {
@@ -35,9 +44,6 @@ const STRUCTURED_FACT_TYPES = [
   "role",
   "memo",
 ];
-
-const SENSITIVITY_OPTIONS = ["low", "medium", "high"];
-const POLICY_OPTIONS = ["freely_use", "cautious_use", "ask_before_use", "never_surface"];
 
 type FactDraft = {
   fact_type: string;
@@ -59,31 +65,36 @@ export function PersonDetail({id, onNavigate}: Props) {
   const [aliases, setAliases] = useState<EntityAlias[]>([]);
   const [facts, setFacts] = useState<EntityFact[]>([]);
   const [contextCard, setContextCard] = useState<ContextCard | null>(null);
+  const [people, setPeople] = useState<Entity[]>([]);
+  const [edgeTypes, setEdgeTypes] = useState<SelectOption[]>([]);
+  const [factTypes, setFactTypes] = useState<SelectOption[]>([]);
+  const [sensitivityOptions, setSensitivityOptions] = useState<SelectOption[]>([]);
+  const [policyOptions, setPolicyOptions] = useState<SelectOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [profileDraft, setProfileDraft] = useState({
     display_name: "",
-    sensitivity: "medium",
-    ai_use_policy: "cautious_use",
+    sensitivity: "",
+    ai_use_policy: "",
     short_note: "",
   });
   const [aliasDrafts, setAliasDrafts] = useState<Record<string, string>>({});
   const [newAlias, setNewAlias] = useState("");
   const [factDrafts, setFactDrafts] = useState<Record<string, FactDraft>>({});
   const [newFact, setNewFact] = useState<FactDraft>({
-    fact_type: "email",
+    fact_type: "",
     content: "",
     claim_type: "fact",
-    sensitivity: "medium",
-    ai_use_policy: "cautious_use",
+    sensitivity: "",
+    ai_use_policy: "",
   });
   const [edgeDrafts, setEdgeDrafts] = useState<Record<string, EdgeDraft>>({});
   const [newEdge, setNewEdge] = useState({
     to_entity_id: "",
-    relation_type: "friend",
+    relation_type: "",
     claim_text: "",
-    sensitivity: "medium",
-    ai_use_policy: "cautious_use",
+    sensitivity: "",
+    ai_use_policy: "",
   });
 
   const applyLoadedState = useCallback(
@@ -146,6 +157,38 @@ export function PersonDetail({id, onNavigate}: Props) {
   useEffect(() => {
     refresh().catch((err: Error) => setError(err.message));
   }, [refresh]);
+
+  useEffect(() => {
+    Promise.all([listPeople(""), getOntology()])
+      .then(([peopleResult, ontology]) => {
+        const nextEdgeTypes = edgeTypeOptions(ontology.edge_types);
+        const nextFactTypes = registryOptions(ontology.fact_types);
+        const nextSensitivityOptions = registryOptions(ontology.policies.sensitivity_levels);
+        const nextPolicyOptions = registryOptions(ontology.policies.ai_use_policies);
+        setPeople(peopleResult.items);
+        setEdgeTypes(nextEdgeTypes);
+        setFactTypes(nextFactTypes);
+        setSensitivityOptions(nextSensitivityOptions);
+        setPolicyOptions(nextPolicyOptions);
+        setNewEdge((current) => {
+          const firstRelated = peopleResult.items.find((personItem) => personItem.id !== id);
+          return {
+            ...current,
+            relation_type: normalizeOptionValue(current.relation_type, nextEdgeTypes),
+            to_entity_id: current.to_entity_id || firstRelated?.id || "",
+            sensitivity: normalizeOptionValue(current.sensitivity, nextSensitivityOptions),
+            ai_use_policy: normalizeOptionValue(current.ai_use_policy, nextPolicyOptions),
+          };
+        });
+        setNewFact((current) => ({
+          ...current,
+          fact_type: normalizeOptionValue(current.fact_type, nextFactTypes),
+          sensitivity: normalizeOptionValue(current.sensitivity, nextSensitivityOptions),
+          ai_use_policy: normalizeOptionValue(current.ai_use_policy, nextPolicyOptions),
+        }));
+      })
+      .catch(() => undefined);
+  }, [id]);
 
   async function runAction(action: () => Promise<unknown>) {
     try {
@@ -290,9 +333,9 @@ export function PersonDetail({id, onNavigate}: Props) {
                 setProfileDraft({...profileDraft, sensitivity: event.target.value})
               }
             >
-              {SENSITIVITY_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
+              {optionsWithCurrent(sensitivityOptions, profileDraft.sensitivity).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -305,9 +348,9 @@ export function PersonDetail({id, onNavigate}: Props) {
                 setProfileDraft({...profileDraft, ai_use_policy: event.target.value})
               }
             >
-              {POLICY_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
+              {optionsWithCurrent(policyOptions, profileDraft.ai_use_policy).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -338,7 +381,7 @@ export function PersonDetail({id, onNavigate}: Props) {
           {aliases.map((alias) => (
             <div className="edit-row" key={alias.id}>
               <label>
-                Alias {alias.id}
+                Alias
                 <input
                   value={aliasDrafts[alias.id] ?? alias.alias}
                   onChange={(event) =>
@@ -354,10 +397,10 @@ export function PersonDetail({id, onNavigate}: Props) {
                   )
                 }
               >
-                Update alias {alias.id}
+                Update alias
               </button>
               <button type="button" className="secondary" onClick={() => runAction(() => deleteAlias(alias.id))}>
-                Delete alias {alias.id}
+                Delete alias
               </button>
             </div>
           ))}
@@ -367,10 +410,20 @@ export function PersonDetail({id, onNavigate}: Props) {
 
       <section className="detail-section">
         <h2>Structured Profile Facts</h2>
-        <FactCreateForm newFact={newFact} setNewFact={setNewFact} onSubmit={addFact} />
+        <FactCreateForm
+          newFact={newFact}
+          factTypes={factTypes}
+          sensitivityOptions={sensitivityOptions}
+          policyOptions={policyOptions}
+          setNewFact={setNewFact}
+          onSubmit={addFact}
+        />
         <FactTable
           facts={structuredFacts}
           factDrafts={factDrafts}
+          factTypes={factTypes}
+          sensitivityOptions={sensitivityOptions}
+          policyOptions={policyOptions}
           setFactDrafts={setFactDrafts}
           runAction={runAction}
         />
@@ -381,6 +434,9 @@ export function PersonDetail({id, onNavigate}: Props) {
         <FactTable
           facts={generalFacts}
           factDrafts={factDrafts}
+          factTypes={factTypes}
+          sensitivityOptions={sensitivityOptions}
+          policyOptions={policyOptions}
           setFactDrafts={setFactDrafts}
           runAction={runAction}
         />
@@ -390,18 +446,32 @@ export function PersonDetail({id, onNavigate}: Props) {
         <h2>Relationships</h2>
         <form className="edit-grid" onSubmit={addRelationship}>
           <label>
-            Related entity ID
-            <input
+            Related person
+            <select
               value={newEdge.to_entity_id}
               onChange={(event) => setNewEdge({...newEdge, to_entity_id: event.target.value})}
-            />
+            >
+              {people
+                .filter((personItem) => personItem.id !== id)
+                .map((personItem) => (
+                  <option value={personItem.id} key={personItem.id}>
+                    {personItem.display_name}
+                  </option>
+                ))}
+            </select>
           </label>
           <label>
             Relationship type
-            <input
+            <select
               value={newEdge.relation_type}
               onChange={(event) => setNewEdge({...newEdge, relation_type: event.target.value})}
-            />
+            >
+              {optionsWithCurrent(edgeTypes, newEdge.relation_type).map((edgeType) => (
+                <option key={edgeType.value} value={edgeType.value}>
+                  {edgeType.label}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="wide">
             Relationship note
@@ -409,6 +479,32 @@ export function PersonDetail({id, onNavigate}: Props) {
               value={newEdge.claim_text}
               onChange={(event) => setNewEdge({...newEdge, claim_text: event.target.value})}
             />
+          </label>
+          <label>
+            Relationship sensitivity
+            <select
+              value={newEdge.sensitivity}
+              onChange={(event) => setNewEdge({...newEdge, sensitivity: event.target.value})}
+            >
+              {optionsWithCurrent(sensitivityOptions, newEdge.sensitivity).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Relationship AI use policy
+            <select
+              value={newEdge.ai_use_policy}
+              onChange={(event) => setNewEdge({...newEdge, ai_use_policy: event.target.value})}
+            >
+              {optionsWithCurrent(policyOptions, newEdge.ai_use_policy).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
           <button type="submit">Add relationship</button>
         </form>
@@ -427,6 +523,9 @@ export function PersonDetail({id, onNavigate}: Props) {
                 <RelationshipRow
                   edge={edge}
                   draft={edgeDrafts[edge.id]}
+                  edgeTypes={edgeTypes}
+                  sensitivityOptions={sensitivityOptions}
+                  policyOptions={policyOptions}
                   key={edge.id}
                   setDraft={(draft) => setEdgeDrafts({...edgeDrafts, [edge.id]: draft})}
                   runAction={runAction}
@@ -465,7 +564,7 @@ export function PersonDetail({id, onNavigate}: Props) {
           {(contextCard?.provenance_summary.evidence ?? []).map((item) => (
             <div className="bucket-row" key={`${item.record_type}-${item.record_id}`}>
               <strong>{item.record_type}</strong>
-              <span>{item.excerpt ?? item.record_id}</span>
+              <span>{item.excerpt ?? `${item.record_type} record`}</span>
             </div>
           ))}
           {(contextCard?.provenance_summary.evidence ?? []).length === 0 ? (
@@ -479,10 +578,16 @@ export function PersonDetail({id, onNavigate}: Props) {
 
 function FactCreateForm({
   newFact,
+  factTypes,
+  sensitivityOptions,
+  policyOptions,
   setNewFact,
   onSubmit,
 }: {
   newFact: FactDraft;
+  factTypes: SelectOption[];
+  sensitivityOptions: SelectOption[];
+  policyOptions: SelectOption[];
   setNewFact: (fact: FactDraft) => void;
   onSubmit: (event: FormEvent) => void;
 }) {
@@ -490,23 +595,49 @@ function FactCreateForm({
     <form className="edit-grid" onSubmit={onSubmit}>
       <label>
         New structured fact type
-        <input
-          list="structured-fact-types"
+        <select
           value={newFact.fact_type}
           onChange={(event) => setNewFact({...newFact, fact_type: event.target.value})}
-        />
+        >
+          {optionsWithCurrent(factTypes, newFact.fact_type).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </label>
-      <datalist id="structured-fact-types">
-        {STRUCTURED_FACT_TYPES.map((type) => (
-          <option key={type} value={type} />
-        ))}
-      </datalist>
       <label className="wide">
         New structured fact content
         <input
           value={newFact.content}
           onChange={(event) => setNewFact({...newFact, content: event.target.value})}
         />
+      </label>
+      <label>
+        New structured fact sensitivity
+        <select
+          value={newFact.sensitivity}
+          onChange={(event) => setNewFact({...newFact, sensitivity: event.target.value})}
+        >
+          {optionsWithCurrent(sensitivityOptions, newFact.sensitivity).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        New structured fact AI use policy
+        <select
+          value={newFact.ai_use_policy}
+          onChange={(event) => setNewFact({...newFact, ai_use_policy: event.target.value})}
+        >
+          {optionsWithCurrent(policyOptions, newFact.ai_use_policy).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </label>
       <button type="submit">Add structured fact</button>
     </form>
@@ -516,11 +647,17 @@ function FactCreateForm({
 function FactTable({
   facts,
   factDrafts,
+  factTypes,
+  sensitivityOptions,
+  policyOptions,
   setFactDrafts,
   runAction,
 }: {
   facts: EntityFact[];
   factDrafts: Record<string, FactDraft>;
+  factTypes: SelectOption[];
+  sensitivityOptions: SelectOption[];
+  policyOptions: SelectOption[];
   setFactDrafts: (drafts: Record<string, FactDraft>) => void;
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
@@ -548,8 +685,8 @@ function FactTable({
             return (
               <tr key={fact.id}>
                 <td>
-                  <input
-                    aria-label={`Fact type ${fact.id}`}
+                  <select
+                    aria-label={`Fact type ${fact.fact_type}`}
                     value={draft.fact_type}
                     onChange={(event) =>
                       setFactDrafts({
@@ -557,11 +694,17 @@ function FactTable({
                         [fact.id]: {...draft, fact_type: event.target.value},
                       })
                     }
-                  />
+                  >
+                    {optionsWithCurrent(factTypes, draft.fact_type).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td>
                   <input
-                    aria-label={`Fact content ${fact.id}`}
+                    aria-label={`Fact content ${fact.fact_type}`}
                     value={draft.content}
                     onChange={(event) =>
                       setFactDrafts({
@@ -572,7 +715,42 @@ function FactTable({
                   />
                 </td>
                 <td>{draft.claim_type}</td>
-                <td>{draft.ai_use_policy}</td>
+                <td>
+                  <div className="stacked-selects">
+                    <select
+                      aria-label={`Fact sensitivity ${fact.fact_type}`}
+                      value={draft.sensitivity}
+                      onChange={(event) =>
+                        setFactDrafts({
+                          ...factDrafts,
+                          [fact.id]: {...draft, sensitivity: event.target.value},
+                        })
+                      }
+                    >
+                      {optionsWithCurrent(sensitivityOptions, draft.sensitivity).map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label={`Fact AI use policy ${fact.fact_type}`}
+                      value={draft.ai_use_policy}
+                      onChange={(event) =>
+                        setFactDrafts({
+                          ...factDrafts,
+                          [fact.id]: {...draft, ai_use_policy: event.target.value},
+                        })
+                      }
+                    >
+                      {optionsWithCurrent(policyOptions, draft.ai_use_policy).map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </td>
                 <td>
                   <div className="action-row">
                     <button
@@ -590,14 +768,14 @@ function FactTable({
                         )
                       }
                     >
-                      Update fact {fact.id}
+                      Update fact
                     </button>
                     <button
                       type="button"
                       className="secondary"
                       onClick={() => runAction(() => deleteFact(fact.id))}
                     >
-                      Delete fact {fact.id}
+                      Delete fact
                     </button>
                   </div>
                 </td>
@@ -618,11 +796,17 @@ function FactTable({
 function RelationshipRow({
   edge,
   draft,
+  edgeTypes,
+  sensitivityOptions,
+  policyOptions,
   setDraft,
   runAction,
 }: {
   edge: EntityEdge;
   draft: EdgeDraft | undefined;
+  edgeTypes: SelectOption[];
+  sensitivityOptions: SelectOption[];
+  policyOptions: SelectOption[];
   setDraft: (draft: EdgeDraft) => void;
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
@@ -635,20 +819,51 @@ function RelationshipRow({
   return (
     <tr>
       <td>
-        <input
-          aria-label={`Relationship type ${edge.id}`}
+        <select
+          aria-label={`Relationship type ${edge.relation_type}`}
           value={current.relation_type}
           onChange={(event) => setDraft({...current, relation_type: event.target.value})}
-        />
+        >
+          {optionsWithCurrent(edgeTypes, current.relation_type).map((edgeType) => (
+            <option key={edgeType.value} value={edgeType.value}>
+              {edgeType.label}
+            </option>
+          ))}
+        </select>
       </td>
       <td>
         <input
-          aria-label={`Relationship claim ${edge.id}`}
+          aria-label={`Relationship claim ${edge.relation_type}`}
           value={current.claim_text}
           onChange={(event) => setDraft({...current, claim_text: event.target.value})}
         />
       </td>
-      <td>{current.ai_use_policy}</td>
+      <td>
+        <div className="stacked-selects">
+          <select
+            aria-label={`Relationship sensitivity ${edge.relation_type}`}
+            value={current.sensitivity}
+            onChange={(event) => setDraft({...current, sensitivity: event.target.value})}
+          >
+            {optionsWithCurrent(sensitivityOptions, current.sensitivity).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label={`Relationship AI use policy ${edge.relation_type}`}
+            value={current.ai_use_policy}
+            onChange={(event) => setDraft({...current, ai_use_policy: event.target.value})}
+          >
+            {optionsWithCurrent(policyOptions, current.ai_use_policy).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </td>
       <td>
         <div className="action-row">
           <button
@@ -664,14 +879,14 @@ function RelationshipRow({
               )
             }
           >
-            Update relationship {edge.id}
+            Update relationship
           </button>
           <button
             type="button"
             className="secondary"
             onClick={() => runAction(() => deleteEdge(edge.id))}
           >
-            Delete relationship {edge.id}
+            Delete relationship
           </button>
         </div>
       </td>
@@ -705,7 +920,7 @@ function ObservationSection({
               <span className="pill">{observation.sensitivity}</span>
             </div>
             <button type="button" className="secondary" onClick={() => onDelete(observation.id)}>
-              Delete observation {observation.id}
+              Delete observation
             </button>
           </article>
         ))}

@@ -1,6 +1,7 @@
 import {useEffect, useState} from "react";
 
-import {getAliases, getContextCard, listPeople} from "../api/client";
+import {getAliases, getContextCard, getOntology, listPeople} from "../api/client";
+import {includeAllOption, registryOptions, type SelectOption} from "../ontologyOptions";
 import type {Entity, EntityAlias} from "../types/entities";
 
 type Props = {
@@ -38,11 +39,18 @@ export function PeopleList({onNavigate}: Props) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sensitivityFilter, setSensitivityFilter] = useState("all");
   const [people, setPeople] = useState<Entity[]>([]);
+  const [sensitivityOptions, setSensitivityOptions] = useState<SelectOption[]>([]);
   const [aliasesByPerson, setAliasesByPerson] = useState<Record<string, EntityAlias[]>>({});
   const [summariesByPerson, setSummariesByPerson] = useState<Record<string, string>>({});
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getOntology()
+      .then((ontology) => setSensitivityOptions(registryOptions(ontology.policies.sensitivity_levels)))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -112,10 +120,11 @@ export function PeopleList({onNavigate}: Props) {
             value={sensitivityFilter}
             onChange={(event) => setSensitivityFilter(event.target.value)}
           >
-            <option value="all">all</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
+            {includeAllOption(sensitivityOptions).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </label>
       </div>

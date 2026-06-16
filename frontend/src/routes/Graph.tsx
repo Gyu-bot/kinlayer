@@ -2,12 +2,12 @@ import {useEffect, useMemo, useState} from "react";
 import {Background, Controls, ReactFlow, type Edge, type Node} from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import {formatApiError, getEgoGraph, listPeople} from "../api/client";
+import {formatApiError, getEgoGraph, getOntology, listPeople} from "../api/client";
+import {includeAllOption, edgeTypeOptions, registryOptions, type SelectOption} from "../ontologyOptions";
 import type {Entity} from "../types/entities";
 import type {EgoGraph, GraphEdge, GraphFilters, GraphNode} from "../types/graph";
 
 const graphStatuses = ["active", "deleted", "deprecated", "disputed", "superseded"];
-const graphSensitivities = ["all", "low", "medium", "high"];
 
 export function Graph() {
   const [people, setPeople] = useState<Entity[]>([]);
@@ -18,6 +18,8 @@ export function Graph() {
     sensitivity: "all",
   });
   const [graph, setGraph] = useState<EgoGraph | null>(null);
+  const [edgeTypes, setEdgeTypes] = useState<SelectOption[]>([]);
+  const [sensitivityOptions, setSensitivityOptions] = useState<SelectOption[]>([]);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +32,15 @@ export function Graph() {
         setError(null);
       })
       .catch((err: unknown) => setError(formatApiError(err)));
+  }, []);
+
+  useEffect(() => {
+    getOntology()
+      .then((ontology) => {
+        setEdgeTypes(edgeTypeOptions(ontology.edge_types));
+        setSensitivityOptions(registryOptions(ontology.policies.sensitivity_levels));
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -111,10 +122,17 @@ export function Graph() {
         </label>
         <label>
           <span>Relation type</span>
-          <input
+          <select
             value={filters.relation_type}
             onChange={(event) => updateFilter("relation_type", event.target.value)}
-          />
+          >
+            <option value="">All relationship types</option>
+            {edgeTypes.map((edgeType) => (
+              <option key={edgeType.value} value={edgeType.value}>
+                {edgeType.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           <span>Status</span>
@@ -132,9 +150,9 @@ export function Graph() {
             value={filters.sensitivity}
             onChange={(event) => updateFilter("sensitivity", event.target.value)}
           >
-            {graphSensitivities.map((sensitivity) => (
-              <option value={sensitivity} key={sensitivity}>
-                {sensitivity}
+            {includeAllOption(sensitivityOptions).map((sensitivity) => (
+              <option value={sensitivity.value} key={sensitivity.value}>
+                {sensitivity.label}
               </option>
             ))}
           </select>
@@ -201,7 +219,7 @@ export function Graph() {
               </div>
             </section>
             {selectedNode ? <NodeDetail node={selectedNode} /> : null}
-            {selectedEdge ? <EdgeDetail edge={selectedEdge} /> : null}
+            {selectedEdge ? <EdgeDetail edge={selectedEdge} graph={graph} /> : null}
           </div>
         </section>
       </div>
@@ -217,8 +235,8 @@ function NodeDetail({node}: {node: GraphNode}) {
         <dd>{node.display_name}</dd>
       </div>
       <div>
-        <dt>ID</dt>
-        <dd>{node.entity_id}</dd>
+        <dt>Type</dt>
+        <dd>{node.entity_type}</dd>
       </div>
       <div>
         <dt>Status</dt>
@@ -232,13 +250,11 @@ function NodeDetail({node}: {node: GraphNode}) {
   );
 }
 
-function EdgeDetail({edge}: {edge: GraphEdge}) {
+function EdgeDetail({edge, graph}: {edge: GraphEdge; graph: EgoGraph | null}) {
+  const from = graph?.nodes.find((node) => node.entity_id === edge.from_entity_id);
+  const to = graph?.nodes.find((node) => node.entity_id === edge.to_entity_id);
   return (
     <dl className="definition-list compact">
-      <div>
-        <dt>Edge</dt>
-        <dd>{edge.edge_id}</dd>
-      </div>
       <div>
         <dt>Type</dt>
         <dd>{edge.relation_type}</dd>
@@ -246,8 +262,20 @@ function EdgeDetail({edge}: {edge: GraphEdge}) {
       <div>
         <dt>Endpoints</dt>
         <dd>
-          {edge.from_entity_id} {"->"} {edge.to_entity_id}
+          {from?.display_name ?? "Unknown"} {"->"} {to?.display_name ?? "Unknown"}
         </dd>
+      </div>
+      <div>
+        <dt>Direction</dt>
+        <dd>{edge.directed ? "directed" : "undirected"}</dd>
+      </div>
+      <div>
+        <dt>Status</dt>
+        <dd>{edge.status}</dd>
+      </div>
+      <div>
+        <dt>Sensitivity</dt>
+        <dd>{edge.sensitivity}</dd>
       </div>
       <div>
         <dt>Confidence</dt>

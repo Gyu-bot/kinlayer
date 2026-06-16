@@ -1,14 +1,8 @@
-import {FormEvent, useState} from "react";
+import {FormEvent, useEffect, useMemo, useState} from "react";
 
-import {formatApiError, packContext, retrieveContext} from "../api/client";
+import {formatApiError, listPeople, packContext, retrieveContext} from "../api/client";
+import type {Entity} from "../types/entities";
 import type {ContextPackResponse, ContextRetrieveResponse, MatchedEntity} from "../types/context";
-
-function splitEntityHints(value: string) {
-  return value
-    .split(/[\n,]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
 
 function compactPayload({
   query,
@@ -19,11 +13,11 @@ function compactPayload({
   query: string;
   situation: string;
   focalEntityId: string;
-  entityHints: string;
+  entityHints: string[];
 }) {
   const base = {
     query: query.trim(),
-    entity_hints: splitEntityHints(entityHints),
+    entity_hints: entityHints,
     include_debug: true,
     limit: 10,
   };
@@ -41,14 +35,25 @@ function compactPayload({
 }
 
 export function RetrievalDebug() {
+  const [people, setPeople] = useState<Entity[]>([]);
   const [query, setQuery] = useState("");
   const [situation, setSituation] = useState("");
   const [focalEntityId, setFocalEntityId] = useState("");
-  const [entityHints, setEntityHints] = useState("");
+  const [entityHints, setEntityHints] = useState<string[]>([]);
+  const [showRaw, setShowRaw] = useState(false);
   const [retrieveResult, setRetrieveResult] = useState<ContextRetrieveResponse | null>(null);
   const [packResult, setPackResult] = useState<ContextPackResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    listPeople("")
+      .then((result) => {
+        setPeople(result.items);
+        setFocalEntityId((current) => current || result.items[0]?.id || "");
+      })
+      .catch(() => undefined);
+  }, []);
 
   function runDebug(event: FormEvent) {
     event.preventDefault();
@@ -69,6 +74,17 @@ export function RetrievalDebug() {
   }
 
   const pack = packResult?.context_pack;
+  const scoreBreakdownByName = useMemo(() => {
+    if (!retrieveResult) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(retrieveResult.score_breakdown).map(([entityId, score]) => {
+        const match = retrieveResult.matched_entities.find((item) => item.entity_id === entityId);
+        return [match?.display_name ?? "Unknown entity", score];
+      }),
+    );
+  }, [retrieveResult]);
 
   return (
     <section className="page-section" aria-labelledby="retrieval-debug-title">
@@ -90,15 +106,31 @@ export function RetrievalDebug() {
           <input value={situation} onChange={(event) => setSituation(event.target.value)} />
         </label>
         <label>
-          <span>Focal entity ID</span>
-          <input value={focalEntityId} onChange={(event) => setFocalEntityId(event.target.value)} />
+          <span>Focal entity</span>
+          <select value={focalEntityId} onChange={(event) => setFocalEntityId(event.target.value)}>
+            <option value="">None</option>
+            {people.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.display_name}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
-          <span>Candidate entity IDs</span>
-          <textarea
+          <span>Candidate entities</span>
+          <select
+            multiple
             value={entityHints}
-            onChange={(event) => setEntityHints(event.target.value)}
-          />
+            onChange={(event) =>
+              setEntityHints(Array.from(event.target.selectedOptions, (option) => option.value))
+            }
+          >
+            {people.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.display_name}
+              </option>
+            ))}
+          </select>
         </label>
         <button type="submit" disabled={loading}>
           {loading ? "Running..." : "Run debug"}
@@ -159,7 +191,7 @@ export function RetrievalDebug() {
 
           <section className="panel" aria-labelledby="score-breakdown-title">
             <h2 id="score-breakdown-title">Score breakdown</h2>
-            <pre>{JSON.stringify(retrieveResult.score_breakdown, null, 2)}</pre>
+            <pre>{JSON.stringify(scoreBreakdownByName, null, 2)}</pre>
           </section>
 
           <section className="panel" aria-labelledby="semantic-debug-title">
@@ -169,7 +201,10 @@ export function RetrievalDebug() {
 
           <section className="panel wide" aria-labelledby="raw-retrieval-title">
             <h2 id="raw-retrieval-title">Raw retrieval result</h2>
-            <pre>{JSON.stringify(retrieveResult, null, 2)}</pre>
+            <button type="button" className="secondary" onClick={() => setShowRaw((current) => !current)}>
+              {showRaw ? "Hide raw payload" : "Show raw payload"}
+            </button>
+            {showRaw ? <pre>{JSON.stringify(retrieveResult, null, 2)}</pre> : null}
           </section>
         </div>
       ) : null}
@@ -182,7 +217,7 @@ function MatchedEntitySummary({match}: {match: MatchedEntity}) {
     <article className="match-summary">
       <div>
         <strong>{match.display_name}</strong>
-        <span>{match.entity_id}</span>
+        <span>{match.entity_type}</span>
       </div>
       <div className="pill-row">
         <span className="pill">{match.confidence_band}</span>

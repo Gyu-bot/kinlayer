@@ -121,7 +121,7 @@ Scripts and docs:
 | T043 | Atomic person merge execution API | Critical | Backlog | T038, T041 |
 | T044 | Merge review CLI and Web workflow | High | Backlog | T039, T043 |
 | T045 | Merge acceptance fixtures and retrieval verification | High | Backlog | T042, T043, T044 |
-| T046 | Admin Web UI ID hiding and ontology-backed relationship controls | High | Ready | T024, T026, T032 |
+| T046 | Admin Web UI ID hiding and ontology-backed relationship controls | High | Done | T024, T026, T032 |
 | T047 | Relationship edge-type enforcement audit and debug logging | Critical | Done | T012, T016, T017, T024 |
 | T048 | Agent Write Instruction Pack | Critical | Done | T035, T047 |
 | T049 | Agent write schema guard, low-risk normalization, and diagnostics filter | Critical | Backlog | T036, T037, T047, T048 |
@@ -725,7 +725,7 @@ uv run kinlayer status --json
 
 #### Task T036. Agent-facing entity resolution API
 - Priority: High
-- Status: Ready
+- Status: Done
 - Depends on: T020, T035
 - Files:
   - Modify: `docs/specs/api-spec.md`
@@ -1031,7 +1031,7 @@ uv run kinlayer status --json
 
 #### Task T046. Admin Web UI ID hiding and ontology-backed relationship controls
 - Priority: High
-- Status: Ready
+- Status: Done
 - Depends on: T024, T026, T032
 - Files:
   - Modify: `docs/specs/web-ui-spec.md`
@@ -1039,6 +1039,7 @@ uv run kinlayer status --json
   - Test: `backend/tests/test_relationships_api.py`
   - Modify: `frontend/src/api/client.ts`
   - Modify: `frontend/src/types/entities.ts`
+  - Add: `frontend/src/ontologyOptions.ts`
   - Modify: `frontend/src/routes/PeopleList.tsx`
   - Modify: `frontend/src/routes/NewPerson.tsx`
   - Modify: `frontend/src/routes/PersonDetail.tsx`
@@ -1056,28 +1057,38 @@ uv run kinlayer status --json
   - Replace raw entity ID entry in People relationship forms and Retrieval Debug focal/candidate entity inputs with person selectors or search-backed pickers that store IDs internally.
   - Treat UI `relationship type` as the ontology edge type selected from `allowed_edge_types`; the displayed value may be a human label/description, but the submitted value must be the canonical `relation_type`.
   - Replace hardcoded or free-text relationship type inputs in `/people/new`, `/people/:id`, and `/graph` with ontology-backed options from `/api/ontology` or `/api/ontology/edge-types`.
+  - Replace other ontology-controlled Web select values with `/api/ontology` values where a registry already exists: profile fact type, observation type, sensitivity, AI use policy, and candidate type.
   - Keep Graph edge labels concise and human-readable while using canonical edge IDs only as React Flow internal node/edge keys.
   - Preserve HTTP API as the canonical state-changing layer; no Web-only relationship or ID mapping state is allowed.
 - Acceptance Criteria:
-  - [ ] `/people/:id` no longer shows alias, fact, relationship, or observation UUIDs in visible labels or button text.
-  - [ ] `/people/:id` relationship creation uses a person picker/search instead of a raw `Related entity ID` input.
-  - [ ] `/people/:id` relationship creation and editing use ontology-backed edge type controls; users cannot type arbitrary relation strings in the normal UI.
-  - [ ] `/people/new` initial relationship type options come from ontology edge types instead of a hardcoded local list.
-  - [ ] `/graph` relation type filter uses ontology edge type options, including an all-types option, instead of a free-text input.
-  - [ ] `/graph` node and edge detail panels show names, relation labels, direction, status, sensitivity, and confidence without visible UUIDs by default.
-  - [ ] `/candidates` replaces the visible ID column/detail field with user-meaningful candidate summaries, type, status, confidence, target display name when available, and timestamps.
-  - [ ] `/retrieval-debug` lets the operator choose focal/candidate entities by display name or search result while keeping raw IDs only in explicit debug/raw output areas.
-  - [ ] Provenance and canonical record references display record type and available excerpt/summary first; raw record IDs are hidden behind an explicit technical detail or copy affordance.
-  - [ ] Relationship type wording in Web UI and docs is clarified: UI "relationship type" is the selected ontology edge type's canonical `relation_type`, not an agent-invented free-text label.
-  - [ ] `PATCH /api/edges/{edge_id}` revalidates changed `relation_type` against the existing edge endpoints' entity types, matching create-time validation.
-  - [ ] Frontend tests prove ID strings are not visible in People, Candidates, and Graph default views while actions still call the same API endpoints with IDs internally.
-  - [ ] Frontend tests prove relationship type controls are populated from ontology and submit canonical `relation_type` values.
-  - [ ] Backend tests cover invalid edge type patch and endpoint-type mismatch on relation type patch.
-  - [ ] Browser verification confirms People edit actions, Graph filtering, Candidate review, and Retrieval Debug still work without console errors.
+  - [x] `/people/:id` no longer shows alias, fact, relationship, or observation UUIDs in visible labels or button text.
+  - [x] `/people/:id` relationship creation uses a person picker/search instead of a raw `Related entity ID` input.
+  - [x] `/people/:id` relationship creation and editing use ontology-backed edge type controls; users cannot type arbitrary relation strings in the normal UI.
+  - [x] `/people/new` initial relationship type options come from ontology edge types instead of a hardcoded local list.
+  - [x] `/people/new` profile fact type, initial observation type, sensitivity, and AI use policy controls use ontology registry or policy values instead of local hardcoded lists.
+  - [x] `/people/:id` profile fact type, entity/fact sensitivity, and AI use policy controls use ontology registry or policy values instead of free-text or hardcoded lists.
+  - [x] `/people` and `/candidates` sensitivity filters, and `/candidates` candidate type filters, use ontology policy registry values.
+  - [x] `/graph` relation type filter uses ontology edge type options, including an all-types option, instead of a free-text input.
+  - [x] `/graph` sensitivity filter uses ontology policy values instead of a hardcoded local list.
+  - [x] `/graph` node and edge detail panels show names, relation labels, direction, status, sensitivity, and confidence without visible UUIDs by default.
+  - [x] `/candidates` replaces the visible ID column/detail field with user-meaningful candidate summaries, type, status, confidence, target display name when available, and timestamps.
+  - [x] `/retrieval-debug` lets the operator choose focal/candidate entities by display name or search result while keeping raw IDs only in explicit debug/raw output areas.
+  - [x] Provenance and canonical record references display record type and available excerpt/summary first; raw record IDs are hidden behind an explicit technical detail or copy affordance.
+  - [x] Relationship type wording in Web UI and docs is clarified: UI "relationship type" is the selected ontology edge type's canonical `relation_type`, not an agent-invented free-text label.
+  - [x] `PATCH /api/edges/{edge_id}` revalidates changed `relation_type` against the existing edge endpoints' entity types, matching create-time validation.
+  - [x] Frontend tests prove ID strings are not visible in People, Candidates, and Graph default views while actions still call the same API endpoints with IDs internally.
+  - [x] Frontend tests prove relationship type controls are populated from ontology and submit canonical `relation_type` values.
+  - [x] Frontend tests prove ontology-backed fact type, observation type, sensitivity, AI use policy, and candidate type controls render registry labels and submit canonical values.
+  - [x] Backend tests cover invalid edge type patch and endpoint-type mismatch on relation type patch.
+  - [x] Browser verification confirms People edit actions, Graph filtering, Candidate review, and Retrieval Debug still work without console errors.
 - Notes:
   - The API and database may continue to use UUID primary keys. This task is about default Web presentation and operator ergonomics, not changing canonical identifiers.
   - Debug screens may expose raw IDs only when the user explicitly opens a technical/raw section; do not make IDs the primary workflow input.
   - Relationship observations such as care points, cautions, communication preferences, and recent interactions remain observations, not edge types.
+  - Follow-up audit expanded ontology-backed controls beyond relationship type to fact type, observation type, sensitivity, AI use policy, and candidate type where those values already exist in `/api/ontology`.
+  - Completed with ontology-backed relationship/fact/observation/policy/candidate selects, display-name selectors, default ID hiding in People/Candidates/Graph/Retrieval Debug, frontend/browser smoke coverage, and a backend endpoint-mismatch regression test. No relationship service change was required because patch validation already reuses endpoint compatibility checks.
+  - Verification completed: `npm test -- --run App.test.tsx src/api/client.test.ts`; `npm run build`; `UV_CACHE_DIR=/private/tmp/kinlayer-uv-cache uv run pytest backend/tests/test_relationships_api.py`; `git diff --check`.
+  - Browser verification covered `/people/new`, `/people`, `/candidates`, `/graph`, and `/people/:id` against local acceptance fixtures; no browser console errors were observed, and temporary Kinlayer services were stopped afterward.
 
 #### Task T047. Relationship edge-type enforcement audit and debug logging
 - Priority: Critical
