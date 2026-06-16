@@ -247,13 +247,15 @@ MVP non-goals:
 
 ## 9. `/agent-operations`
 
-Purpose: inspect and export AI-agent write attempts and their outcomes.
+Purpose: inspect and export AI-agent write attempts, direct edge relation-type write diagnostics,
+and their outcomes.
 
 Required behavior:
 
 - list recent agent write operations from `GET /api/agent-operations`;
 - filter by actor, source path, operation type, result status, diagnostic/error status, and optional time range;
-- show operation type, result, actor, candidate/correction/canonical refs where available, and bounded excerpt;
+- show operation type, result, actor, candidate/correction/canonical refs where available, submitted
+  `relation_type`, edge-type diagnostic status where available, and bounded excerpt;
 - provide an Export action that downloads the current filter from `GET /api/agent-operations/export`;
 - keep export bounded and redacted.
 

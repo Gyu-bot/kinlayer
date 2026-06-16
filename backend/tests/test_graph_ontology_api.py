@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_db_engine, create_session_maker
 from kinlayer_backend.main import create_app
-from kinlayer_backend.models import Base, OntologyRegistryValue
+from kinlayer_backend.models import Base, EntityEdge, OntologyRegistryValue
 
 
 def create_person(client, name: str, sensitivity: str = "medium") -> dict:
@@ -100,6 +100,43 @@ def test_ego_graph_status_filter_excludes_deleted_by_default(client) -> None:
     assert deleted_graph.json()["edges"][0]["edge_id"] == deleted["id"]
 
 
+def test_ego_graph_excludes_invalid_legacy_edge_types(client) -> None:
+    user = create_person(client, "User")
+    alex = create_person(client, "Alex")
+    organization = client.post(
+        "/api/entities",
+        json={"entity_type": "organization", "display_name": "Acme", "created_by": "user"},
+    ).json()
+    valid = create_edge(client, user["id"], alex["id"], "client_contact")
+    with client.app.state.session_factory() as session:
+        session.add(
+            EntityEdge(
+                from_entity_id=user["id"],
+                to_entity_id=alex["id"],
+                relation_type="reply_strategy",
+                claim_text="Legacy invalid edge.",
+                claim_type="fact",
+                created_by="ai_agent",
+            )
+        )
+        session.add(
+            EntityEdge(
+                from_entity_id=user["id"],
+                to_entity_id=organization["id"],
+                relation_type="client_contact",
+                claim_text="Legacy endpoint mismatch edge.",
+                claim_type="fact",
+                created_by="ai_agent",
+            )
+        )
+        session.commit()
+
+    graph = client.get(f"/api/graph/ego/{user['id']}")
+
+    assert graph.status_code == 200
+    assert [edge["edge_id"] for edge in graph.json()["edges"]] == [valid["id"]]
+
+
 def test_ego_graph_missing_focal_returns_common_not_found(client) -> None:
     response = client.get("/api/graph/ego/missing-entity")
 
@@ -130,6 +167,60 @@ def test_ontology_read_endpoints_return_seed_registries(client) -> None:
     assert client.get("/api/ontology/observation-types").json()["items"]
     assert client.get("/api/ontology/entity-fact-types").json()["items"]
     assert client.get("/api/ontology/policies").json()["ai_use_policies"]
+
+
+def test_edge_type_diagnostics_reports_invalid_legacy_rows(client) -> None:
+    user = create_person(client, "User")
+    alex = create_person(client, "Alex")
+    organization = client.post(
+        "/api/entities",
+        json={"entity_type": "organization", "display_name": "Acme", "created_by": "user"},
+    ).json()
+    create_edge(client, user["id"], alex["id"], "client_contact")
+    with client.app.state.session_factory() as session:
+        invalid_edge = EntityEdge(
+            from_entity_id=user["id"],
+            to_entity_id=alex["id"],
+            relation_type="reply_strategy",
+            claim_text="Legacy invalid edge.",
+            claim_type="fact",
+            created_by="ai_agent",
+            source_candidate_id="candidate-legacy",
+        )
+        session.add(invalid_edge)
+        mismatch_edge = EntityEdge(
+            from_entity_id=user["id"],
+            to_entity_id=organization["id"],
+            relation_type="client_contact",
+            claim_text="Legacy endpoint mismatch edge.",
+            claim_type="fact",
+            created_by="ai_agent",
+        )
+        session.add(mismatch_edge)
+        session.commit()
+        invalid_edge_id = invalid_edge.id
+        mismatch_edge_id = mismatch_edge.id
+
+    response = client.get("/api/ontology/edge-type-diagnostics")
+
+    assert response.status_code == 200
+    body = response.json()
+    relation_types = {item["relation_type"]: item for item in body["relation_types"]}
+    assert relation_types["client_contact"]["exists_in_allowed_edge_types"] is True
+    assert relation_types["reply_strategy"]["exists_in_allowed_edge_types"] is False
+    assert relation_types["reply_strategy"]["active_edge_count"] == 1
+
+    invalid_edges = {item["edge_id"]: item for item in body["invalid_edges"]}
+    assert invalid_edges[invalid_edge_id]["relation_type"] == "reply_strategy"
+    assert invalid_edges[invalid_edge_id]["edge_type_match"] == "missing_allowed_edge_type"
+    assert invalid_edges[invalid_edge_id]["from_entity_type"] == "person"
+    assert invalid_edges[invalid_edge_id]["to_entity_type"] == "person"
+    assert invalid_edges[invalid_edge_id]["status"] == "active"
+    assert invalid_edges[invalid_edge_id]["created_by"] == "ai_agent"
+    assert invalid_edges[invalid_edge_id]["source_candidate_id"] == "candidate-legacy"
+    assert invalid_edges[mismatch_edge_id]["relation_type"] == "client_contact"
+    assert invalid_edges[mismatch_edge_id]["edge_type_match"] == "endpoint_type_mismatch"
+    assert invalid_edges[mismatch_edge_id]["to_entity_type"] == "organization"
 
 
 def test_ontology_excludes_inactive_registry_values(database_url) -> None:

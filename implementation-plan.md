@@ -110,7 +110,7 @@ Scripts and docs:
 | T032 | People profile edit Web UI | High | Done | T031 |
 | T033 | Structured contact and identity facts | High | Done | T032 |
 | T034 | Agent-compatible profile fact updates | High | Done | T033 |
-| T035 | AI agent vs Kinlayer responsibility boundary docs | Critical | Ready | T034 |
+| T035 | AI agent vs Kinlayer responsibility boundary docs | Critical | Done | T034 |
 | T036 | Agent-facing entity resolution API | High | Ready | T020, T035 |
 | T037 | Agent candidate provenance and correction audit hardening | Critical | Ready | T016, T017, T035 |
 | T038 | Atomic canonical write transactions | Critical | Backlog | T037 |
@@ -122,7 +122,7 @@ Scripts and docs:
 | T044 | Merge review CLI and Web workflow | High | Backlog | T039, T043 |
 | T045 | Merge acceptance fixtures and retrieval verification | High | Backlog | T042, T043, T044 |
 | T046 | Admin Web UI ID hiding and ontology-backed relationship controls | High | Ready | T024, T026, T032 |
-| T047 | Relationship edge-type enforcement audit and debug logging | Critical | Ready | T012, T016, T017, T024 |
+| T047 | Relationship edge-type enforcement audit and debug logging | Critical | Done | T012, T016, T017, T024 |
 | T048 | Agent Write Instruction Pack | Critical | Done | T035, T047 |
 | T049 | Agent write schema guard, low-risk normalization, and diagnostics filter | Critical | Backlog | T036, T037, T047, T048 |
 | T050 | Structured profile fact promotion workflow | High | Backlog | T033, T034, T039, T049 |
@@ -697,7 +697,7 @@ uv run kinlayer status --json
 
 #### Task T035. AI agent vs Kinlayer responsibility boundary docs
 - Priority: Critical
-- Status: Ready
+- Status: Done
 - Depends on: T034
 - Files:
   - Modify: `docs/agents/agent-integration-notes.md`
@@ -707,20 +707,21 @@ uv run kinlayer status --json
   - Modify: `docs/specs/acceptance-scenarios.md`
   - Modify: `docs/README.md`
 - Acceptance Criteria:
-  - [ ] Docs state the product boundary in one canonical sentence: AI agents interpret current-turn user-authored text and propose candidates/corrections; Kinlayer validates, stores, retrieves, reviews, and canonicalizes.
-  - [ ] Docs explicitly state Kinlayer does not run an LLM for post-turn extraction and must not perform open-ended personhood, fictional/public-figure, or relationship-relevance classification.
-  - [ ] Post-turn hook contract says automatic extraction evidence may use only current-turn user-authored messages.
-  - [ ] Docs forbid assistant messages, tool output, retrieved context packs/cards, system/developer/skill prompts, logs, compacted summaries, and previous memory output as candidate evidence.
-  - [ ] Evidence excerpt guidance says submitted excerpts must be user-authored substrings or bounded user-authored snippets, not agent-generated interpretations.
-  - [ ] Exclusion taxonomy covers fictional characters, public figures, hypothetical examples, generic groups/professions, AI agents/bots/models, and the user as a normal person entity.
-  - [ ] Pronoun-only policy says references like `that person`, `그 사람`, `걔`, and `그분` must not create a new entity or update an existing entity without a reliable current-turn user-provided identifier.
-  - [ ] Candidate planning policy distinguishes AI inference, explicit correction, ambiguous/low-confidence context, multiple entity matches, and no-op decisions.
-  - [ ] Dry-run/audit expectations list mentions found, exclusions, entity-resolution results, planned candidates, no-op reasons, and redacted/log-safe metadata.
-  - [ ] Docs clarify that agent-side thresholds are adapter configuration, not Kinlayer core behavior.
+  - [x] Docs state the product boundary in one canonical sentence: AI agents interpret current-turn user-authored text and propose candidates/corrections; Kinlayer validates, stores, retrieves, reviews, and canonicalizes.
+  - [x] Docs explicitly state Kinlayer does not run an LLM for post-turn extraction and must not perform open-ended personhood, fictional/public-figure, or relationship-relevance classification.
+  - [x] Post-turn hook contract says automatic extraction evidence may use only current-turn user-authored messages.
+  - [x] Docs forbid assistant messages, tool output, retrieved context packs/cards, system/developer/skill prompts, logs, compacted summaries, and previous memory output as candidate evidence.
+  - [x] Evidence excerpt guidance says submitted excerpts must be user-authored substrings or bounded user-authored snippets, not agent-generated interpretations.
+  - [x] Exclusion taxonomy covers fictional characters, public figures, hypothetical examples, generic groups/professions, AI agents/bots/models, and the user as a normal person entity.
+  - [x] Pronoun-only policy says references like `that person`, `그 사람`, `걔`, and `그분` must not create a new entity or update an existing entity without a reliable current-turn user-provided identifier.
+  - [x] Candidate planning policy distinguishes AI inference, explicit correction, ambiguous/low-confidence context, multiple entity matches, and no-op decisions.
+  - [x] Dry-run/audit expectations list mentions found, exclusions, entity-resolution results, planned candidates, no-op reasons, and redacted/log-safe metadata.
+  - [x] Docs clarify that agent-side thresholds are adapter configuration, not Kinlayer core behavior.
 - Notes:
   - This task is documentation-first and should not add an agent runtime hook.
   - Treat `needs_clarification` as a candidate status/action, not a `candidate_type`, unless a later API design explicitly proves a new type is necessary.
   - Keep examples bilingual where helpful because Korean relationship references are first-class product examples.
+  - Completed by `docs: add agent write instruction pack` plus the T035 boundary cleanup pass.
 
 #### Task T036. Agent-facing entity resolution API
 - Priority: High
@@ -1080,7 +1081,7 @@ uv run kinlayer status --json
 
 #### Task T047. Relationship edge-type enforcement audit and debug logging
 - Priority: Critical
-- Status: Ready
+- Status: Done
 - Depends on: T012, T016, T017, T024
 - Files:
   - Modify: `docs/specs/api-spec.md`
@@ -1088,21 +1089,24 @@ uv run kinlayer status --json
   - Modify: `docs/specs/ontology-design.md`
   - Modify: `docs/specs/web-ui-spec.md`
   - Modify: `backend/src/kinlayer_backend/models.py`
-  - Add: `backend/alembic/versions/20260612_0007_relationship_write_audit.py`
-  - Modify: `backend/src/kinlayer_backend/schemas/relationships.py`
-  - Modify: `backend/src/kinlayer_backend/schemas/candidates.py`
-  - Modify: `backend/src/kinlayer_backend/schemas/corrections.py`
+  - Reuse: existing `agent_write_operation_audits` migration
+  - Modify: `backend/src/kinlayer_backend/schemas/agent_operations.py`
+  - Modify: `backend/src/kinlayer_backend/schemas/ontology.py`
   - Modify: `backend/src/kinlayer_backend/services/relationships.py`
-  - Modify: `backend/src/kinlayer_backend/services/candidates.py`
-  - Modify: `backend/src/kinlayer_backend/services/corrections.py`
-  - Modify: `backend/src/kinlayer_backend/repositories/relationships.py`
+  - Modify: `backend/src/kinlayer_backend/services/agent_operation_exports.py`
+  - Modify: `backend/src/kinlayer_backend/services/context.py`
+  - Modify: `backend/src/kinlayer_backend/services/ontology.py`
+  - Modify: `backend/src/kinlayer_backend/repositories/graph.py`
+  - Modify: `backend/src/kinlayer_backend/repositories/retrieval.py`
   - Modify: `backend/src/kinlayer_backend/api/relationships.py`
   - Modify: `backend/src/kinlayer_backend/api/ontology.py`
   - Modify: `backend/src/kinlayer_backend/cli.py`
   - Test: `backend/tests/test_relationships_api.py`
   - Test: `backend/tests/test_candidates_api.py`
   - Test: `backend/tests/test_corrections_api.py`
+  - Test: `backend/tests/test_context_api.py`
   - Test: `backend/tests/test_graph_ontology_api.py`
+  - Test: `backend/tests/test_cli.py`
   - Modify: `scripts/smoke-acceptance-api.py`
   - Modify: `scripts/smoke-acceptance-cli.sh`
 - Design:
@@ -1114,26 +1118,27 @@ uv run kinlayer status --json
   - Keep the canonical fix in the API/service layer first. Database constraints may be added if they do not block existing local recovery workflows, but at minimum every public/service write path must reject invalid edge types before persistence.
   - Existing invalid rows, if found, should be reported by diagnostics with repair guidance; do not auto-rewrite them without an explicit correction or migration decision.
 - Acceptance Criteria:
-  - [ ] Diagnostic command or endpoint can report all distinct `entity_edges.relation_type` values and whether each exists in active `allowed_edge_types`.
-  - [ ] Diagnostic command or endpoint lists invalid existing edge rows with edge ID, relation type, endpoint entity IDs, endpoint entity types, status, created_by, source_candidate_id, and timestamps.
-  - [ ] `POST /api/edges` logs both successful and rejected edge create attempts without exposing secrets.
-  - [ ] `PATCH /api/edges/{edge_id}` logs both successful and rejected relation type updates and revalidates the new relation type against the existing edge endpoints' entity types.
-  - [ ] Candidate submit, accept, and edit-accept for `relationship_edge` log the submitted relation type and reject any value not present in active `allowed_edge_types`.
-  - [ ] Correction apply paths that create or replace `entity_edges` log the submitted relation type and reject any value not present in active `allowed_edge_types`.
-  - [ ] Graph/context retrieval paths either exclude or clearly flag invalid legacy edge rows so bad data cannot silently appear as trusted relationship context.
-  - [ ] Tests prove an invalid `relationship_edge` candidate cannot be submitted, accepted, or edit-accepted into a canonical edge.
-  - [ ] Tests prove an invalid relation type cannot be introduced through correction apply.
-  - [ ] Tests prove write audit records exist for success and failure cases, including the invalid relation type string.
-  - [ ] Write audit records expose stable join refs for related `episode_id`, `candidate_id`, `correction_id`, canonical record ref, and source turn/message IDs when those refs are available, without storing raw conversation bodies.
-  - [ ] Diagnostic API/CLI responses include stable `audit_id` values and related refs so a later export surface can trace each write attempt to real persisted records.
-  - [ ] Tests prove diagnostic output identifies seeded legacy invalid rows without modifying them.
-  - [ ] API/CLI smoke includes one rejected invalid relation type attempt and verifies the audit/diagnostic surface can explain it.
-  - [ ] Docs clarify that UI-visible relationship type, API `relation_type`, candidate `relationship_edge.relation_type`, and graph edge labels are all derived from ontology edge types.
+  - [x] Diagnostic command or endpoint can report all distinct `entity_edges.relation_type` values and whether each exists in active `allowed_edge_types`.
+  - [x] Diagnostic command or endpoint lists invalid existing edge rows with edge ID, relation type, endpoint entity IDs, endpoint entity types, status, created_by, source_candidate_id, and timestamps.
+  - [x] `POST /api/edges` logs both successful and rejected edge create attempts without exposing secrets.
+  - [x] `PATCH /api/edges/{edge_id}` logs both successful and rejected relation type updates and revalidates the new relation type against the existing edge endpoints' entity types.
+  - [x] Candidate submit, accept, and edit-accept for `relationship_edge` log the submitted relation type and reject any value not present in active `allowed_edge_types`.
+  - [x] Correction apply paths that create or replace `entity_edges` log the submitted relation type and reject any value not present in active `allowed_edge_types`.
+  - [x] Graph/context retrieval paths either exclude or clearly flag invalid legacy edge rows so bad data cannot silently appear as trusted relationship context.
+  - [x] Tests prove an invalid `relationship_edge` candidate cannot be submitted, accepted, or edit-accepted into a canonical edge.
+  - [x] Tests prove an invalid relation type cannot be introduced through correction apply.
+  - [x] Tests prove write audit records exist for success and failure cases, including the invalid relation type string.
+  - [x] Write audit records expose stable join refs for related `episode_id`, `candidate_id`, `correction_id`, canonical record ref, and source turn/message IDs when those refs are available, without storing raw conversation bodies.
+  - [x] Diagnostic API/CLI responses include stable `audit_id` values and related refs so a later export surface can trace each write attempt to real persisted records.
+  - [x] Tests prove diagnostic output identifies seeded legacy invalid rows without modifying them.
+  - [x] API/CLI smoke includes one rejected invalid relation type attempt and verifies the audit/diagnostic surface can explain it.
+  - [x] Docs clarify that UI-visible relationship type, API `relation_type`, candidate `relationship_edge.relation_type`, and graph edge labels are all derived from ontology edge types.
 - Notes:
   - This task responds to observed behavior where an agent produced a relation type outside the edge-type registry. Do not treat the issue as presentation-only.
   - Prefer append-only audit rows over ordinary application log lines for local postmortem debugging because container logs may rotate or disappear.
   - T047 is the write-audit foundation for later operator export, but it should remain focused on edge-type enforcement and joinable write-attempt records rather than building the full Web export workflow.
   - If invalid rows already exist in a user's local DB, the first implementation should make them discoverable and safe to inspect before deciding whether to add a repair migration.
+  - Completed using the existing `agent_write_operation_audits` table from T053 rather than adding a duplicate relationship-only audit table.
 
 #### Task T048. Agent Write Instruction Pack
 - Priority: Critical

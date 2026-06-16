@@ -140,6 +140,46 @@ def test_explicit_edge_correction_supersedes_old_record_and_links_evidence(
         assert session.query(Candidate).count() == 0
 
 
+def test_invalid_edge_correction_apply_records_submitted_relation_type(client) -> None:
+    user = create_person(client, "User")
+    alex = create_person(client, "Alex")
+    old_edge = create_edge(client, user["id"], alex["id"], "former_coworker")
+
+    response = client.post(
+        "/api/corrections/apply",
+        json={
+            "old_record_ref": f"entity_edges:{old_edge['id']}",
+            "new_record": {
+                "record_type": "entity_edges",
+                "payload": {
+                    "from_entity_id": user["id"],
+                    "to_entity_id": alex["id"],
+                    "relation_type": "reply_strategy",
+                    "claim_text": "This should not become an edge.",
+                    "claim_type": "fact",
+                },
+            },
+            "correction_source": {
+                "source_type": "agent_conversation",
+                "source_ref": "turn-1",
+                "user_explicit": True,
+                "excerpt": "No, this is about reply strategy.",
+            },
+            "created_by": "ai_agent",
+        },
+    )
+
+    assert response.status_code == 422
+    listed = client.get("/api/agent-operations", params={"operation_type": "correction_apply"})
+    assert listed.status_code == 200
+    operation = listed.json()["items"][0]
+    assert operation["result_status"] == "rejected"
+    assert operation["api_error_code"] == "validation_error"
+    assert operation["request_summary"]["old_record_ref"] == f"entity_edges:{old_edge['id']}"
+    assert operation["request_summary"]["new_record_type"] == "entity_edges"
+    assert operation["request_summary"]["relation_type"] == "reply_strategy"
+
+
 def test_explicit_observation_correction_replaces_visible_observation_and_links_evidence(
     client,
     database_url,

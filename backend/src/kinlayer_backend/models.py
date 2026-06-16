@@ -394,3 +394,7 @@ class AgentWriteOperationAudit(Base, TimestampMixin):
     episode_id: Mapped[str | None] = mapped_column(String(36))
     canonical_record_ref: Mapped[str | None] = mapped_column(String(120))
     bounded_excerpt: Mapped[str | None] = mapped_column(Text)
+
+    @property
+    def audit_id(self) -> str:
+        return self.id

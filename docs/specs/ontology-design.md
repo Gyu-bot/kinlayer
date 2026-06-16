@@ -495,6 +495,10 @@ MVP validation should enforce:
 5. Pending AI-generated relationship suggestions enter `candidates`, not directly active `entity_edges`.
 6. Accepted AI-generated edges must have at least one evidence episode or explicit user confirmation.
 7. Observation-like concepts should not be accepted as edges unless the edge type registry allows them.
+8. Edge create/update, relationship-edge candidate resolution, and correction apply paths should
+   record bounded write diagnostics for accepted and rejected AI-agent relation types.
+9. `/api/ontology/edge-type-diagnostics` and `kinlayer ontology edge-diagnostics` report existing
+   invalid legacy edge rows without rewriting them.
 
 ---
 

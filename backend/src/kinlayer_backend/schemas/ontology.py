@@ -45,6 +45,33 @@ class EdgeTypeList(APIModel):
     items: list[EdgeTypeRead]
 
 
+class EdgeTypeDiagnostic(APIModel):
+    relation_type: str
+    exists_in_allowed_edge_types: bool
+    edge_count: int
+    active_edge_count: int
+
+
+class InvalidEdgeDiagnostic(APIModel):
+    edge_id: str
+    relation_type: str
+    edge_type_match: str
+    from_entity_id: str
+    to_entity_id: str
+    from_entity_type: str | None = None
+    to_entity_type: str | None = None
+    status: str
+    created_by: str
+    source_candidate_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class EdgeTypeDiagnosticsRead(APIModel):
+    relation_types: list[EdgeTypeDiagnostic]
+    invalid_edges: list[InvalidEdgeDiagnostic]
+
+
 class ObservationTypeList(APIModel):
     items: list[ObservationTypeRead]
 

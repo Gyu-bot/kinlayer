@@ -23,6 +23,19 @@ def test_edge_lifecycle_validates_relation_type_and_soft_deletes(client) -> None
         },
     )
     assert invalid.status_code == 422
+
+    invalid_user = client.post(
+        "/api/edges",
+        json={
+            "from_entity_id": user["id"],
+            "to_entity_id": alex["id"],
+            "relation_type": "reply_strategy",
+            "claim_text": "Manual invalid edge should also be audited.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    )
+    assert invalid_user.status_code == 422
     assert invalid.json()["error"]["code"] == "validation_error"
 
     created = client.post(
@@ -60,6 +73,102 @@ def test_edge_lifecycle_validates_relation_type_and_soft_deletes(client) -> None
     default_list = client.get("/api/edges", params={"entity_id": alex["id"]})
     assert default_list.status_code == 200
     assert default_list.json()["total"] == 0
+
+
+def test_edge_create_and_patch_write_relationship_audit_records(client) -> None:
+    user = create_person(client, "User")
+    alex = create_person(client, "Alex")
+
+    invalid = client.post(
+        "/api/edges",
+        json={
+            "from_entity_id": user["id"],
+            "to_entity_id": alex["id"],
+            "relation_type": "reply_strategy",
+            "claim_text": "This is not a structural edge.",
+            "claim_type": "fact",
+            "created_by": "ai_agent",
+        },
+    )
+    assert invalid.status_code == 422
+
+    invalid_user = client.post(
+        "/api/edges",
+        json={
+            "from_entity_id": user["id"],
+            "to_entity_id": alex["id"],
+            "relation_type": "reply_strategy",
+            "claim_text": "Manual invalid edge should also be audited.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    )
+    assert invalid_user.status_code == 422
+
+    created = client.post(
+        "/api/edges",
+        json={
+            "from_entity_id": user["id"],
+            "to_entity_id": alex["id"],
+            "relation_type": "client_contact",
+            "claim_text": "Alex is a client contact.",
+            "claim_type": "fact",
+            "created_by": "ai_agent",
+        },
+    )
+    assert created.status_code == 201
+    edge = created.json()
+
+    patched = client.patch(
+        f"/api/edges/{edge['id']}",
+        json={"relation_type": "reply_strategy"},
+    )
+    assert patched.status_code == 422
+
+    listed = client.get("/api/agent-operations", params={"limit": 20})
+    assert listed.status_code == 200
+    operations = listed.json()["items"]
+
+    create_success = next(
+        item
+        for item in operations
+        if item["operation_type"] == "edge_create" and item["result_status"] == "success"
+    )
+    create_rejected = next(
+        item
+        for item in operations
+        if item["operation_type"] == "edge_create" and item["result_status"] == "rejected"
+        and item["actor"] == "ai_agent"
+    )
+    user_create_rejected = next(
+        item
+        for item in operations
+        if item["operation_type"] == "edge_create" and item["result_status"] == "rejected"
+        and item["actor"] == "user"
+    )
+    patch_rejected = next(
+        item
+        for item in operations
+        if item["operation_type"] == "edge_update" and item["result_status"] == "rejected"
+    )
+
+    assert create_success["actor"] == "ai_agent"
+    assert create_success["audit_id"] == create_success["id"]
+    assert create_success["canonical_record_ref"] == f"entity_edges:{edge['id']}"
+    assert create_success["request_summary"]["relation_type"] == "client_contact"
+    assert create_success["related_refs"]["edge_type_match"] == "active_allowed_edge_type"
+    assert create_success["related_refs"]["from_entity_id"] == user["id"]
+    assert create_success["related_refs"]["to_entity_id"] == alex["id"]
+
+    assert create_rejected["api_error_code"] == "validation_error"
+    assert create_rejected["request_summary"]["relation_type"] == "reply_strategy"
+    assert create_rejected["related_refs"]["edge_type_match"] == "missing_allowed_edge_type"
+    assert user_create_rejected["request_summary"]["relation_type"] == "reply_strategy"
+
+    assert patch_rejected["request_summary"]["relation_type"] == "reply_strategy"
+    assert patch_rejected["actor"] == "api_user"
+    assert patch_rejected["related_refs"]["edge_id"] == edge["id"]
+    assert patch_rejected["related_refs"]["edge_type_match"] == "missing_allowed_edge_type"
 
 
 def test_observation_lifecycle_stores_related_entities_and_soft_deletes(client) -> None:

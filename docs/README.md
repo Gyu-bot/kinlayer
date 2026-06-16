@@ -16,6 +16,10 @@ This directory keeps project documentation that should not live at the repositor
 - `agents/agent-integration-notes.md`: agent integration and post-turn boundary notes.
 - `agents/agent-write-instruction-pack.md`: copy/paste-ready write guidance for agents, skills, plugins, MCP adapters, and runtime hooks.
 
+Agent write boundary summary: AI agents interpret current-turn user-authored text and propose
+candidates or explicit corrections; Kinlayer validates, stores, retrieves, reviews, and
+canonicalizes relationship context. Kinlayer core does not run an LLM for post-turn extraction.
+
 ## Archived Docs
 
 - `archive/planning/handoff.md`: superseded implementation handoff prompt.

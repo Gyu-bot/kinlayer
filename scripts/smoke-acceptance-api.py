@@ -251,6 +251,22 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
     client.patch(f"/api/edges/{edge['id']}", {"confidence": 0.7})
     assert_true(client.get(f"/api/edges/{edge['id']}")["confidence"] == 0.7, "edge get/patch failed")
     client.delete(f"/api/edges/{edge['id']}")
+    invalid_agent_edge_status = client.status(
+        "POST",
+        "/api/edges",
+        {
+            "from_entity_id": self_id,
+            "to_entity_id": entity["id"],
+            "relation_type": "reply_strategy",
+            "claim_text": f"Invalid edge smoke {stamp}",
+            "claim_type": "fact",
+            "created_by": "ai_agent",
+        },
+    )
+    assert_true(invalid_agent_edge_status == 422, "invalid relation type edge was not rejected")
+    edge_diagnostics = client.get("/api/ontology/edge-type-diagnostics")
+    assert_true("relation_types" in edge_diagnostics, "edge diagnostics missing relation types")
+    assert_true("invalid_edges" in edge_diagnostics, "edge diagnostics missing invalid edge list")
 
     observation = client.post(
         "/api/observations",
@@ -345,6 +361,13 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
     assert_true(
         any(item["operation_type"].startswith("candidate_") for item in agent_operations["items"]),
         "agent write operation candidate records missing",
+    )
+    assert_true(
+        any(
+            item["operation_type"] == "edge_create" and item["result_status"] == "rejected"
+            for item in agent_operations["items"]
+        ),
+        "agent write operation rejected edge create record missing",
     )
     agent_export = client.text("/api/agent-operations/export?limit=50")
     agent_export_lines = [json.loads(line) for line in agent_export.splitlines()]

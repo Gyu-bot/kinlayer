@@ -17,6 +17,7 @@ correction_app = typer.Typer(help="Apply explicit corrections.")
 context_app = typer.Typer(help="Retrieve and package context.")
 debug_app = typer.Typer(help="Inspect retrieval internals.")
 graph_app = typer.Typer(help="Inspect relationship graph views.")
+ontology_app = typer.Typer(help="Inspect ontology registries and diagnostics.")
 agent_operations_app = typer.Typer(help="Inspect and export agent write operations.")
 app.add_typer(person_app, name="person")
 app.add_typer(embedding_app, name="embedding")
@@ -25,6 +26,7 @@ app.add_typer(correction_app, name="correction")
 app.add_typer(context_app, name="context")
 app.add_typer(debug_app, name="debug")
 app.add_typer(graph_app, name="graph")
+app.add_typer(ontology_app, name="ontology")
 app.add_typer(agent_operations_app, name="agent-operations")
 
 
@@ -572,6 +574,25 @@ def agent_operations_export(
     )
     _raise_for_api(response)
     typer.echo(response.text, nl=False)
+
+
+@ontology_app.command("edge-diagnostics")
+def ontology_edge_diagnostics(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    response = _request("GET", "/api/ontology/edge-type-diagnostics")
+    _raise_for_api(response)
+    payload = response.json()
+    if json_output:
+        _emit(payload, json_output=True)
+        return
+    for item in payload["relation_types"]:
+        status = "ok" if item["exists_in_allowed_edge_types"] else "invalid"
+        typer.echo(f"{item['relation_type']}  {status}  active_edges={item['active_edge_count']}")
+    if payload["invalid_edges"]:
+        typer.echo("Invalid edges:")
+        for edge in payload["invalid_edges"]:
+            typer.echo(f"{edge['edge_id']}  {edge['relation_type']}  {edge['status']}")
 
 
 @app.command()

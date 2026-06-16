@@ -319,6 +319,34 @@ def test_agent_operations_cli_lists_and_exports_write_operations(monkeypatch) ->
     assert "agent_write_operation" in exported.stdout
 
 
+def test_ontology_cli_reads_edge_type_diagnostics(monkeypatch) -> None:
+    calls = []
+
+    def fake_get(url, headers, timeout):
+        calls.append(url)
+        return DummyResponse(
+            200,
+            {
+                "relation_types": [
+                    {
+                        "relation_type": "reply_strategy",
+                        "exists_in_allowed_edge_types": False,
+                        "active_edge_count": 1,
+                    }
+                ],
+                "invalid_edges": [{"edge_id": "edge-id", "relation_type": "reply_strategy"}],
+            },
+        )
+
+    monkeypatch.setattr(cli.httpx, "get", fake_get)
+
+    result = CliRunner().invoke(cli.app, ["ontology", "edge-diagnostics", "--json"])
+
+    assert result.exit_code == 0
+    assert calls[0].endswith("/api/ontology/edge-type-diagnostics")
+    assert json.loads(result.stdout)["invalid_edges"][0]["edge_id"] == "edge-id"
+
+
 def test_retrieve_cli_calls_context_retrieve_and_supports_json(monkeypatch) -> None:
     calls = []
 

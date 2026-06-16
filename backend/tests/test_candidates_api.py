@@ -3,7 +3,13 @@ from pydantic import ValidationError
 
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_session_maker
-from kinlayer_backend.models import EdgeEvidence, EntityFactEvidence, Observation, ObservationEvidence
+from kinlayer_backend.models import (
+    Candidate,
+    EdgeEvidence,
+    EntityFactEvidence,
+    Observation,
+    ObservationEvidence,
+)
 from kinlayer_backend.schemas.candidates import CandidateCreate
 
 
@@ -223,6 +229,99 @@ def test_candidate_submit_rejects_semantically_invalid_payloads(client) -> None:
     )
     assert invalid_confidence.status_code == 422
     assert invalid_confidence.json()["error"]["code"] == "validation_error"
+
+
+def test_relationship_edge_edit_accept_rejects_invalid_relation_type_and_audits(client) -> None:
+    user = create_person(client, "User")
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+    created = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "relationship_edge",
+            "payload": {
+                "from_entity_id": user["id"],
+                "to_entity_id": alex["id"],
+                "relation_type": "client_contact",
+                "claim_text": "Alex is a client contact.",
+                "claim_type": "fact",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex is a client contact.",
+                    "confidence": 0.8,
+                }
+            ],
+            "confidence": 0.7,
+            "created_by": "ai_agent",
+        },
+    )
+    assert created.status_code == 201
+    candidate = created.json()
+
+    edited = client.post(
+        f"/api/candidates/{candidate['id']}/edit-accept",
+        json={
+            "payload": {
+                "from_entity_id": user["id"],
+                "to_entity_id": alex["id"],
+                "relation_type": "reply_strategy",
+                "claim_text": "This should not become an edge.",
+                "claim_type": "fact",
+            }
+        },
+    )
+
+    assert edited.status_code == 422
+    listed = client.get(
+        "/api/agent-operations",
+        params={"operation_type": "candidate_edit_accept", "result_status": "rejected"},
+    )
+    assert listed.status_code == 200
+    operation = listed.json()["items"][0]
+    assert operation["candidate_id"] == candidate["id"]
+    assert operation["request_summary"]["relation_type"] == "reply_strategy"
+    assert operation["diagnostics"]["message"] == "Invalid relation_type."
+    assert client.get("/api/edges", params={"entity_id": alex["id"]}).json()["total"] == 0
+
+
+def test_relationship_edge_accept_rejects_legacy_invalid_relation_type(client, database_url) -> None:
+    user = create_person(client, "User")
+    alex = create_person(client, "Alex")
+    with create_session_maker(Settings(database_url=database_url))() as session:
+        candidate = Candidate(
+            candidate_type="relationship_edge",
+            target_entity_id=alex["id"],
+            payload={
+                "from_entity_id": user["id"],
+                "to_entity_id": alex["id"],
+                "relation_type": "reply_strategy",
+                "claim_text": "This should not become an edge.",
+                "claim_type": "fact",
+            },
+            confidence=0.5,
+            sensitivity="medium",
+            suggested_action="review",
+            created_by="ai_agent",
+        )
+        session.add(candidate)
+        session.commit()
+        candidate_id = candidate.id
+
+    accepted = client.post(f"/api/candidates/{candidate_id}/accept")
+
+    assert accepted.status_code == 422
+    listed = client.get(
+        "/api/agent-operations",
+        params={"operation_type": "candidate_accept", "result_status": "rejected"},
+    )
+    assert listed.status_code == 200
+    operation = listed.json()["items"][0]
+    assert operation["candidate_id"] == candidate_id
+    assert operation["request_summary"]["relation_type"] == "reply_strategy"
+    assert operation["diagnostics"]["message"] == "Invalid relation_type."
+    assert client.get("/api/edges", params={"entity_id": alex["id"]}).json()["total"] == 0
 
 
 def submit_observation_candidate(client, person_id: str, episode_id: str, content: str) -> dict:

@@ -261,6 +261,9 @@ An AI agent follows the write instruction pack and does not submit schema-pollut
 5. Agent receives a second user-authored statement such as "Minji prefers short replies."
 6. Agent does not submit `relation_type: "prefers_short_replies"` or any other invented edge type.
 7. Agent submits an `observation` candidate only if an active observation type supports it; otherwise it produces no write or asks for clarification.
+8. Agent receives a pronoun-only statement such as "그 사람이 또 연락했어" and does not create or update an entity without a reliable current-turn user-provided identifier.
+9. Agent sees a public figure, fictional character, hypothetical example, generic profession, AI bot/model, or the protected self used as an ordinary person entity and produces no Kinlayer write.
+10. Agent records dry-run/audit diagnostics with found mentions, exclusions, entity-resolution results, planned candidates, no-op reasons, and redacted metadata when the adapter supports diagnostics.
 
 ### Pass Criteria
 
@@ -269,6 +272,8 @@ An AI agent follows the write instruction pack and does not submit schema-pollut
 - Observation-like statements do not become relationship edges.
 - Invalid or missing edge types are rejected before canonical persistence.
 - Evidence uses bounded user-authored excerpts, not assistant/tool/retrieval output.
+- Assistant messages, tool output, retrieved context, system/developer/skill prompts, logs, compacted summaries, and previous memory output are not accepted as write evidence.
+- Agent-side extraction thresholds are treated as adapter configuration, not Kinlayer core behavior.
 
 ---
 
