@@ -168,6 +168,14 @@ MVP non-goals:
 - full raw conversation viewer;
 - advanced merge UI.
 
+Merge contract:
+
+- Web may display merge candidates as review-only items until the execution API exists.
+- Review UI must show source/target names, aliases, facts, relationship edges, observations,
+  evidence counts, sensitivity/policy conflicts, protected self warnings, and risk notes before
+  enabling any future merge action.
+- Web must not perform merge rewrites client-side; all state changes go through the canonical API.
+
 ---
 
 ## 6. `/candidates`

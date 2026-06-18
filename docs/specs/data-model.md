@@ -437,7 +437,32 @@ Notes:
 - `payload` is JSONB in DB.
 - API/Pydantic validates `payload` by `candidate_type`.
 - Accepting a candidate immediately writes canonical records.
+- `merge` candidates are review-only until the person merge execution API is implemented.
 - Batch changesets are not MVP.
+
+### Person merge contract
+
+Person merge is a reviewed canonical maintenance operation. AI agents may propose
+`merge` candidates, but they must not directly merge people.
+
+Merge payload fields:
+
+- `source_entity_id`: possible duplicate entity to retire from active person workflows.
+- `target_entity_id`: canonical entity that should remain active.
+- `merge_plan`: explicit plan for aliases, facts, edges, observations, evidence, and conflicts.
+- `field_conflict_policy`: per-field decisions for display name, canonical name, sensitivity,
+  AI use policy, profile facts, aliases, active edges, and observations.
+- `merged_entity_ref`: durable reference from the source entity to the target after execution.
+
+Protected self constraints:
+
+- normal person merge rejects any source or target with `system_role = self`;
+- the only allowed self/self case is the same physical protected self row;
+- future protected-self repair flows need a separate contract.
+
+After merge execution, source rows remain inspectable but are not active people. Retrieval,
+context cards, and graph reads should resolve old source IDs to the target or hide the source
+from active results while preserving aliases and provenance under the target.
 
 ---
 

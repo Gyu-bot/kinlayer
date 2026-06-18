@@ -328,6 +328,53 @@ def test_correction_apply_reads_json_file_and_cli_uses_api_token(tmp_path, monke
     assert json.loads(result.stdout)["new_record_ref"] == "entity_edges:new"
 
 
+def test_agent_write_validate_cli_posts_payload(tmp_path, monkeypatch) -> None:
+    payload_path = tmp_path / "agent-write.json"
+    payload = {
+        "write_type": "candidate",
+        "payload": {
+            "candidate_type": "relationship_edge",
+            "payload": {
+                "from_entity_id": "person-1",
+                "to_entity_id": "person-2",
+                "relation_type": "Former coworker",
+                "claim_text": "They worked together.",
+                "claim_type": "fact",
+            },
+            "evidence": [{"episode_id": "episode-1", "excerpt": "They worked together."}],
+            "confidence": 0.8,
+            "created_by": "ai_agent",
+        },
+    }
+    payload_path.write_text(json.dumps(payload))
+    calls = []
+
+    def fake_post(url, headers, json, timeout):
+        calls.append((url, json))
+        return DummyResponse(
+            200,
+            {
+                "accepted": True,
+                "validated_payload": payload["payload"],
+                "normalizations_applied": [],
+                "warnings": [],
+                "errors": [],
+                "diagnostics": {},
+                "controlled_values_checked": [],
+                "audit_ref": None,
+            },
+        )
+
+    monkeypatch.setattr(cli.httpx, "post", fake_post)
+
+    result = CliRunner().invoke(cli.app, ["agent-write", "validate", str(payload_path), "--json"])
+
+    assert result.exit_code == 0
+    assert calls[0][0].endswith("/api/agent-writes/validate")
+    assert calls[0][1] == payload
+    assert json.loads(result.stdout)["accepted"] is True
+
+
 def test_agent_operations_cli_lists_and_exports_write_operations(monkeypatch) -> None:
     calls = []
     jsonl = (

@@ -103,14 +103,34 @@ def _first_evidence(candidate: Candidate) -> tuple[str | None, str | None]:
     return evidence.episode_id, _bounded_text(evidence.excerpt)
 
 
+def _filter_summary(filter_result: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not filter_result:
+        return None
+    return {
+        "accepted": filter_result.get("accepted"),
+        "normalizations_applied": filter_result.get("normalizations_applied", []),
+        "warnings": filter_result.get("warnings", []),
+        "controlled_values_checked": filter_result.get("controlled_values_checked", []),
+    }
+
+
 class AgentOperationService:
     def __init__(self, session: Session):
         self.session = session
 
-    def record_candidate_submit_success(self, candidate: Candidate, source_path: str) -> None:
+    def record_candidate_submit_success(
+        self,
+        candidate: Candidate,
+        source_path: str,
+        filter_result: dict[str, Any] | None = None,
+    ) -> None:
         if candidate.created_by != "ai_agent":
             return
         episode_id, excerpt = _first_evidence(candidate)
+        related_refs = {}
+        filter_details = _filter_summary(filter_result)
+        if filter_details:
+            related_refs["agent_write_filter"] = filter_details
         self._record(
             operation_type="candidate_submit",
             source_path=source_path,
@@ -126,6 +146,7 @@ class AgentOperationService:
                     "suggested_action": candidate.suggested_action,
                 }
             ),
+            related_refs=related_refs,
             candidate_id=candidate.id,
             episode_id=episode_id,
             bounded_excerpt=excerpt,
@@ -214,19 +235,24 @@ class AgentOperationService:
         payload: dict[str, Any],
         result: dict[str, str],
         source_path: str,
+        filter_result: dict[str, Any] | None = None,
     ) -> None:
         if payload.get("created_by") != "ai_agent":
             return
+        related_refs = {
+            "old_record_ref": result["old_record_ref"],
+            "new_record_ref": result["new_record_ref"],
+        }
+        filter_details = _filter_summary(filter_result)
+        if filter_details:
+            related_refs["agent_write_filter"] = filter_details
         self._record(
             operation_type="correction_apply",
             source_path=source_path,
             actor=payload["created_by"],
             result_status="success",
             request_summary=_correction_summary(payload),
-            related_refs={
-                "old_record_ref": result["old_record_ref"],
-                "new_record_ref": result["new_record_ref"],
-            },
+            related_refs=related_refs,
             episode_id=result["episode_id"],
             canonical_record_ref=result["new_record_ref"],
             bounded_excerpt=_bounded_text(payload.get("correction_source", {}).get("excerpt")),

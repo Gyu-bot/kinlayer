@@ -40,6 +40,11 @@ examples, generic groups/professions, AI agents/bots/models, the protected self 
 entity, and pronoun-only references such as `that person`, `그 사람`, `걔`, or `그분` without a
 reliable current-turn user-provided identifier.
 
+Agents may propose `merge` candidates when two person entities may be duplicates, but they must not
+directly execute a person merge. Weak identity evidence or pronoun-only references should become
+`needs_clarification` or a review-only candidate, not a canonical merge. Any future merge execution
+is a user-reviewed Kinlayer API operation with protected-self constraints.
+
 Candidate planning should distinguish:
 
 - AI inference, which enters review as a candidate;

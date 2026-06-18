@@ -16,6 +16,7 @@ from kinlayer_backend.schemas.candidates import (
     CandidateRead,
 )
 from kinlayer_backend.services.agent_operation_exports import AgentOperationService
+from kinlayer_backend.services.agent_write_filter import AgentWriteFilter
 from kinlayer_backend.services.candidates import CandidateService
 
 router = APIRouter(tags=["candidates"])
@@ -25,7 +26,24 @@ SessionDep = Annotated[Session, Depends(get_session)]
 @router.post("/api/candidates", response_model=CandidateRead, status_code=201)
 def create_candidate(payload: CandidateCreate, session: SessionDep):
     body = payload.model_dump()
+    filter_result = None
     try:
+        if body.get("created_by") == "ai_agent":
+            filter_result = AgentWriteFilter(session).validate("candidate", body)
+            if not filter_result["accepted"]:
+                raise api_error(
+                    422,
+                    "validation_error",
+                    "Agent write validation failed.",
+                    {
+                        "errors": filter_result["errors"],
+                        "warnings": filter_result["warnings"],
+                        "diagnostics": filter_result["diagnostics"],
+                        "normalizations_applied": filter_result["normalizations_applied"],
+                        "controlled_values_checked": filter_result["controlled_values_checked"],
+                    },
+                )
+            body = filter_result["validated_payload"]
         candidate = CandidateService(session).create_candidate(body)
     except HTTPException as exc:
         AgentOperationService(session).record_candidate_submit_failure(
@@ -34,7 +52,11 @@ def create_candidate(payload: CandidateCreate, session: SessionDep):
             exc,
         )
         raise
-    AgentOperationService(session).record_candidate_submit_success(candidate, "/api/candidates")
+    AgentOperationService(session).record_candidate_submit_success(
+        candidate,
+        "/api/candidates",
+        filter_result=filter_result,
+    )
     return candidate
 
 

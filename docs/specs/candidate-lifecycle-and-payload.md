@@ -352,19 +352,40 @@ candidate.canonical_record_ref = observations:<id>
   "target_entity_id": "...",
   "reason": "Alias and recent references suggest these may be the same person.",
   "fields_to_merge": ["aliases", "observations"],
-  "risk_notes": ["Both entities have similar names but different contexts."]
+  "merge_plan": {
+    "aliases": "copy_non_conflicting",
+    "profile_facts": "copy_non_conflicting",
+    "edges": "repoint_without_self_or_duplicate_edges",
+    "observations": "repoint_related_entities",
+    "conflicts": "create_conflict_candidates"
+  },
+  "field_conflict_policy": {
+    "display_name": "keep_target",
+    "canonical_name": "keep_target",
+    "sensitivity": "use_more_restrictive",
+    "ai_use_policy": "use_more_restrictive"
+  },
+  "risk_notes": ["Both entities have similar names but different contexts."],
+  "merged_entity_ref": "entities:<target_id>"
 }
 ```
 
-Accept result:
+Review result:
 
 ```text
-source entity marked merged or deprecated
-selected aliases/observations/edges moved or linked according to merge policy
-candidate.canonical_record_ref = entities:<target_id>
+T041 defines the contract only.
+T043 implements atomic accept/merge execution.
 ```
 
-MVP may support merge candidate creation and review while keeping full merge execution limited/manual if needed.
+Merge rules:
+
+- AI agents may propose merge candidates but must not directly merge people.
+- Pronoun-only or weak identity similarity may create a clarification/merge candidate, not a direct merge.
+- Protected self cannot be source or target for normal person merge unless both IDs refer to the same
+  protected self row.
+- Execution must preserve auditability and keep the source inspectable as merged/deprecated, not deleted.
+- After execution, retrieval/context/graph should use the target entity and not rank the source as a
+  separate active person.
 
 ### 7.7 `conflict`
 

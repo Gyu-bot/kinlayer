@@ -99,6 +99,7 @@ payload = {
 }
 open(path, "w").write(json.dumps(payload))
 PY
+uv run kinlayer agent-write validate "$invalid_candidate_json" --json > "$TMP_DIR/agent-write-invalid-validate.json"
 if uv run kinlayer candidate submit "$invalid_candidate_json" --json > "$TMP_DIR/candidate-invalid-edge.out" 2> "$TMP_DIR/candidate-invalid-edge.err"; then
   echo "Invalid relationship_edge candidate unexpectedly succeeded." >&2
   exit 1
@@ -274,6 +275,9 @@ assert json.load(open(root / "person-show.json"))["entity"]["display_name"].star
 assert any(match["entity_id"] == json.load(open(root / "person-show.json"))["entity"]["id"] for match in json.load(open(root / "person-resolve.json"))["matches"])
 assert json.load(open(root / "candidate-accept.json"))["canonical_record_ref"].startswith("observations:")
 assert json.load(open(root / "candidate-edit-accept.json"))["status"] == "edited_accepted"
+agent_write_validation = json.load(open(root / "agent-write-invalid-validate.json"))
+assert agent_write_validation["accepted"] is False
+assert any(error["code"] == "relation_type_not_allowed" for error in agent_write_validation["errors"])
 assert json.load(open(root / "candidate-reject.json"))["status"] == "rejected"
 assert json.load(open(root / "candidate-clarify.json"))["status"] == "needs_clarification"
 assert json.load(open(root / "correction-result.json"))["new_record_ref"].startswith("observations:")
