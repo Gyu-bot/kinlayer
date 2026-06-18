@@ -20,6 +20,10 @@ export type RetrievedObservation = {
   sensitivity: string;
   ai_use_policy: string;
   status: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  occurred_at: string | null;
+  created_at: string | null;
 };
 
 export type MatchedEntity = {

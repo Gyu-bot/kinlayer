@@ -126,7 +126,7 @@ Scripts and docs:
 | T048 | Agent Write Instruction Pack | Critical | Done | T035, T047 |
 | T049 | Agent write schema guard, low-risk normalization, and diagnostics filter | Critical | Done | T036, T037, T047, T048 |
 | T050 | Structured profile fact promotion workflow | High | Ready | T033, T034, T039, T049 |
-| T051 | Temporal observation recording and candidate payload preservation | High | Ready | T012, T016, T048, T049 |
+| T051 | Temporal observation recording and candidate payload preservation | High | Done | T012, T016, T048, T049 |
 | T052 | Optional LLM-assisted background curation | Low | Backlog | T040, T045, T049, T050, T051 |
 | T053 | Agent write operation export and Web download | High | Done | T034 |
 | T054 | Structured profile fact content validation | High | Ready | T033, T034 |
@@ -138,14 +138,13 @@ Scripts and docs:
 Last refreshed: 2026-06-18.
 
 - T050: Structured profile fact promotion workflow.
-- T051: Temporal observation recording and candidate payload preservation.
 - T054: Structured profile fact content validation.
 
 Notes:
 
 - T042 through T045 are `Done`; person merge is complete through duplicate detection, atomic API execution, CLI/Web review, and acceptance smoke.
-- T049 is `Done`; T050 and T051 are now unblocked for structured fact promotion and temporal observation follow-up.
-- T052 remains `Backlog` until deterministic guard/profile/temporal follow-ups are complete.
+- T049 and T051 are `Done`; T050 remains unblocked for structured fact promotion.
+- T052 remains `Backlog` until T050 is complete; its T051 dependency is now satisfied.
 
 ---
 
@@ -1323,7 +1322,7 @@ uv run kinlayer status --json
 
 #### Task T050. Structured profile fact promotion workflow
 - Priority: High
-- Status: Backlog
+- Status: Ready
 - Depends on: T033, T034, T039, T049
 - 설명: 일반 profile fact를 명시적 검토를 거쳐 구조화된 fact로 승격하는 workflow를 만든다.
 - Files:
@@ -1375,25 +1374,28 @@ uv run kinlayer status --json
 
 #### Task T051. Temporal observation recording and candidate payload preservation
 - Priority: High
-- Status: Backlog
+- Status: Done
 - Depends on: T012, T016, T048, T049
-- 설명: observation의 사건 날짜와 적용 기간을 candidate -> canonical -> retrieval -> Web까지 보존한다.
+- 설명: observation의 사건 날짜와 적용 기간을 candidate -> canonical -> retrieval/context까지 보존하고, Issue #4의 canonical observation content 품질 계약/가드를 반영한다.
 - Files:
   - Modify: `docs/specs/data-model.md`
   - Modify: `docs/specs/api-spec.md`
   - Modify: `docs/specs/candidate-lifecycle-and-payload.md`
+  - Modify: `docs/specs/context-output-contract.md`
   - Modify: `docs/agents/agent-write-instruction-pack.md`
   - Modify: `backend/src/kinlayer_backend/schemas/candidates.py`
-  - Modify: `backend/src/kinlayer_backend/schemas/relationships.py`
   - Modify: `backend/src/kinlayer_backend/services/candidates.py`
   - Modify: `backend/src/kinlayer_backend/services/relationships.py`
+  - Modify: `backend/src/kinlayer_backend/services/agent_write_filter.py`
+  - Modify: `backend/src/kinlayer_backend/services/retrieval.py`
   - Modify: `backend/src/kinlayer_backend/schemas/context.py`
   - Modify: `frontend/src/routes/PersonDetail.tsx`
   - Modify: `frontend/src/routes/Candidates.tsx`
+  - Modify: `frontend/src/types/context.ts`
+  - Test: `frontend/src/App.test.tsx`
   - Test: `backend/tests/test_candidates_api.py`
-  - Test: `backend/tests/test_relationships_api.py`
-  - Test: `backend/tests/test_retrieval_engine.py`
-  - Modify: `scripts/smoke-acceptance-api.py`
+  - Test: `backend/tests/test_agent_write_filter.py`
+  - Test: `backend/tests/test_context_api.py`
 - Design:
   - Distinguish the date a user-authored source was recorded from the date the described event actually happened.
   - Treat `episode.occurred_at` as the source-recorded date for a conversation/import item; exact time is optional.
@@ -1404,18 +1406,25 @@ uv run kinlayer status --json
   - If the API continues to store temporal values as `timestamptz`, date-only inputs should be normalized with an explicit timezone and date-range semantics rather than pretending a precise event time is known.
   - Retrieval/debug and context-card surfaces should avoid implying that `created_at` is the event date.
   - The Agent Write Instruction Pack should continue to require content-level temporal anchors when relative time is needed for future usefulness.
+  - Issue #4 observation content contract: structurable facts and durable relationships should become typed records (`entity_edges`, `entity_facts`, or typed relationship properties), not long observation prose.
+  - Observation prose should be reserved for relationship judgment, coaching context, conversation strategy, recent interaction interpretation, cautions, and reusable context notes.
+  - Agent-write validation should provide deterministic, non-blocking quality warnings for overlong observation content, dangling references, missing temporal scope, and typed-record boundary review. It must not infer or construct replacement fact/edge payloads.
 - Acceptance Criteria:
-  - [ ] Candidate `observation` payload schema accepts and preserves event/applicability temporal fields, including at least `occurred_at`, `valid_from`, and `valid_to`.
-  - [ ] Candidate accept and edit-accept write those temporal fields into canonical `observations`.
-  - [ ] API examples distinguish source-recorded date from observation event date.
-  - [ ] Web candidate and person detail views display event/applicability dates separately from record creation date where present.
-  - [ ] Retrieval debug/context output includes temporal fields without using `created_at` as a substitute for event date.
-  - [ ] Tests cover a source recorded on one date that describes an event on another date.
-  - [ ] Tests cover a relative period such as "this week" resolved to a date range and preserved through candidate accept.
-  - [ ] Agent Write Instruction Pack examples remain consistent with implemented temporal fields.
+  - [x] Candidate `observation` payload schema accepts and preserves event/applicability temporal fields, including at least `occurred_at`, `valid_from`, and `valid_to`.
+  - [x] Candidate accept and edit-accept write those temporal fields into canonical `observations`.
+  - [x] API examples distinguish source-recorded date from observation event date.
+  - [x] Web candidate and person detail views display event/applicability dates separately from record creation date where present.
+  - [x] Retrieval debug/context output includes temporal fields without using `created_at` as a substitute for event date.
+  - [x] Tests cover a source recorded on one date that describes an event on another date.
+  - [x] Tests cover a relative period such as "this week" resolved to a date range and preserved through candidate accept.
+  - [x] Agent Write Instruction Pack examples remain consistent with implemented temporal fields.
+  - [x] Issue #4 observation writing contract is documented, including one-claim content, typed-record boundary, subject clarity, temporal scope, and compact content guidance.
+  - [x] Agent-write validation exposes deterministic observation quality warnings without semantic rewriting or LLM classification.
 - Notes:
   - Date precision is enough for most relationship observations. Do not force clock time unless the user/source provides it or it materially changes interpretation.
   - This task should not add LLM-based temporal inference. Agents may resolve obvious relative dates against a known source timestamp, but ambiguous cases should ask for clarification or preserve uncertainty.
+  - Completed on `codex/observation-temporal-quality`.
+  - Verified with backend candidate/filter/context tests, full backend tests, backend lint, frontend tests, frontend build, and an in-app browser pass against the rebuilt compose Web/API stack confirming temporal labels on person detail without console errors.
 
 #### Task T052. Optional LLM-assisted background curation
 - Priority: Low

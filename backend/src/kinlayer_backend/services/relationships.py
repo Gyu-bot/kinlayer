@@ -101,6 +101,7 @@ class RelationshipService:
             self._entity(related["entity_id"])
             if related["role"] not in OBSERVATION_ROLES:
                 raise api_error(422, "validation_error", "Invalid related entity role.")
+        self._parse_observation_temporal_fields(payload)
         payload["embedding_status"] = "pending"
         observation = self.repository.add_observation(payload, related_entities, commit=commit)
         EmbeddingService(self.session, self.settings).embed_observation(observation, commit=commit)
@@ -122,6 +123,15 @@ class RelationshipService:
         if content_changed:
             EmbeddingService(self.session, self.settings).embed_observation(observation)
         return observation
+
+    def _parse_observation_temporal_fields(self, payload: dict[str, Any]) -> None:
+        for field in ("valid_from", "valid_to", "occurred_at"):
+            value = payload.get(field)
+            if isinstance(value, str):
+                try:
+                    payload[field] = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                except ValueError as exc:
+                    raise api_error(422, "validation_error", f"Invalid {field}.") from exc
 
     def delete_observation(self, observation: Observation) -> Observation:
         observation.status = "deleted"

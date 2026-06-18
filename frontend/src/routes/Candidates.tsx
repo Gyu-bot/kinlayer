@@ -93,6 +93,14 @@ function payloadStringList(payload: Record<string, unknown>, key: string) {
     : [];
 }
 
+function temporalPayloadEntries(payload: Record<string, unknown>) {
+  return [
+    ["Event", payloadString(payload, "occurred_at")],
+    ["Valid from", payloadString(payload, "valid_from")],
+    ["Valid to", payloadString(payload, "valid_to")],
+  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
+}
+
 function contextName(card: ContextCard | undefined, fallback: string) {
   return card?.entity.display_name || fallback;
 }
@@ -427,6 +435,12 @@ export function Candidates() {
                   <dt>Superseded record</dt>
                   <dd>{rawRefSummary(selected.supersedes_record_ref)}</dd>
                 </div>
+                {temporalPayloadEntries(selected.payload).map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{formatTimestamp(value)}</dd>
+                  </div>
+                ))}
               </dl>
               {selectedIsMerge ? (
                 <MergeReview

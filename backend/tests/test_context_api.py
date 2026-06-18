@@ -105,6 +105,9 @@ def test_context_retrieve_returns_matches_scores_observations_and_debug(client) 
         alex["id"],
         "Alex prefers concise Korean summaries after investor meetings.",
         recency_weight=1.0,
+        occurred_at="2026-06-17T00:00:00+09:00",
+        valid_from="2026-06-18T00:00:00+09:00",
+        valid_to="2026-07-01T00:00:00+09:00",
     )
 
     response = client.post(
@@ -123,6 +126,9 @@ def test_context_retrieve_returns_matches_scores_observations_and_debug(client) 
     assert "exact_alias" in body["matched_entities"][0]["match_reasons"]
     assert "alias_name" in body["matched_entities"][0]["score_breakdown"]
     assert body["observations"][0]["observation_id"] == observation["id"]
+    assert body["observations"][0]["occurred_at"].startswith("2026-06-17T00:00:00")
+    assert body["observations"][0]["valid_from"].startswith("2026-06-18T00:00:00")
+    assert body["observations"][0]["valid_to"].startswith("2026-07-01T00:00:00")
     assert "score_weights" in body["debug"]
 
 

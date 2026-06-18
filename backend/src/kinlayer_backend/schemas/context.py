@@ -25,6 +25,10 @@ class RetrievedObservationRead(APIModel):
     sensitivity: str
     ai_use_policy: str
     status: str
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    occurred_at: datetime | None = None
+    created_at: datetime | None = None
 
 
 class MatchedEntityRead(APIModel):

@@ -17,6 +17,37 @@ from kinlayer_backend.services.ontology import is_allowed_registry_value
 
 SUGGESTED_ACTIONS = {"review", "accept", "reject", "clarify"}
 CORRECTION_RECORD_TYPES = {"entity_edges", "entity_facts", "observations"}
+OBSERVATION_CONTENT_SOFT_LIMIT = 300
+DANGLING_REFERENCE_PHRASES = {
+    "그 사람",
+    "그분",
+    "걔",
+    "저런 식",
+    "that person",
+    "this issue",
+    "the situation",
+    "they",
+}
+TEMPORAL_ANCHOR_PHRASES = {
+    "as of",
+    "currently",
+    "recent",
+    "recently",
+    "요즘",
+    "최근",
+    "현재",
+}
+TYPED_RECORD_BOUNDARY_CUES = {
+    "전 연인",
+    "former partner",
+    "former_partner",
+    "교사",
+    "teacher",
+    "좋아함",
+    "likes",
+    "년 만났",
+    "dated for",
+}
 
 
 def _registry_key(value: str) -> str:
@@ -90,7 +121,7 @@ class AgentWriteFilter:
     def _validate_candidate(self, payload: dict[str, Any]) -> None:
         candidate = CandidateCreate.model_validate(payload)
         payload.clear()
-        payload.update(candidate.model_dump())
+        payload.update(candidate.model_dump(mode="json"))
         self._check_registry("candidate_type", payload["candidate_type"], "candidate_type")
         self._check_registry("sensitivity", payload.get("sensitivity", "medium"), "sensitivity")
         suggested_action = payload.get("suggested_action")
@@ -124,6 +155,7 @@ class AgentWriteFilter:
             )
             for index, entity_id in enumerate(payload.get("related_entity_ids", [])):
                 self._entity(entity_id, f"payload.related_entity_ids.{index}")
+            self._validate_observation_content_contract(payload)
         elif candidate_type == "profile_field":
             self._entity(payload["entity_id"], "payload.entity_id")
             fact_type = payload.get("fact_type")
@@ -161,7 +193,7 @@ class AgentWriteFilter:
     def _validate_correction(self, payload: dict[str, Any]) -> None:
         correction = CorrectionApplyRequest.model_validate(payload)
         payload.clear()
-        payload.update(correction.model_dump())
+        payload.update(correction.model_dump(mode="json"))
         if payload.get("created_by") != "ai_agent":
             return
         source = payload["correction_source"]
@@ -184,6 +216,58 @@ class AgentWriteFilter:
             return
         if new_record["record_type"] == "entity_edges":
             self._validate_edge_payload(new_record["payload"], "new_record.payload.relation_type")
+
+    def _validate_observation_content_contract(self, payload: dict[str, Any]) -> None:
+        content = payload.get("content") or ""
+        stripped = content.strip()
+        if not stripped:
+            self._add_error("observation_content_required", "Observation content is required.", "payload.content")
+            return
+        self.diagnostics["observation_content_contract"] = {
+            "max_recommended_characters": OBSERVATION_CONTENT_SOFT_LIMIT,
+            "typed_record_boundary": [
+                "relationship edges",
+                "entity facts",
+                "relationship properties",
+            ],
+            "temporal_scope_fields": ["occurred_at", "valid_from", "valid_to"],
+        }
+        if len(stripped) > OBSERVATION_CONTENT_SOFT_LIMIT:
+            self._add_warning(
+                "observation_content_too_long",
+                "Observation content should usually stay near 300 characters.",
+                "payload.content",
+                {"length": len(stripped), "recommended_max": OBSERVATION_CONTENT_SOFT_LIMIT},
+            )
+        lower_content = stripped.casefold()
+        if any(phrase in lower_content for phrase in DANGLING_REFERENCE_PHRASES):
+            self._add_warning(
+                "observation_content_dangling_reference",
+                "Observation content should name the subject instead of using dangling references.",
+                "payload.content",
+            )
+        sentence_count = sum(stripped.count(mark) for mark in ".?!。！？")
+        if sentence_count > 2:
+            self._add_warning(
+                "observation_content_many_sentences",
+                "One observation should usually contain one claim or reusable context point.",
+                "payload.content",
+                {"sentence_end_mark_count": sentence_count},
+            )
+        has_temporal_field = any(payload.get(field) for field in ("occurred_at", "valid_from", "valid_to"))
+        has_temporal_anchor = any(phrase in lower_content for phrase in TEMPORAL_ANCHOR_PHRASES)
+        if not has_temporal_field and not has_temporal_anchor:
+            self._add_warning(
+                "observation_content_missing_temporal_scope",
+                "Observation content should include temporal scope in JSON fields or readable text.",
+                "payload",
+            )
+        if any(cue in lower_content for cue in TYPED_RECORD_BOUNDARY_CUES):
+            self._add_warning(
+                "observation_typed_record_boundary_review",
+                "Structurable facts and durable relationships should be reviewed for typed records instead of observation prose.",
+                "payload.content",
+            )
 
     def _validate_edge_payload(self, payload: dict[str, Any], relation_field: str) -> None:
         from_entity = self._entity(payload["from_entity_id"], relation_field.rsplit(".", 1)[0] + ".from_entity_id")
@@ -359,6 +443,22 @@ class AgentWriteFilter:
         details: dict[str, Any] | None = None,
     ) -> None:
         self.errors.append(
+            {
+                "code": code,
+                "message": message,
+                "field": field,
+                "details": details or {},
+            }
+        )
+
+    def _add_warning(
+        self,
+        code: str,
+        message: str,
+        field: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        self.warnings.append(
             {
                 "code": code,
                 "message": message,

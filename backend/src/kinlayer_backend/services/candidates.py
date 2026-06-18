@@ -143,7 +143,7 @@ class CandidateService:
         try:
             candidate.payload = PAYLOAD_MODELS[candidate.candidate_type].model_validate(
                 edited_payload
-            ).model_dump(exclude_none=True)
+            ).model_dump(mode="json", exclude_none=True)
         except (KeyError, ValidationError) as exc:
             raise api_error(422, "validation_error", "Invalid candidate payload.") from exc
         self._validate_payload(candidate.candidate_type, candidate.payload)

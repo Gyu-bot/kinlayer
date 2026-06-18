@@ -259,6 +259,46 @@ strong {
   padding: 16px;
 }
 
+.merge-accordion {
+  border: 1px solid #d8ddd4;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.accordion-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  padding: 14px 16px;
+  text-align: left;
+}
+
+.accordion-toggle:hover,
+.accordion-toggle:focus-visible {
+  background: #f3f6f1;
+}
+
+.accordion-title {
+  display: block;
+  margin-top: 3px;
+  color: #1f2f25;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.accordion-body {
+  display: grid;
+  gap: 14px;
+  border-top: 1px solid #d8ddd4;
+  padding: 16px;
+}
+
 .definition-list {
   display: grid;
   gap: 10px;

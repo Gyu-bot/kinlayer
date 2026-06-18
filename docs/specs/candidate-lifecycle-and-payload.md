@@ -331,6 +331,7 @@ Validation:
   "claim_type": "pattern",
   "ai_use_policy": "cautious_use",
   "sensitivity": "medium",
+  "occurred_at": null,
   "valid_from": null,
   "valid_to": null
 }
@@ -343,6 +344,21 @@ observations row created
 observation_evidence rows created
 candidate.canonical_record_ref = observations:<id>
 ```
+
+Temporal behavior:
+
+- `occurred_at` is the event date/time for point-in-time observations.
+- `valid_from` and `valid_to` are the applicability range for period-bound context.
+- Candidate submit, accept, and edit-accept preserve these temporal fields into canonical
+  `observations`.
+
+Quality behavior:
+
+- Structurable facts and durable relationships should be submitted as typed records instead of long
+  observation prose.
+- Agent write validation may return warnings for overlong content, dangling references, missing
+  temporal scope, or typed-record boundary review. These warnings are diagnostics; Kinlayer does not
+  infer or construct a replacement fact/edge payload.
 
 ### 7.6 `merge`
 

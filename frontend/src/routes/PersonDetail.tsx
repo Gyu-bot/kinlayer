@@ -46,6 +46,13 @@ const STRUCTURED_FACT_TYPES = [
   "memo",
 ];
 
+function formatTimestamp(value: string | null) {
+  if (!value) {
+    return "Unknown";
+  }
+  return new Date(value).toLocaleString();
+}
+
 type FactDraft = {
   fact_type: string;
   content: string;
@@ -930,6 +937,17 @@ function ObservationSection({
               <span className="pill">{helpCopy.claim.label}: {observation.claim_type}</span>
               <span className="pill">{helpCopy.policy.label}: {observation.ai_use_policy}</span>
               <span className="pill">{helpCopy.sensitivity.label}: {observation.sensitivity}</span>
+            </div>
+            <div className="pill-row">
+              {observation.occurred_at ? (
+                <span className="pill">Event: {formatTimestamp(observation.occurred_at)}</span>
+              ) : null}
+              {observation.valid_from ? (
+                <span className="pill">Valid from: {formatTimestamp(observation.valid_from)}</span>
+              ) : null}
+              {observation.valid_to ? (
+                <span className="pill">Valid to: {formatTimestamp(observation.valid_to)}</span>
+              ) : null}
             </div>
             <button type="button" className="secondary" onClick={() => onDelete(observation.id)}>
               Delete observation

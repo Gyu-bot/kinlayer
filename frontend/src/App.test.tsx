@@ -548,6 +548,9 @@ describe("App route shell", () => {
                   id: "obs-recent",
                   content: "최근 프로젝트 킥오프에 대해 후속 확인이 필요하다.",
                   observation_type: "recent_interaction",
+                  occurred_at: "2026-06-17T00:00:00Z",
+                  valid_from: "2026-06-18T00:00:00Z",
+                  valid_to: "2026-07-01T00:00:00Z",
                 }),
               ],
               provenance_summary: {
@@ -584,6 +587,9 @@ describe("App route shell", () => {
     );
     expect(screen.getByText("민지는 긴 설명보다 핵심 요약을 선호한다.")).toBeInTheDocument();
     expect(screen.getByText("최근 프로젝트 킥오프에 대해 후속 확인이 필요하다.")).toBeInTheDocument();
+    expect(screen.getByText(/Event:/)).toBeInTheDocument();
+    expect(screen.getByText(/Valid from:/)).toBeInTheDocument();
+    expect(screen.getByText(/Valid to:/)).toBeInTheDocument();
     expect(screen.getByText("Facts 1 / Edges 1 / Observations 2 / Evidence 3")).toBeInTheDocument();
     expect(screen.getByText("오래 알고 지낸 친구")).toBeInTheDocument();
   });
@@ -1219,6 +1225,9 @@ describe("App route shell", () => {
     expect(screen.getByText("thread-candidate")).toBeInTheDocument();
     expect(screen.getByText("sha256:candidate")).toBeInTheDocument();
     expect(screen.getAllByText("김민지").length).toBeGreaterThan(0);
+    expect(screen.getByText("Event")).toBeInTheDocument();
+    expect(screen.getByText("Valid from")).toBeInTheDocument();
+    expect(screen.getByText("Valid to")).toBeInTheDocument();
     expect(screen.getByRole("option", {name: "edited_accepted"})).toBeInTheDocument();
     expect(screen.getByRole("option", {name: "superseded"})).toBeInTheDocument();
     expect(screen.getByRole("option", {name: "Observation"})).toBeInTheDocument();
@@ -1883,6 +1892,109 @@ describe("App route shell", () => {
     expect(screen.getByText("Context unavailable")).toBeInTheDocument();
     expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
   });
+
+  it("creates a manual merge candidate from selected people", async () => {
+    window.history.pushState({}, "", "/people");
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/ontology")) {
+        return jsonResponse(ontologyFixture());
+      }
+      if (url.endsWith("/api/entities?entity_type=person&limit=50")) {
+        return jsonResponse({
+          items: [
+            entityFixture({id: "source-1", display_name: "민지 중복"}),
+            entityFixture({id: "target-1", display_name: "김민지"}),
+          ],
+          limit: 50,
+          offset: 0,
+          total: 2,
+        });
+      }
+      if (
+        url.endsWith("/api/entities/source-1/aliases") ||
+        url.endsWith("/api/entities/target-1/aliases")
+      ) {
+        return jsonResponse({items: [], limit: 200, offset: 0, total: 0});
+      }
+      if (
+        url.endsWith("/api/entities/source-1/context-card") ||
+        url.endsWith("/api/entities/target-1/context-card")
+      ) {
+        return jsonResponse(contextCardFixture());
+      }
+      if (url.endsWith("/api/candidates") && init?.method === "POST") {
+        expect(JSON.parse(String(init.body))).toMatchObject({
+          candidate_type: "merge",
+          target_entity_id: "target-1",
+          confidence: 0.5,
+          sensitivity: "medium",
+          suggested_action: "review",
+          created_by: "user",
+          payload: {
+            source_entity_id: "source-1",
+            target_entity_id: "target-1",
+            reason: "Manual Web merge request: merge 민지 중복 into 김민지.",
+            fields_to_merge: ["aliases", "profile_facts", "edges", "observations"],
+            merge_plan: {
+              aliases: "copy_non_conflicting",
+              profile_facts: "copy_non_conflicting",
+              edges: "repoint_without_self_or_duplicate_edges",
+              observations: "repoint_related_entities",
+            },
+            field_conflict_policy: {
+              display_name: "keep_target",
+              canonical_name: "keep_target",
+              sensitivity: "use_more_restrictive",
+              ai_use_policy: "use_more_restrictive",
+            },
+          },
+        });
+        return jsonResponse(
+          candidateFixture({
+            id: "merge-candidate-1",
+            candidate_type: "merge",
+            target_entity_id: "target-1",
+            payload: {
+              source_entity_id: "source-1",
+              target_entity_id: "target-1",
+              reason: "Manual Web merge request: merge 민지 중복 into 김민지.",
+              fields_to_merge: ["aliases", "profile_facts", "edges", "observations"],
+              merge_plan: {},
+              field_conflict_policy: {},
+              risk_notes: [],
+            },
+            created_by: "user",
+            suggested_action: "review",
+          }),
+        );
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const mergeToggle = await screen.findByRole("button", {name: /Merge people/});
+    expect(mergeToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByLabelText("Source person")).not.toBeInTheDocument();
+    fireEvent.click(mergeToggle);
+    expect(mergeToggle).toHaveAttribute("aria-expanded", "true");
+    await waitFor(() =>
+      expect(screen.getAllByRole("option", {name: "민지 중복"}).length).toBeGreaterThan(0),
+    );
+    fireEvent.change(screen.getByLabelText("Source person"), {target: {value: "source-1"}});
+    fireEvent.change(screen.getByLabelText("Target person"), {target: {value: "target-1"}});
+    fireEvent.click(screen.getByRole("button", {name: "Create merge candidate"}));
+
+    await waitFor(() =>
+      expect(screen.getByText("Merge candidate created for review.")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", {name: "Review in Candidates"}));
+    expect(window.location.pathname).toBe("/candidates");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/candidates"))).toBe(
+      true,
+    );
+  });
 });
 
 function entityFixture(overrides: Partial<Record<string, unknown>> = {}) {
@@ -1975,6 +2087,9 @@ function candidateFixture(overrides: Partial<Record<string, unknown>> = {}) {
       observation_type: "recent_interaction",
       content: "후속 확인이 필요하다.",
       claim_type: "fact",
+      occurred_at: "2026-06-17T00:00:00Z",
+      valid_from: "2026-06-18T00:00:00Z",
+      valid_to: "2026-07-01T00:00:00Z",
     },
     evidence: [
       {

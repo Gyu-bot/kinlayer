@@ -363,6 +363,13 @@ export async function listCandidates(filters: CandidateFilters) {
   return request<ListResponse<Candidate>>(`/api/candidates?${params.toString()}`);
 }
 
+export async function createCandidate(input: Record<string, unknown>) {
+  return request<Candidate>("/api/candidates", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 function agentOperationParams(filters: AgentOperationFilters, limit: string) {
   const params = new URLSearchParams({limit});
   if (filters.actor.trim()) {

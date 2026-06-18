@@ -25,7 +25,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 @router.post("/api/candidates", response_model=CandidateRead, status_code=201)
 def create_candidate(payload: CandidateCreate, session: SessionDep):
-    body = payload.model_dump()
+    body = payload.model_dump(mode="json")
     filter_result = None
     try:
         if body.get("created_by") == "ai_agent":
