@@ -119,7 +119,11 @@ def test_agent_write_operations_list_and_export_success_and_rejection(client) ->
 
     assert rejected_operation["actor"] == "ai_agent"
     assert rejected_operation["api_error_code"] == "validation_error"
-    assert rejected_operation["diagnostics"]["message"] == "Invalid relation_type."
+    assert rejected_operation["diagnostics"]["message"] == "Agent write validation failed."
+    assert any(
+        error["code"] == "relation_type_not_allowed"
+        for error in rejected_operation["diagnostics"]["details"]["errors"]
+    )
     assert rejected_operation["request_summary"]["relation_type"] == "reply_strategy"
     assert "body_excerpt" not in rejected_operation["request_summary"]
 

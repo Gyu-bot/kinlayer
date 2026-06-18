@@ -441,7 +441,19 @@ nlpai-lab/KURE-v1
 
 ---
 
-## 12. Closed Decisions
+## 12. Person Merge Output Contract
+
+After person merge execution exists, context outputs must treat the target entity as canonical.
+Old source entity IDs may resolve to the target for lookup/debug, but the source must not appear as
+a separate active person in normal retrieve, pack, context-card, or graph outputs.
+
+Context cards for the target should include merged aliases and provenance summaries so agents can
+understand why older references still map to the target. Conflict records created during merge stay
+reviewable and should not be presented as confirmed context.
+
+---
+
+## 13. Closed Decisions
 
 - `Context Pack` replaces older `Situation Context Bundle` / `Situation Briefing Bundle` terminology.
 - `/api/context/pack` replaces older `/api/context/situation` naming.

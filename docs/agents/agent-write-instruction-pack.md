@@ -79,6 +79,10 @@ GET /api/ontology/policies
 
 Use the registry values returned by these endpoints. Mechanical normalization may exist in the service layer later, but agents should still send canonical registry values.
 
+Kinlayer exposes `POST /api/agent-writes/validate` and CLI `kinlayer agent-write validate <payload.json>`
+for dry-run checks. Use it when integrating a new adapter or debugging a rejected write. A successful
+dry run does not persist a candidate or canonical record.
+
 ---
 
 ## 4. Relationship Type Is Edge Type
@@ -203,6 +207,11 @@ Create an episode when the candidate needs provenance:
   "created_by": "ai_agent"
 }
 ```
+
+This is review-only. Agents may submit this candidate with evidence and confidence, but they must not
+call or simulate person merge execution. Protected self must not be source or target for a normal
+person merge. Weak or pronoun-only identity evidence should ask for clarification instead of proposing
+a direct merge.
 
 If the runtime cannot create the hash itself, use the adapter-provided episode helper. Do not invent an unverifiable hash.
 

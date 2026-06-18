@@ -584,10 +584,63 @@ Validation:
 - `payload` validated by `candidate_type` using typed schemas.
 - Evidence writes to `candidate_evidence` join table.
 - `created_by = ai_agent` candidates require at least one evidence item.
+- `created_by = ai_agent` candidates pass the deterministic agent write filter before persistence.
 - Evidence must reference an existing episode with supported source type, non-empty excerpt,
   confidence in `[0, 1]`, source ref, body hash, and actor.
 - Candidate responses include evidence source metadata when available: `source_type`, `source_ref`,
   `source_description`, `body_hash`, and `actor`.
+- `merge`, `conflict`, and `supersede` candidates are review-only until their specific execution
+  workflows exist; normal candidate accept must not silently merge people.
+
+### `POST /api/agent-writes/validate`
+
+Purpose: dry-run deterministic validation for agent candidate/correction payloads without
+persisting candidates or canonical records.
+
+Request:
+
+```json
+{
+  "write_type": "candidate",
+  "payload": {
+    "candidate_type": "relationship_edge",
+    "payload": {
+      "from_entity_id": "uuid",
+      "to_entity_id": "uuid",
+      "relation_type": "Former coworker",
+      "claim_text": "They worked together.",
+      "claim_type": "fact"
+    },
+    "evidence": [{"episode_id": "uuid", "excerpt": "..."}],
+    "confidence": 0.8,
+    "created_by": "ai_agent"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "accepted": true,
+  "validated_payload": {},
+  "normalizations_applied": [],
+  "warnings": [],
+  "errors": [],
+  "diagnostics": {},
+  "controlled_values_checked": [],
+  "audit_ref": null
+}
+```
+
+Filter rules:
+
+- no LLM calls, keyword intent rewriting, fuzzy semantic classification, translation, or synonym guessing;
+- low-risk normalization only for controlled values that map to exactly one active registry value
+  or label after trimming, casefolding, whitespace collapse, and space/hyphen-to-underscore;
+- unknown edge types return `relation_type_not_allowed` with the allowed edge-type list;
+- the filter validates evidence, entity refs, endpoint entity-type compatibility, and explicit
+  user correction requirements for agent-submitted writes.
 
 ### `GET /api/candidates`
 

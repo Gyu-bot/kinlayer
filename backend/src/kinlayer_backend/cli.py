@@ -19,6 +19,7 @@ debug_app = typer.Typer(help="Inspect retrieval internals.")
 graph_app = typer.Typer(help="Inspect relationship graph views.")
 ontology_app = typer.Typer(help="Inspect ontology registries and diagnostics.")
 agent_operations_app = typer.Typer(help="Inspect and export agent write operations.")
+agent_write_app = typer.Typer(help="Validate agent write payloads.")
 app.add_typer(person_app, name="person")
 app.add_typer(embedding_app, name="embedding")
 app.add_typer(candidate_app, name="candidate")
@@ -28,6 +29,7 @@ app.add_typer(debug_app, name="debug")
 app.add_typer(graph_app, name="graph")
 app.add_typer(ontology_app, name="ontology")
 app.add_typer(agent_operations_app, name="agent-operations")
+app.add_typer(agent_write_app, name="agent-write")
 
 
 def _headers(settings: Settings) -> dict[str, str]:
@@ -503,6 +505,28 @@ def correction_apply(
         _emit(payload, json_output=True)
     else:
         typer.echo(f"{payload['old_record_ref']} -> {payload['new_record_ref']}")
+
+
+@agent_write_app.command("validate")
+def agent_write_validate(
+    agent_write_json: Path,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    response = _request(
+        "POST",
+        "/api/agent-writes/validate",
+        payload=_read_json_file(agent_write_json),
+    )
+    _raise_for_api(response)
+    payload = response.json()
+    if json_output:
+        _emit(payload, json_output=True)
+        return
+    status = "accepted" if payload["accepted"] else "rejected"
+    typer.echo(f"Agent write validation: {status}")
+    for issue in payload.get("errors", []):
+        field = f" {issue['field']}" if issue.get("field") else ""
+        typer.echo(f"- {issue['code']}{field}: {issue['message']}")
 
 
 @agent_operations_app.command("list")

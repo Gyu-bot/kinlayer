@@ -116,20 +116,38 @@ Scripts and docs:
 | T038 | Atomic canonical write transactions | Critical | Done | T037 |
 | T039 | Candidate review UI provenance and action gating | High | Done | T019, T037 |
 | T040 | Post-turn integration examples and acceptance smoke | High | Done | T035, T036, T038, T039 |
-| T041 | Person merge policy and contract docs | Critical | Ready | T035 |
-| T042 | Duplicate detection and merge-candidate creation | High | Backlog | T036, T041 |
-| T043 | Atomic person merge execution API | Critical | Backlog | T038, T041 |
+| T041 | Person merge policy and contract docs | Critical | Done | T035 |
+| T042 | Duplicate detection and merge-candidate creation | High | Ready | T036, T041 |
+| T043 | Atomic person merge execution API | Critical | Ready | T038, T041 |
 | T044 | Merge review CLI and Web workflow | High | Backlog | T039, T043 |
 | T045 | Merge acceptance fixtures and retrieval verification | High | Backlog | T042, T043, T044 |
 | T046 | Admin Web UI ID hiding and ontology-backed relationship controls | High | Done | T024, T026, T032 |
 | T047 | Relationship edge-type enforcement audit and debug logging | Critical | Done | T012, T016, T017, T024 |
 | T048 | Agent Write Instruction Pack | Critical | Done | T035, T047 |
-| T049 | Agent write schema guard, low-risk normalization, and diagnostics filter | Critical | Backlog | T036, T037, T047, T048 |
-| T050 | Structured profile fact promotion workflow | High | Backlog | T033, T034, T039, T049 |
-| T051 | Temporal observation recording and candidate payload preservation | High | Backlog | T012, T016, T048, T049 |
+| T049 | Agent write schema guard, low-risk normalization, and diagnostics filter | Critical | Done | T036, T037, T047, T048 |
+| T050 | Structured profile fact promotion workflow | High | Ready | T033, T034, T039, T049 |
+| T051 | Temporal observation recording and candidate payload preservation | High | Ready | T012, T016, T048, T049 |
 | T052 | Optional LLM-assisted background curation | Low | Backlog | T040, T045, T049, T050, T051 |
 | T053 | Agent write operation export and Web download | High | Done | T034 |
 | T054 | Structured profile fact content validation | High | Ready | T033, T034 |
+
+---
+
+## Current Ready Queue
+
+Last refreshed: 2026-06-18.
+
+- T042: Duplicate detection and merge-candidate creation.
+- T043: Atomic person merge execution API.
+- T050: Structured profile fact promotion workflow.
+- T051: Temporal observation recording and candidate payload preservation.
+- T054: Structured profile fact content validation.
+
+Notes:
+
+- T041 is `Done`; T042 and T043 are now unblocked for person merge implementation.
+- T049 is `Done`; T050 and T051 are now unblocked for structured fact promotion and temporal observation follow-up.
+- T052 remains `Backlog` until the merge exit bar and deterministic guard/profile/temporal follow-ups are complete.
 
 ---
 
@@ -900,7 +918,7 @@ uv run kinlayer status --json
 
 #### Task T041. Person merge policy and contract docs
 - Priority: Critical
-- Status: Ready
+- Status: Done
 - Depends on: T035
 - 설명: 사람 중복/병합 정책, merge candidate payload, 보호 self 제약, retrieval 이후 동작을 문서로 확정한다.
 - Files:
@@ -920,13 +938,13 @@ uv run kinlayer status --json
   - Protected `self` can never be merged into another entity or receive a normal person merge unless a future protected-self-specific operation is designed.
   - Merge is reversible only through explicit audit data and follow-up repair operations; do not promise one-click undo in MVP.
 - Acceptance Criteria:
-  - [ ] Docs define `source_entity_id`, `target_entity_id`, `merge_plan`, `field_conflict_policy`, and `merged_entity_ref` semantics.
-  - [ ] Docs state that AI agents may propose merge candidates but must not directly merge people.
-  - [ ] Docs state that pronoun-only or weak identity similarity may create a clarification/merge candidate, not a direct merge.
-  - [ ] Docs specify protected self constraints and reject any merge involving `system_role = self` unless both sides are the same self record.
-  - [ ] Docs define conflict handling for display name, canonical name, sensitivity, AI use policy, profile facts, aliases, active edges, and observations.
-  - [ ] Docs define retrieval behavior after merge: old source IDs resolve or redirect to target, source does not appear as a separate active person, and context cards include merged aliases/provenance.
-  - [ ] Candidate payload examples include a merge candidate with evidence and confidence.
+  - [x] Docs define `source_entity_id`, `target_entity_id`, `merge_plan`, `field_conflict_policy`, and `merged_entity_ref` semantics.
+  - [x] Docs state that AI agents may propose merge candidates but must not directly merge people.
+  - [x] Docs state that pronoun-only or weak identity similarity may create a clarification/merge candidate, not a direct merge.
+  - [x] Docs specify protected self constraints and reject any merge involving `system_role = self` unless both sides are the same self record.
+  - [x] Docs define conflict handling for display name, canonical name, sensitivity, AI use policy, profile facts, aliases, active edges, and observations.
+  - [x] Docs define retrieval behavior after merge: old source IDs resolve or redirect to target, source does not appear as a separate active person, and context cards include merged aliases/provenance.
+  - [x] Candidate payload examples include a merge candidate with evidence and confidence.
 - Notes:
   - Use `merge` candidate type already present in candidate schemas; do not introduce a separate duplicate table unless implementation pressure appears.
   - This task is design-only and should keep implementation out of docs except precise contracts.
@@ -1244,7 +1262,7 @@ uv run kinlayer status --json
 
 #### Task T049. Agent write schema guard, low-risk normalization, and diagnostics filter
 - Priority: Critical
-- Status: Backlog
+- Status: Done
 - Depends on: T036, T037, T047, T048
 - 설명: agent write 앞단에 deterministic schema guard, low-risk normalization, diagnostics dry-run을 추가한다.
 - Files:
@@ -1285,21 +1303,21 @@ uv run kinlayer status --json
   - For a payload that may be better represented as an observation, return a generic diagnostic such as `relation_type_not_allowed`; do not classify the text or construct a replacement observation payload.
   - Filter results should include `accepted`, `validated_payload`, `normalizations_applied`, `warnings`, `errors`, `diagnostics`, `controlled_values_checked`, and `audit_ref` when audit logging is available.
 - Acceptance Criteria:
-  - [ ] `POST /api/agent-writes/validate` or equivalent dry-run path validates candidate and correction payloads without persisting canonical or candidate records.
-  - [ ] `kinlayer agent-write validate <payload.json>` returns machine-readable JSON with accepted status, validated payload, normalizations applied, warnings, errors, diagnostics, and controlled values checked.
-  - [ ] Agent-submitted `POST /api/candidates` uses the same filter before persistence.
-  - [ ] Agent-submitted `POST /api/corrections/apply` uses the same filter before persistence.
-  - [ ] The filter accepts a valid `relationship_edge` only when `relation_type` is an active ontology edge type and endpoint entity types match.
-  - [ ] The filter normalizes controlled values only when the submitted value maps to exactly one active registry value or label after the documented mechanical transform.
-  - [ ] The filter rejects unknown relation types instead of allowing persistence and returns the allowed edge-type list for caller-side repair.
-  - [ ] The filter does not use keyword heuristics to classify observation-like attempted edge payloads.
-  - [ ] The filter does not construct replacement observation candidates from rejected edge payloads.
-  - [ ] The filter validates candidate evidence requirements for agent submissions and rejects missing/nonexistent episode refs or empty excerpts.
-  - [ ] The filter rejects direct correction apply when `correction_source.user_explicit` is false or missing.
-  - [ ] The filter rejects synonyms, paraphrases, translations, fuzzy nearest matches, and ambiguous controlled-value matches instead of normalizing them into registry values.
-  - [ ] Tests cover valid candidate, accepted low-risk normalization, unknown relation type, synonym/paraphrase rejection, ambiguous controlled-value rejection, endpoint entity-type mismatch, missing evidence, invalid correction, and dry-run no-persistence behavior.
-  - [ ] Audit/debug logs from T047 include filter decisions, accepted normalizations, and diagnostics for rejected agent writes.
-  - [ ] API/CLI smoke verifies an invalid agent edge write is caught by dry-run and by submit-time enforcement.
+  - [x] `POST /api/agent-writes/validate` or equivalent dry-run path validates candidate and correction payloads without persisting canonical or candidate records.
+  - [x] `kinlayer agent-write validate <payload.json>` returns machine-readable JSON with accepted status, validated payload, normalizations applied, warnings, errors, diagnostics, and controlled values checked.
+  - [x] Agent-submitted `POST /api/candidates` uses the same filter before persistence.
+  - [x] Agent-submitted `POST /api/corrections/apply` uses the same filter before persistence.
+  - [x] The filter accepts a valid `relationship_edge` only when `relation_type` is an active ontology edge type and endpoint entity types match.
+  - [x] The filter normalizes controlled values only when the submitted value maps to exactly one active registry value or label after the documented mechanical transform.
+  - [x] The filter rejects unknown relation types instead of allowing persistence and returns the allowed edge-type list for caller-side repair.
+  - [x] The filter does not use keyword heuristics to classify observation-like attempted edge payloads.
+  - [x] The filter does not construct replacement observation candidates from rejected edge payloads.
+  - [x] The filter validates candidate evidence requirements for agent submissions and rejects missing/nonexistent episode refs or empty excerpts.
+  - [x] The filter rejects direct correction apply when `correction_source.user_explicit` is false or missing.
+  - [x] The filter rejects synonyms, paraphrases, translations, fuzzy nearest matches, and ambiguous controlled-value matches instead of normalizing them into registry values.
+  - [x] Tests cover valid candidate, accepted low-risk normalization, unknown relation type, synonym/paraphrase rejection, ambiguous controlled-value rejection, endpoint entity-type mismatch, missing evidence, invalid correction, and dry-run no-persistence behavior.
+  - [x] Audit/debug logs from T047 include filter decisions, accepted normalizations, and diagnostics for rejected agent writes.
+  - [x] API/CLI smoke verifies an invalid agent edge write is caught by dry-run and by submit-time enforcement.
 - Notes:
   - This task is possible and valuable because it avoids semantic guessing while still accepting low-risk mechanical canonicalization. Its job is deterministic guardrails: controlled values, schemas, evidence, entity refs, normalization records, and diagnostics.
   - Do not auto-create new ontology values from agent text in this filter. Ontology expansion must remain explicit review work.

@@ -264,6 +264,39 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
         },
     )
     assert_true(invalid_agent_edge_status == 422, "invalid relation type edge was not rejected")
+    filter_episode = episode(client, f"agent-write-filter-{stamp}", f"Agent write filter smoke {stamp}")
+    filter_result = client.post(
+        "/api/agent-writes/validate",
+        {
+            "write_type": "candidate",
+            "payload": {
+                "candidate_type": "relationship_edge",
+                "target_entity_id": entity["id"],
+                "payload": {
+                    "from_entity_id": self_id,
+                    "to_entity_id": entity["id"],
+                    "relation_type": "Former coworker",
+                    "claim_text": f"Agent write filter smoke {stamp}",
+                    "claim_type": "fact",
+                },
+                "evidence": [
+                    {
+                        "episode_id": filter_episode["id"],
+                        "excerpt": f"Agent write filter smoke {stamp}",
+                        "confidence": 0.9,
+                    }
+                ],
+                "confidence": 0.9,
+                "sensitivity": "medium",
+                "created_by": "ai_agent",
+            },
+        },
+    )
+    assert_true(filter_result["accepted"] is True, "agent write dry-run did not accept valid payload")
+    assert_true(
+        filter_result["validated_payload"]["payload"]["relation_type"] == "former_coworker",
+        "agent write dry-run did not normalize relation type",
+    )
     edge_diagnostics = client.get("/api/ontology/edge-type-diagnostics")
     assert_true("relation_types" in edge_diagnostics, "edge diagnostics missing relation types")
     assert_true("invalid_edges" in edge_diagnostics, "edge diagnostics missing invalid edge list")

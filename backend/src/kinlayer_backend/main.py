@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect
 
 from kinlayer_backend.api.agent_operations import router as agent_operations_router
+from kinlayer_backend.api.agent_writes import router as agent_writes_router
 from kinlayer_backend.api.candidates import router as candidates_router
 from kinlayer_backend.api.context import router as context_router
 from kinlayer_backend.api.corrections import router as corrections_router
@@ -94,6 +95,7 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
     app.include_router(graph_router)
     app.include_router(ontology_router)
     app.include_router(agent_operations_router)
+    app.include_router(agent_writes_router)
 
     return app
 
