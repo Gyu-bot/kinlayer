@@ -106,6 +106,11 @@ class CandidateEvidenceCreate(APIModel):
 class CandidateEvidenceRead(CandidateEvidenceCreate):
     id: str
     candidate_id: str
+    source_type: str | None = None
+    source_ref: str | None = None
+    source_description: str | None = None
+    body_hash: str | None = None
+    actor: str | None = None
     created_at: datetime
 
 

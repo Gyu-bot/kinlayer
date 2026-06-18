@@ -690,6 +690,40 @@ def person_list(
         typer.echo(f"{item['id']}  {item['display_name']}  {item['sensitivity']}")
 
 
+@person_app.command("resolve")
+def person_resolve(
+    surface: str,
+    alias: Annotated[list[str] | None, typer.Option("--alias")] = None,
+    relation_hint: Annotated[str | None, typer.Option("--relation-hint")] = None,
+    entity_type: Annotated[str | None, typer.Option("--entity-type")] = "person",
+    source_kind: Annotated[str, typer.Option("--source-kind")] = "agent",
+    include_self: Annotated[bool, typer.Option("--include-self")] = False,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    source: dict[str, Any] = {"kind": source_kind}
+    if include_self:
+        source["include_self"] = True
+    payload = {
+        "surface": surface,
+        "aliases": alias or [],
+        "relation_hint": relation_hint,
+        "entity_type": entity_type,
+        "source": source,
+    }
+    response = _request("POST", "/api/entities/resolve", payload=payload)
+    _raise_for_api(response)
+    body = response.json()
+    if json_output:
+        _emit(body, json_output=True)
+        return
+    typer.echo(f"Ambiguity: {body['ambiguity']}")
+    for match in body["matches"]:
+        typer.echo(
+            f"{match['entity_id']}  {match['display_name']}  "
+            f"{match['score']}  {','.join(match['match_reasons'])}"
+        )
+
+
 @person_app.command("show")
 def person_show(
     entity_id: str,

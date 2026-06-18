@@ -49,9 +49,14 @@ class CandidateService:
         supersedes_candidate_id = payload.get("supersedes_candidate_id")
         if supersedes_candidate_id and not self.session.get(Candidate, supersedes_candidate_id):
             raise api_error(404, "not_found", "Superseded candidate not found.")
+        if payload.get("created_by") == "ai_agent" and not evidence:
+            raise api_error(422, "validation_error", "Agent-submitted candidates require evidence.")
         for item in evidence:
-            if not self.session.get(Episode, item["episode_id"]):
+            episode = self.session.get(Episode, item["episode_id"])
+            if not episode:
                 raise api_error(404, "not_found", "Evidence episode not found.")
+            if payload.get("created_by") == "ai_agent":
+                self._validate_agent_evidence(item, episode)
         self._validate_payload(payload["candidate_type"], payload["payload"])
         payload.setdefault("status", "pending")
         return self.repository.add_candidate(payload, evidence)
@@ -111,10 +116,17 @@ class CandidateService:
         resolution_note: str | None = None,
         resolved_by: str = "user",
     ) -> Candidate:
-        self._ensure_resolvable(candidate)
-        canonical_record_ref = self._write_canonical_record(candidate)
-        candidate.canonical_record_ref = canonical_record_ref
-        return self._resolve(candidate, status, resolution_note, resolved_by)
+        try:
+            self._ensure_resolvable(candidate)
+            canonical_record_ref = self._write_canonical_record(candidate)
+            candidate.canonical_record_ref = canonical_record_ref
+            self._resolve(candidate, status, resolution_note, resolved_by, commit=False)
+            self.session.commit()
+            self.session.refresh(candidate)
+            return candidate
+        except Exception:
+            self.session.rollback()
+            raise
 
     def edit_accept_candidate(
         self,
@@ -142,6 +154,16 @@ class CandidateService:
         if not entity:
             raise api_error(404, "not_found", "Entity not found.")
         return entity
+
+    def _validate_agent_evidence(self, item: dict[str, Any], episode: Episode) -> None:
+        if not item.get("excerpt") or not item["excerpt"].strip():
+            raise api_error(422, "validation_error", "Agent evidence excerpt is required.")
+        if not episode.source_ref:
+            raise api_error(422, "validation_error", "Agent evidence source_ref is required.")
+        if not episode.body_hash or not episode.actor:
+            raise api_error(422, "validation_error", "Agent evidence provenance is incomplete.")
+        if not is_allowed_registry_value(self.session, "evidence_source_type", episode.source_type):
+            raise api_error(422, "validation_error", "Unsupported evidence source_type.")
 
     def _validate_payload(self, candidate_type: str, payload: dict[str, Any]) -> None:
         if candidate_type == "new_entity":
@@ -187,13 +209,17 @@ class CandidateService:
         status: str,
         resolution_note: str | None = None,
         resolved_by: str = "user",
+        commit: bool = True,
     ) -> Candidate:
         self._ensure_resolvable(candidate)
         candidate.status = status
         candidate.resolution_note = resolution_note
         candidate.resolved_by = resolved_by
         candidate.resolved_at = datetime.now(UTC)
-        return self.repository.commit_refresh(candidate)
+        if commit:
+            return self.repository.commit_refresh(candidate)
+        self.session.flush()
+        return candidate
 
     def _write_canonical_record(self, candidate: Candidate) -> str:
         if candidate.candidate_type == "new_entity":
@@ -219,7 +245,7 @@ class CandidateService:
             "created_by": candidate.created_by,
             **candidate.payload,
         }
-        entity = EntityService(self.session).create_entity(payload)
+        entity = EntityService(self.session).create_entity(payload, commit=False)
         return f"entities:{entity.id}"
 
     def _write_alias(self, candidate: Candidate) -> str:
@@ -231,7 +257,7 @@ class CandidateService:
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,
         }
-        alias = EntityRepository(self.session).add_alias(entity.id, alias_payload)
+        alias = EntityRepository(self.session).add_alias(entity.id, alias_payload, commit=False)
         return f"entity_aliases:{alias.id}"
 
     def _write_profile_field(self, candidate: Candidate) -> str:
@@ -254,7 +280,7 @@ class CandidateService:
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,
         }
-        fact = EntityService(self.session).create_fact(fact_payload)
+        fact = EntityService(self.session).create_fact(fact_payload, commit=False)
         self._copy_fact_evidence(candidate, fact.id)
         return f"entity_facts:{fact.id}"
 
@@ -267,7 +293,7 @@ class CandidateService:
             "source_candidate_id": candidate.id,
             **candidate.payload,
         }
-        edge = RelationshipService(self.session).create_edge(payload)
+        edge = RelationshipService(self.session).create_edge(payload, commit=False)
         self._copy_edge_evidence(candidate, edge.id)
         return f"entity_edges:{edge.id}"
 
@@ -284,7 +310,7 @@ class CandidateService:
         payload["related_entities"] = [
             {"entity_id": entity_id, "role": "related"} for entity_id in related_entity_ids
         ]
-        observation = RelationshipService(self.session).create_observation(payload)
+        observation = RelationshipService(self.session).create_observation(payload, commit=False)
         self._copy_observation_evidence(candidate, observation.id)
         return f"observations:{observation.id}"
 
@@ -293,19 +319,18 @@ class CandidateService:
         target = self._entity(candidate.payload["target_entity_id"])
         source.status = "deleted"
         source.confirmation_status = "merged"
-        self.session.commit()
-        self.session.refresh(source)
+        self.session.flush()
         return f"entities:{target.id}"
 
     def _write_conflict(self, candidate: Candidate) -> str:
         for record_ref in candidate.payload["record_refs"]:
             self._mark_record_status(record_ref, "disputed")
-        self.session.commit()
+        self.session.flush()
         return f"candidates:{candidate.id}"
 
     def _write_supersede(self, candidate: Candidate) -> str:
         self._mark_record_status(candidate.payload["old_record_ref"], "superseded")
-        self.session.commit()
+        self.session.flush()
         return candidate.payload["old_record_ref"]
 
     def _copy_fact_evidence(self, candidate: Candidate, fact_id: str) -> None:
@@ -318,7 +343,7 @@ class CandidateService:
                     confidence=evidence.confidence,
                 )
             )
-        self.session.commit()
+        self.session.flush()
 
     def _copy_edge_evidence(self, candidate: Candidate, edge_id: str) -> None:
         for evidence in candidate.evidence:
@@ -330,7 +355,7 @@ class CandidateService:
                     confidence=evidence.confidence,
                 )
             )
-        self.session.commit()
+        self.session.flush()
 
     def _copy_observation_evidence(self, candidate: Candidate, observation_id: str) -> None:
         for evidence in candidate.evidence:
@@ -342,7 +367,7 @@ class CandidateService:
                     confidence=evidence.confidence,
                 )
             )
-        self.session.commit()
+        self.session.flush()
 
     def _mark_record_status(self, record_ref: str, status: str) -> None:
         self._validate_record_ref(record_ref)

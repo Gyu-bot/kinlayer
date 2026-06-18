@@ -11,6 +11,8 @@ candidate_json="$TMP_DIR/candidate.json"
 invalid_candidate_json="$TMP_DIR/candidate-invalid-edge.json"
 candidate_edit_json="$TMP_DIR/candidate-edit.json"
 second_candidate_json="$TMP_DIR/candidate-second.json"
+reject_candidate_json="$TMP_DIR/candidate-reject.json"
+clarify_candidate_json="$TMP_DIR/candidate-clarify.json"
 correction_json="$TMP_DIR/correction.json"
 correction_result_json="$TMP_DIR/correction-result.json"
 
@@ -38,6 +40,7 @@ uv run kinlayer person create \
 cli_person_id="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['entity']['id'])" "$person_json")"
 uv run kinlayer person list --query "Acceptance CLI" --json > "$TMP_DIR/person-list.json"
 uv run kinlayer person show "$cli_person_id" --json > "$TMP_DIR/person-show.json"
+uv run kinlayer person resolve "CLI Fixture" --alias "Acceptance CLI" --json > "$TMP_DIR/person-resolve.json"
 
 echo "== CLI candidates =="
 python3 - "$candidate_json" "$cli_person_id" "$self_id" "$episode_id" <<'PY'
@@ -148,6 +151,68 @@ open(path, "w").write(json.dumps(payload))
 PY
 uv run kinlayer candidate edit-accept "$second_candidate_id" "$candidate_edit_json" --json > "$TMP_DIR/candidate-edit-accept.json"
 
+python3 - "$reject_candidate_json" "$minji_id" "$self_id" "$episode_id" <<'PY'
+import json
+import sys
+
+path, person_id, self_id, episode_id = sys.argv[1:5]
+payload = {
+    "candidate_type": "observation",
+    "target_entity_id": person_id,
+    "payload": {
+        "subject_entity_id": person_id,
+        "related_entity_ids": [self_id],
+        "observation_type": "recent_interaction",
+        "content": "CLI smoke rejected candidate.",
+        "claim_type": "inference",
+        "ai_use_policy": "cautious_use",
+        "sensitivity": "medium",
+    },
+    "evidence": [
+        {"episode_id": episode_id, "excerpt": "CLI smoke rejected candidate.", "confidence": 0.8}
+    ],
+    "confidence": 0.8,
+    "sensitivity": "medium",
+    "suggested_action": "review",
+    "created_by": "ai_agent",
+}
+open(path, "w").write(json.dumps(payload))
+PY
+uv run kinlayer candidate submit "$reject_candidate_json" --json > "$TMP_DIR/candidate-reject-submit.json"
+reject_candidate_id="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['id'])" "$TMP_DIR/candidate-reject-submit.json")"
+uv run kinlayer candidate reject "$reject_candidate_id" --json > "$TMP_DIR/candidate-reject.json"
+
+python3 - "$clarify_candidate_json" "$minji_id" "$self_id" "$episode_id" <<'PY'
+import json
+import sys
+
+path, person_id, self_id, episode_id = sys.argv[1:5]
+payload = {
+    "candidate_type": "observation",
+    "target_entity_id": person_id,
+    "payload": {
+        "subject_entity_id": person_id,
+        "related_entity_ids": [self_id],
+        "observation_type": "recent_interaction",
+        "content": "CLI smoke needs clarification candidate.",
+        "claim_type": "inference",
+        "ai_use_policy": "cautious_use",
+        "sensitivity": "medium",
+    },
+    "evidence": [
+        {"episode_id": episode_id, "excerpt": "CLI smoke needs clarification candidate.", "confidence": 0.7}
+    ],
+    "confidence": 0.7,
+    "sensitivity": "medium",
+    "suggested_action": "review",
+    "created_by": "ai_agent",
+}
+open(path, "w").write(json.dumps(payload))
+PY
+uv run kinlayer candidate submit "$clarify_candidate_json" --json > "$TMP_DIR/candidate-clarify-submit.json"
+clarify_candidate_id="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['id'])" "$TMP_DIR/candidate-clarify-submit.json")"
+uv run kinlayer candidate clarify "$clarify_candidate_id" --note "CLI smoke needs more context." --json > "$TMP_DIR/candidate-clarify.json"
+
 echo "== CLI correction =="
 python3 - "$correction_json" "$accepted_ref" "$cli_person_id" "$self_id" <<'PY'
 import json
@@ -206,8 +271,11 @@ minji_id = sys.argv[2]
 
 assert json.load(open(root / "status.json"))["api"] == "ok"
 assert json.load(open(root / "person-show.json"))["entity"]["display_name"].startswith("Acceptance CLI Person")
+assert any(match["entity_id"] == json.load(open(root / "person-show.json"))["entity"]["id"] for match in json.load(open(root / "person-resolve.json"))["matches"])
 assert json.load(open(root / "candidate-accept.json"))["canonical_record_ref"].startswith("observations:")
 assert json.load(open(root / "candidate-edit-accept.json"))["status"] == "edited_accepted"
+assert json.load(open(root / "candidate-reject.json"))["status"] == "rejected"
+assert json.load(open(root / "candidate-clarify.json"))["status"] == "needs_clarification"
 assert json.load(open(root / "correction-result.json"))["new_record_ref"].startswith("observations:")
 assert json.load(open(root / "agent-operations-list.json"))["total"] >= 1
 assert any(

@@ -33,6 +33,15 @@ def test_entity_alias_and_fact_lifecycle(client) -> None:
     assert aliases.status_code == 200
     assert aliases.json()["items"][0]["alias"] == "알렉스"
 
+    deleted_alias = client.delete(f"/api/aliases/{alias_body['id']}")
+    assert deleted_alias.status_code == 200
+    assert deleted_alias.json()["status"] == "deleted"
+
+    aliases_after_delete = client.get(f"/api/entities/{entity['id']}/aliases")
+    assert aliases_after_delete.status_code == 200
+    assert aliases_after_delete.json()["items"] == []
+    assert aliases_after_delete.json()["total"] == 0
+
     fact = client.post(
         "/api/entity-facts",
         json={
@@ -210,3 +219,94 @@ def test_protected_self_is_unique_and_cannot_be_mutated(client) -> None:
     delete = client.delete(f"/api/entities/{self_entity['id']}")
     assert delete.status_code == 403
     assert delete.json()["error"]["code"] == "forbidden"
+
+
+def test_agent_entity_resolve_returns_no_match_and_single_alias_match(client) -> None:
+    person = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex Kim", "created_by": "user"},
+    ).json()
+    alias = client.post(
+        f"/api/entities/{person['id']}/aliases",
+        json={"alias": "알렉스", "created_by": "user"},
+    )
+    assert alias.status_code == 201
+
+    no_match = client.post(
+        "/api/entities/resolve",
+        json={"surface": "Minji", "entity_type": "person", "source": {"kind": "agent"}},
+    )
+    assert no_match.status_code == 200
+    assert no_match.json()["ambiguity"] == "no_match"
+    assert no_match.json()["matches"] == []
+
+    resolved = client.post(
+        "/api/entities/resolve",
+        json={"surface": "알렉스", "entity_type": "person", "source": {"kind": "agent"}},
+    )
+    assert resolved.status_code == 200
+    body = resolved.json()
+    assert body["ambiguity"] == "single_strong_match"
+    assert body["matches"][0]["entity_id"] == person["id"]
+    assert body["matches"][0]["display_name"] == "Alex Kim"
+    assert body["matches"][0]["score"] > 0.8
+    assert "exact_alias" in body["matches"][0]["match_reasons"]
+
+
+def test_agent_entity_resolve_reports_ambiguity_and_excludes_self_by_default(client) -> None:
+    self_entity = client.post(
+        "/api/entities",
+        json={
+            "entity_type": "person",
+            "display_name": "Me",
+            "created_by": "system",
+            "system_role": "self",
+            "is_system": True,
+        },
+    ).json()
+    alex = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex Kim", "created_by": "user"},
+    ).json()
+    alexa = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alexa Kim", "created_by": "user"},
+    ).json()
+
+    ambiguous = client.post(
+        "/api/entities/resolve",
+        json={"surface": "Alex", "entity_type": "person", "source": {"kind": "agent"}},
+    )
+    assert ambiguous.status_code == 200
+    body = ambiguous.json()
+    assert body["ambiguity"] == "multiple_close_matches"
+    assert {match["entity_id"] for match in body["matches"][:2]} == {alex["id"], alexa["id"]}
+
+    excluded_self = client.post(
+        "/api/entities/resolve",
+        json={"surface": "Me", "entity_type": "person", "source": {"kind": "agent"}},
+    )
+    assert excluded_self.status_code == 200
+    assert excluded_self.json()["matches"] == []
+
+    requested_self = client.post(
+        "/api/entities/resolve",
+        json={
+            "surface": "Me",
+            "entity_type": "person",
+            "source": {"kind": "agent", "system_role": "self"},
+        },
+    )
+    assert requested_self.status_code == 200
+    assert requested_self.json()["matches"][0]["entity_id"] == self_entity["id"]
+
+
+def test_entity_resolve_is_token_protected(database_url) -> None:
+    from fastapi.testclient import TestClient
+
+    from kinlayer_backend.main import create_app
+
+    with TestClient(create_app({"database_url": database_url, "api_token": "secret"})) as client:
+        response = client.post("/api/entities/resolve", json={"surface": "Alex"})
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "unauthorized"

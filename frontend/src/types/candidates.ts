@@ -4,6 +4,11 @@ export type CandidateEvidence = {
   episode_id: string;
   excerpt: string | null;
   confidence: number | null;
+  source_type: string | null;
+  source_ref: string | null;
+  source_description: string | null;
+  body_hash: string | null;
+  actor: string | null;
   created_at: string;
 };
 

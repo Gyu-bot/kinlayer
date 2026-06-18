@@ -111,11 +111,11 @@ Scripts and docs:
 | T033 | Structured contact and identity facts | High | Done | T032 |
 | T034 | Agent-compatible profile fact updates | High | Done | T033 |
 | T035 | AI agent vs Kinlayer responsibility boundary docs | Critical | Done | T034 |
-| T036 | Agent-facing entity resolution API | High | Ready | T020, T035 |
-| T037 | Agent candidate provenance and correction audit hardening | Critical | Ready | T016, T017, T035 |
-| T038 | Atomic canonical write transactions | Critical | Backlog | T037 |
-| T039 | Candidate review UI provenance and action gating | High | Backlog | T019, T037 |
-| T040 | Post-turn integration examples and acceptance smoke | High | Backlog | T035, T036, T038, T039 |
+| T036 | Agent-facing entity resolution API | High | Done | T020, T035 |
+| T037 | Agent candidate provenance and correction audit hardening | Critical | Done | T016, T017, T035 |
+| T038 | Atomic canonical write transactions | Critical | Done | T037 |
+| T039 | Candidate review UI provenance and action gating | High | Done | T019, T037 |
+| T040 | Post-turn integration examples and acceptance smoke | High | Done | T035, T036, T038, T039 |
 | T041 | Person merge policy and contract docs | Critical | Ready | T035 |
 | T042 | Duplicate detection and merge-candidate creation | High | Backlog | T036, T041 |
 | T043 | Atomic person merge execution API | Critical | Backlog | T038, T041 |
@@ -129,6 +129,7 @@ Scripts and docs:
 | T051 | Temporal observation recording and candidate payload preservation | High | Backlog | T012, T016, T048, T049 |
 | T052 | Optional LLM-assisted background curation | Low | Backlog | T040, T045, T049, T050, T051 |
 | T053 | Agent write operation export and Web download | High | Done | T034 |
+| T054 | Structured profile fact content validation | High | Ready | T033, T034 |
 
 ---
 
@@ -138,6 +139,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: None
+- 설명: 저장소를 초기화하고 Kinlayer 작업 규칙, ignore 파일, 기본 README를 만든다.
 - Acceptance Criteria:
   - [x] Git repository is initialized in `/Users/gyurin/dev/kinlayer`.
   - [x] `AGENTS.md` defines Kinlayer-local ground rules.
@@ -152,6 +154,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T001
+- 설명: Docker Compose, FastAPI 백엔드, Vite Web 앱의 기본 실행 골격을 세운다.
 - Acceptance Criteria:
   - [x] `docker-compose.yml` defines Postgres, API, and Web services.
   - [x] Postgres uses a pgvector-capable image and exposes host port `127.0.0.1:15432`.
@@ -166,6 +169,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T002
+- 설명: 시스템 health/version/config API와 기본 CLI 상태 확인 명령을 만든다.
 - Acceptance Criteria:
   - [x] `GET /api/system/health` returns health, database, and embedding status.
   - [x] `GET /api/system/version` returns name, version, and API version.
@@ -184,6 +188,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T001, T002, T003
+- 설명: 테스트 의존성, 기본 API/CLI 테스트, smoke script, 빌드 검증 루틴을 갖춘다.
 - Acceptance Criteria:
   - [x] Backend test dependencies are added to `pyproject.toml`.
   - [x] `backend/tests/` contains system endpoint and optional token tests.
@@ -198,6 +203,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T004
+- 설명: 백엔드를 API, schema, repository, service 단위로 나누어 이후 기능 추가가 쉬운 구조로 정리한다.
 - Acceptance Criteria:
   - [x] `backend/src/kinlayer_backend/api/` contains routers separated by API domain.
   - [x] `backend/src/kinlayer_backend/schemas/` contains shared and domain-specific Pydantic schemas.
@@ -216,6 +222,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T005
+- 설명: 사람/엔티티, 별칭, 프로필 fact, 온톨로지 registry를 저장할 핵심 DB 스키마를 만든다.
 - Acceptance Criteria:
   - [x] SQLAlchemy models exist for `entities`, `entity_aliases`, `entity_facts`, and required ontology registry tables.
   - [x] Alembic migration creates those tables from an empty DB.
@@ -230,6 +237,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T006
+- 설명: 엔티티, 별칭, 프로필 fact를 생성/조회/수정/삭제하는 HTTP API를 구현한다.
 - Acceptance Criteria:
   - [x] Entity endpoints implement create/list/get/patch/delete under `/api/entities`.
   - [x] Alias endpoints implement create/list/patch/delete under `/api/entities/{id}/aliases` and `/api/aliases/{id}`.
@@ -245,6 +253,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T006, T007
+- 설명: 사용자인 `self` 엔티티를 한 번만 만들고 삭제/역할 변경을 막는 보호 로직을 구현한다.
 - Acceptance Criteria:
   - [x] `kinlayer init` creates or confirms one protected self entity.
   - [x] Self entity has `entity_type = person`, `system_role = self`, and `is_system = true`.
@@ -259,6 +268,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T007, T008
+- 설명: 사람과 별칭을 CLI에서 관리할 수 있는 명령을 만든다.
 - Acceptance Criteria:
   - [x] `kinlayer person create --name ...` creates a person through API-compatible behavior.
   - [x] `kinlayer person create` supports repeatable `--alias`.
@@ -273,6 +283,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T007, T008
+- 설명: Web에서 사람 목록, 생성, 상세, self 확인 화면의 첫 버전을 만든다.
 - Acceptance Criteria:
   - [x] `/people` lists people from the API.
   - [x] `/people` supports API-backed name/alias search.
@@ -291,6 +302,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T006
+- 설명: 관계 edge, observation, episode, evidence를 저장할 관계/증거 DB 스키마를 만든다.
 - Acceptance Criteria:
   - [x] SQLAlchemy models and migration exist for `entity_edges`, `observations`, `observation_entities`, and `episodes`.
   - [x] SQLAlchemy models and migration exist for `entity_fact_evidence`, `edge_evidence`, and `observation_evidence`.
@@ -305,6 +317,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T011
+- 설명: 관계 edge, observation, episode를 API로 생성/조회/수정/삭제할 수 있게 한다.
 - Acceptance Criteria:
   - [x] Edge endpoints implement create/list/get/patch/delete under `/api/edges`.
   - [x] Observation endpoints implement create/list/get/patch/delete under `/api/observations`.
@@ -320,6 +333,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T011, T012
+- 설명: embedding provider 설정, 상태 확인, 기존 기록 backfill 기반을 만든다.
 - Acceptance Criteria:
   - [x] Embedding service supports disabled provider for local scaffold.
   - [x] OpenAI-compatible provider works through `httpx` and env/config values.
@@ -336,6 +350,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T010, T012, T013
+- 설명: 사람 상세 Web 화면에서 관계, observation, evidence를 보고 추가/수정할 수 있게 한다.
 - Acceptance Criteria:
   - [x] `/people/new` can add an optional initial relationship edge to protected self.
   - [x] `/people/new` can add an optional initial observation.
@@ -354,6 +369,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T012
+- 설명: agent/user가 제안하는 candidate payload 타입과 검증 규칙을 정의한다.
 - Acceptance Criteria:
   - [x] SQLAlchemy models and migration exist for `candidates` and `candidate_evidence`.
   - [x] Pydantic schemas validate common candidate envelope fields.
@@ -368,6 +384,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T015
+- 설명: candidate 제출, 조회, accept/edit-accept/reject/archive 등 lifecycle API와 canonical write를 구현한다.
 - Acceptance Criteria:
   - [x] Candidate create/list/get endpoints work.
   - [x] Metadata-only candidate patch does not resolve candidates.
@@ -384,6 +401,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T012, T016
+- 설명: 사용자가 명시적으로 정정한 내용을 바로 canonical record에 반영하는 correction apply API를 만든다.
 - Acceptance Criteria:
   - [x] `POST /api/corrections/apply` accepts explicit correction requests.
   - [x] Request requires `correction_source.user_explicit = true`.
@@ -400,6 +418,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T016, T017
+- 설명: candidate와 correction 작업을 CLI에서 JSON 중심으로 실행할 수 있게 한다.
 - Acceptance Criteria:
   - [x] `kinlayer candidate submit <candidate.json>` submits typed candidates.
   - [x] `kinlayer candidate list/show` support JSON output.
@@ -414,6 +433,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T016, T018
+- 설명: Web candidate inbox에서 pending 후보를 검토하고 lifecycle action을 실행할 수 있게 한다.
 - Acceptance Criteria:
   - [x] `/candidates` lists pending candidates by default.
   - [x] Candidate inbox supports type, status, and sensitivity filters.
@@ -433,6 +453,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T012, T013, T016
+- 설명: 관계 컨텍스트 검색 점수, 정책 bucket, ambiguity guard의 핵심 엔진을 만든다.
 - Acceptance Criteria:
   - [x] Exact and normalized entity/alias matching works.
   - [x] pg_trgm fuzzy name/alias search contributes to scoring.
@@ -449,6 +470,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T020
+- 설명: context retrieve, context pack, context card API를 만들어 agent가 안전하게 컨텍스트를 가져가게 한다.
 - Acceptance Criteria:
   - [x] `POST /api/context/retrieve` returns matched entities, observations, scores, match reasons, score breakdown, and debug metadata.
   - [x] `POST /api/context/pack` returns `context_pack` with confidence, suggested response policy, matched entities, buckets, recent/stable context, cautions, provenance, and optional debug.
@@ -464,6 +486,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T021
+- 설명: retrieval/context 기능을 CLI에서 호출할 수 있게 한다.
 - Acceptance Criteria:
   - [x] `kinlayer retrieve "..."` calls `/api/context/retrieve`.
   - [x] `kinlayer context-card <entity_id>` calls the context-card endpoint.
@@ -478,6 +501,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T021
+- 설명: Web에서 retrieval debug 결과와 context pack 판단 근거를 inspect할 수 있게 한다.
 - Acceptance Criteria:
   - [x] `/retrieval-debug` includes query and situation text inputs.
   - [x] `/retrieval-debug` supports focal/candidate entity inputs.
@@ -496,6 +520,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T007, T012
+- 설명: graph와 ontology를 읽는 API를 만들어 Web/agent가 현재 관계 구조와 허용값을 볼 수 있게 한다.
 - Acceptance Criteria:
   - [x] `GET /api/graph/ego/{entity_id}` returns generic nodes and edges.
   - [x] Graph API officially supports `depth=1`.
@@ -511,6 +536,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T003, T010
+- 설명: Web API client, routing, settings, token 처리 등 프론트 공통 기반을 정리한다.
 - Acceptance Criteria:
   - [x] `frontend/src/api/` contains a typed API client using `VITE_KINLAYER_API_URL`.
   - [x] API client supports optional local token entry without exposing token value in settings.
@@ -525,6 +551,7 @@ Scripts and docs:
 - Priority: Medium
 - Status: Done
 - Depends on: T024, T025
+- 설명: Web에서 ego graph를 시각화하고 노드/edge 상세를 볼 수 있게 한다.
 - Acceptance Criteria:
   - [x] React Flow dependency is added.
   - [x] `/graph` renders 1-hop ego graph from generic graph API response.
@@ -540,6 +567,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T014, T019, T023, T025, T026
+- 설명: 사람, 후보, 검색 디버그, graph, settings를 하나의 Web control plane으로 통합한다.
 - Acceptance Criteria:
   - [x] `/people` supports search, filters, aliases preview, relationship summary, status, sensitivity, and last referenced time.
   - [x] `/people/:id` includes context card preview, evidence panel, and policy/surface markers.
@@ -559,6 +587,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T021, T024, T027
+- 설명: acceptance fixture와 API/CLI/Web smoke script로 MVP 핵심 흐름을 재현 가능하게 만든다.
 - Acceptance Criteria:
   - [x] Deterministic fixture loader creates protected self, at least two people, aliases, facts, edges, observations, episodes, and evidence.
   - [x] Fixtures include one sensitive or `never_surface` observation.
@@ -581,6 +610,7 @@ Scripts and docs:
 - Priority: High
 - Status: Done
 - Depends on: T025, T028
+- 설명: optional API token이 Web, API, CLI, smoke 전반에서 일관되게 동작하도록 단단하게 만든다.
 - Acceptance Criteria:
   - [x] Starting with `KINLAYER_API_TOKEN` keeps health/version public.
   - [x] Relationship data read endpoint returns `401` without token.
@@ -595,6 +625,7 @@ Scripts and docs:
 - Priority: Medium
 - Status: Done
 - Depends on: T028, T029
+- 설명: README와 specs가 실제 구현과 맞는지 점검하고 문서 drift를 줄인다.
 - Acceptance Criteria:
   - [x] `README.md` explains fresh setup, Docker startup, migrations, CLI usage, Web URL, token mode, and verification commands.
   - [x] `docs/specs/api-spec.md` matches implemented endpoint names and request/response shapes.
@@ -610,6 +641,7 @@ Scripts and docs:
 - Priority: Critical
 - Status: Done
 - Depends on: T028, T029, T030
+- 설명: MVP 전체 exit bar를 실행해 record -> canonicalize -> retrieve -> inspect 흐름을 최종 검증한다.
 - Acceptance Criteria:
   - [x] Scenario A Bootstrap Seed passes.
   - [x] Scenario B Agent Conversation Creates Candidate passes.
@@ -645,6 +677,7 @@ uv run kinlayer status --json
 - Priority: High
 - Status: Done
 - Depends on: T031
+- 설명: Web에서 사람 프로필을 직접 편집할 수 있게 한다.
 - Acceptance Criteria:
   - [x] `/people/:id` supports editing `display_name`, `sensitivity`, `ai_use_policy`, and editable profile note fields through the canonical API.
   - [x] `/people/:id` supports adding, editing, and deleting aliases.
@@ -663,6 +696,7 @@ uv run kinlayer status --json
 - Priority: High
 - Status: Done
 - Depends on: T032
+- 설명: 연락처, 신원, 선호 같은 구조화된 profile fact를 안정적으로 저장/표시한다.
 - Acceptance Criteria:
   - [x] Ontology seed/config values include structured person fact types for `legal_name`, `birth_date`, `phone`, `email`, `address`, `organization`, `role`, and `memo`.
   - [x] Existing `entity_facts` remains the canonical storage for structured person profile fields unless a later design proves a separate contact table is necessary.
@@ -680,6 +714,7 @@ uv run kinlayer status --json
 - Priority: High
 - Status: Done
 - Depends on: T033
+- 설명: agent가 profile fact 업데이트 후보를 안전하게 제출하고 검토받을 수 있게 한다.
 - Acceptance Criteria:
   - [x] Agent-compatible candidate payloads can propose adding or changing structured person facts.
   - [x] Candidate accept and edit-accept can write structured fact canonical records and return `canonical_record_ref`.
@@ -699,6 +734,7 @@ uv run kinlayer status --json
 - Priority: Critical
 - Status: Done
 - Depends on: T034
+- 설명: AI agent가 판단할 일과 Kinlayer가 보장할 일을 문서로 명확히 나눈다.
 - Files:
   - Modify: `docs/agents/agent-integration-notes.md`
   - Modify: `docs/specs/api-spec.md`
@@ -727,6 +763,7 @@ uv run kinlayer status --json
 - Priority: High
 - Status: Done
 - Depends on: T020, T035
+- 설명: agent가 이름, 별칭, 힌트로 기존 엔티티를 찾고 ambiguity를 판단할 수 있는 resolve API/CLI를 만든다.
 - Files:
   - Modify: `docs/specs/api-spec.md`
   - Modify: `backend/src/kinlayer_backend/api/entities.py`
@@ -737,22 +774,23 @@ uv run kinlayer status --json
   - Test: `backend/tests/test_entities_api.py`
   - Test: `backend/tests/test_cli.py`
 - Acceptance Criteria:
-  - [ ] `POST /api/entities/resolve` accepts `surface`, optional `aliases`, optional `relation_hint`, optional `entity_type`, and `source`.
-  - [ ] Resolve response returns `matches`, `ambiguity`, and per-match `entity_id`, `display_name`, `score`, and `match_reasons`.
-  - [ ] Deterministic matching covers exact display name, canonical name, exact alias, normalized alias, and fuzzy name/alias matches available in the current DB layer.
-  - [ ] The endpoint may use embeddings or retrieval hints when available, but it must not call an LLM or decide whether a mention is fictional/public/relationship-relevant.
-  - [ ] Ambiguity states distinguish `no_match`, `single_strong_match`, `multiple_close_matches`, and `low_confidence_match`.
-  - [ ] Protected `self` may be returned only when explicitly requested by system role or when the request clearly targets self; normal person resolution must not silently target `self`.
-  - [ ] CLI exposes an agent-callable JSON command for entity resolution.
-  - [ ] Tests cover no match, single exact alias match, multiple ambiguous matches, protected self exclusion, and API token protection.
+  - [x] `POST /api/entities/resolve` accepts `surface`, optional `aliases`, optional `relation_hint`, optional `entity_type`, and `source`.
+  - [x] Resolve response returns `matches`, `ambiguity`, and per-match `entity_id`, `display_name`, `score`, and `match_reasons`.
+  - [x] Deterministic matching covers exact display name, canonical name, exact alias, normalized alias, and fuzzy name/alias matches available in the current DB layer.
+  - [x] The endpoint may use embeddings or retrieval hints when available, but it must not call an LLM or decide whether a mention is fictional/public/relationship-relevant.
+  - [x] Ambiguity states distinguish `no_match`, `single_strong_match`, `multiple_close_matches`, and `low_confidence_match`.
+  - [x] Protected `self` may be returned only when explicitly requested by system role or when the request clearly targets self; normal person resolution must not silently target `self`.
+  - [x] CLI exposes an agent-callable JSON command for entity resolution.
+  - [x] Tests cover no match, single exact alias match, multiple ambiguous matches, protected self exclusion, and API token protection.
 - Notes:
   - This is a support primitive for agents. It should return evidence for agent decisions, not make the final write/no-write decision.
   - If a full vector resolver is too large for this slice, ship deterministic scoring first and leave vector expansion behind the same response contract.
 
 #### Task T037. Agent candidate provenance and correction audit hardening
 - Priority: Critical
-- Status: Ready
+- Status: Done
 - Depends on: T016, T017, T035
+- 설명: agent 후보와 correction에 증거, episode, source actor, submitter provenance를 더 엄격히 요구한다.
 - Files:
   - Modify: `docs/specs/api-spec.md`
   - Modify: `docs/specs/candidate-lifecycle-and-payload.md`
@@ -765,23 +803,24 @@ uv run kinlayer status --json
   - Test: `backend/tests/test_candidates_api.py`
   - Test: `backend/tests/test_corrections_api.py`
 - Acceptance Criteria:
-  - [ ] Agent-submitted candidates require at least one evidence item unless `created_by` is `user` and the candidate is explicitly manual.
-  - [ ] Agent-submitted evidence requires an existing episode, non-empty excerpt, confidence in `[0, 1]`, and provenance fields sufficient to trace source type/ref.
-  - [ ] Evidence validation rejects missing episode IDs, empty excerpts, nonexistent episodes, and excerpts attached to unsupported source types with the common `validation_error` shape.
-  - [ ] Docs and API examples show `source_message_id` and `source_turn_id` in `source_ref` or structured provenance fields when the agent runtime can provide them.
-  - [ ] Correction apply separates the user-authored correction source from the API submitter, for example `source_actor = user` and `submitted_by = ai_agent`.
-  - [ ] Direct correction apply still requires `correction_source.user_explicit = true`.
-  - [ ] Direct correction apply rejects ambiguous targets by requiring exactly one supported `old_record_ref`.
-  - [ ] Tests prove agent-inferred corrections with `user_explicit = false` are rejected and must enter candidates.
-  - [ ] Tests prove explicit correction evidence records the user as the correction source while preserving the submitting agent/runtime identity.
+  - [x] Agent-submitted candidates require at least one evidence item unless `created_by` is `user` and the candidate is explicitly manual.
+  - [x] Agent-submitted evidence requires an existing episode, non-empty excerpt, confidence in `[0, 1]`, and provenance fields sufficient to trace source type/ref.
+  - [x] Evidence validation rejects missing episode IDs, empty excerpts, nonexistent episodes, and excerpts attached to unsupported source types with the common `validation_error` shape.
+  - [x] Docs and API examples show `source_message_id` and `source_turn_id` in `source_ref` or structured provenance fields when the agent runtime can provide them.
+  - [x] Correction apply separates the user-authored correction source from the API submitter, for example `source_actor = user` and `submitted_by = ai_agent`.
+  - [x] Direct correction apply still requires `correction_source.user_explicit = true`.
+  - [x] Direct correction apply rejects ambiguous targets by requiring exactly one supported `old_record_ref`.
+  - [x] Tests prove agent-inferred corrections with `user_explicit = false` are rejected and must enter candidates.
+  - [x] Tests prove explicit correction evidence records the user as the correction source while preserving the submitting agent/runtime identity.
 - Notes:
   - Do not try to cryptographically prove user-authored excerpts in this slice. Make the contract explicit and store enough provenance for later hash/offset verification.
   - If schema changes are needed, preserve backwards-compatible reads for existing local data where practical.
 
 #### Task T038. Atomic canonical write transactions
 - Priority: Critical
-- Status: Backlog
+- Status: Done
 - Depends on: T037
+- 설명: candidate accept와 correction apply가 중간 실패 없이 한 transaction으로 canonical write를 끝내게 한다.
 - Files:
   - Modify: `backend/src/kinlayer_backend/repositories/candidates.py`
   - Modify: `backend/src/kinlayer_backend/repositories/entities.py`
@@ -791,21 +830,22 @@ uv run kinlayer status --json
   - Test: `backend/tests/test_candidates_api.py`
   - Test: `backend/tests/test_corrections_api.py`
 - Acceptance Criteria:
-  - [ ] Candidate accept writes canonical record, copies evidence, sets `canonical_record_ref`, and resolves candidate in one transaction.
-  - [ ] Candidate edit-accept validates edited payload and performs the same canonical write transaction atomically.
-  - [ ] Correction apply writes the replacement record, creates the correction episode, links evidence, supersedes the old record, and returns refs in one transaction.
-  - [ ] Repository helpers no longer commit mid-operation when called from candidate/correction service flows.
-  - [ ] Failure-injection tests prove a simulated evidence-link failure leaves no accepted candidate and no orphan canonical record.
-  - [ ] Failure-injection tests prove a simulated correction failure leaves the old record active and no replacement record visible.
-  - [ ] Existing API/CLI smoke behavior remains unchanged for successful accept/edit-accept/correction flows.
+  - [x] Candidate accept writes canonical record, copies evidence, sets `canonical_record_ref`, and resolves candidate in one transaction.
+  - [x] Candidate edit-accept validates edited payload and performs the same canonical write transaction atomically.
+  - [x] Correction apply writes the replacement record, creates the correction episode, links evidence, supersedes the old record, and returns refs in one transaction.
+  - [x] Repository helpers no longer commit mid-operation when called from candidate/correction service flows.
+  - [x] Failure-injection tests prove a simulated evidence-link failure leaves no accepted candidate and no orphan canonical record.
+  - [x] Failure-injection tests prove a simulated correction failure leaves the old record active and no replacement record visible.
+  - [x] Existing API/CLI smoke behavior remains unchanged for successful accept/edit-accept/correction flows.
 - Notes:
   - This task is about DB consistency, not API shape changes.
   - Prefer explicit service-level transaction boundaries over broad hidden commits inside repository helpers.
 
 #### Task T039. Candidate review UI provenance and action gating
 - Priority: High
-- Status: Backlog
+- Status: Done
 - Depends on: T019, T037
+- 설명: Web candidate review에서 provenance를 더 잘 보여주고 불가능한 action을 막는다.
 - Files:
   - Modify: `frontend/src/routes/Candidates.tsx`
   - Modify: `frontend/src/api/client.ts`
@@ -815,21 +855,22 @@ uv run kinlayer status --json
   - Test: `frontend/src/api/client.test.ts`
   - Modify: `scripts/web-smoke-checklist.md`
 - Acceptance Criteria:
-  - [ ] `/candidates` status filter includes every lifecycle status: `pending`, `accepted`, `edited_accepted`, `rejected`, `archived`, `needs_clarification`, and `superseded`.
-  - [ ] Candidate detail displays `created_by`, `confidence`, `suggested_action`, `target_entity_id`, `canonical_record_ref`, `supersedes_candidate_id`, and `supersedes_record_ref` where present.
-  - [ ] Evidence panel displays excerpt, confidence, episode ID, source type, source ref, source description, body hash, and actor when returned by the API.
-  - [ ] UI disables or hides Accept/Edit-accept for review-only candidate types such as `merge`, `conflict`, and `supersede` when the server cannot canonicalize them directly.
-  - [ ] UI exposes Reject, Archive, Needs clarification, and Supersede actions only when valid for the selected candidate status.
-  - [ ] UI shows server validation errors clearly when a lifecycle action is rejected.
-  - [ ] Browser or equivalent visual verification confirms candidate evidence and action gating are inspectable.
+  - [x] `/candidates` status filter includes every lifecycle status: `pending`, `accepted`, `edited_accepted`, `rejected`, `archived`, `needs_clarification`, and `superseded`.
+  - [x] Candidate detail displays `created_by`, `confidence`, `suggested_action`, `target_entity_id`, `canonical_record_ref`, `supersedes_candidate_id`, and `supersedes_record_ref` where present.
+  - [x] Evidence panel displays excerpt, confidence, episode ID, source type, source ref, source description, body hash, and actor when returned by the API.
+  - [x] UI disables or hides Accept/Edit-accept for review-only candidate types such as `merge`, `conflict`, and `supersede` when the server cannot canonicalize them directly.
+  - [x] UI exposes Reject, Archive, Needs clarification, and Supersede actions only when valid for the selected candidate status.
+  - [x] UI shows server validation errors clearly when a lifecycle action is rejected.
+  - [x] Browser or equivalent visual verification confirms candidate evidence and action gating are inspectable.
 - Notes:
   - Keep the UI a control plane. Do not add LLM explanations, generated advice, or automatic extraction controls.
   - Use existing API endpoints first; add backend response fields only if the UI cannot inspect required provenance through current data.
 
 #### Task T040. Post-turn integration examples and acceptance smoke
 - Priority: High
-- Status: Backlog
+- Status: Done
 - Depends on: T035, T036, T038, T039
+- 설명: agent post-turn 예시와 smoke test로 실제 대화 후 기록/정정 흐름을 검증한다.
 - Files:
   - Modify: `docs/agents/agent-integration-notes.md`
   - Modify: `docs/specs/acceptance-scenarios.md`
@@ -840,15 +881,15 @@ uv run kinlayer status --json
   - Test: `backend/tests/test_corrections_api.py`
   - Test: `backend/tests/test_context_api.py`
 - Acceptance Criteria:
-  - [ ] Docs include example flow for named person: `민지한테 답장 뭐라 하지?` resolves or creates candidates without direct canonical write.
-  - [ ] Docs include example flow for pronoun-only ambiguity: `그 사람이 또 연락했어` becomes no-op or `needs_clarification`, never a new entity.
-  - [ ] Docs include example flow for explicit correction: `Alex는 직장 동료가 아니라 사촌이야` uses correction apply only when target is unambiguous.
-  - [ ] Docs include example flow for public figure/news subject and fictional/example/generic group mentions that produce no Kinlayer candidate.
-  - [ ] API smoke submits an agent-like episode and candidate with required provenance, accepts it, and verifies canonical evidence linkage.
-  - [ ] API smoke verifies explicit correction provenance and corrected retrieval behavior after correction apply.
-  - [ ] CLI smoke covers entity resolve, candidate submit/list/show, candidate accept/reject/clarify, and correction apply.
-  - [ ] Context retrieve/pack smoke proves rejected and ambiguous candidates do not surface as trusted confirmed context.
-  - [ ] Final verification runs backend tests, CLI/API smoke, frontend tests/build, and browser verification for `/candidates` when frontend changes are included.
+  - [x] Docs include example flow for named person: `민지한테 답장 뭐라 하지?` resolves or creates candidates without direct canonical write.
+  - [x] Docs include example flow for pronoun-only ambiguity: `그 사람이 또 연락했어` becomes no-op or `needs_clarification`, never a new entity.
+  - [x] Docs include example flow for explicit correction: `Alex는 직장 동료가 아니라 사촌이야` uses correction apply only when target is unambiguous.
+  - [x] Docs include example flow for public figure/news subject and fictional/example/generic group mentions that produce no Kinlayer candidate.
+  - [x] API smoke submits an agent-like episode and candidate with required provenance, accepts it, and verifies canonical evidence linkage.
+  - [x] API smoke verifies explicit correction provenance and corrected retrieval behavior after correction apply.
+  - [x] CLI smoke covers entity resolve, candidate submit/list/show, candidate accept/reject/clarify, and correction apply.
+  - [x] Context retrieve/pack smoke proves rejected and ambiguous candidates do not surface as trusted confirmed context.
+  - [x] Final verification runs backend tests, CLI/API smoke, frontend tests/build, and browser verification for `/candidates` when frontend changes are included.
 - Notes:
   - This is the exit bar for GitHub Issue #1.
   - Agent-side post-turn hooks, skills, plugins, and MCP adapters remain outside Kinlayer core unless a later task explicitly scopes them.
@@ -861,6 +902,7 @@ uv run kinlayer status --json
 - Priority: Critical
 - Status: Ready
 - Depends on: T035
+- 설명: 사람 중복/병합 정책, merge candidate payload, 보호 self 제약, retrieval 이후 동작을 문서로 확정한다.
 - Files:
   - Modify: `docs/specs/prd.md`
   - Modify: `docs/specs/data-model.md`
@@ -893,6 +935,7 @@ uv run kinlayer status --json
 - Priority: High
 - Status: Backlog
 - Depends on: T036, T041
+- 설명: 중복 사람을 감지하고 자동 병합이 아닌 review용 merge candidate를 만들 수 있게 한다.
 - Files:
   - Modify: `docs/specs/api-spec.md`
   - Modify: `backend/src/kinlayer_backend/schemas/entities.py`
@@ -923,6 +966,7 @@ uv run kinlayer status --json
 - Priority: Critical
 - Status: Backlog
 - Depends on: T038, T041
+- 설명: merge candidate accept 시 source 사람의 별칭/fact/edge/observation을 target으로 원자적으로 이전한다.
 - Files:
   - Modify: `docs/specs/api-spec.md`
   - Modify: `backend/src/kinlayer_backend/models.py`
@@ -965,6 +1009,7 @@ uv run kinlayer status --json
 - Priority: High
 - Status: Backlog
 - Depends on: T039, T043
+- 설명: CLI와 Web에서 merge candidate를 비교 검토하고 안전하게 accept/reject/archive할 수 있게 한다.
 - Files:
   - Modify: `docs/specs/cli-spec.md`
   - Modify: `docs/specs/web-ui-spec.md`
@@ -999,6 +1044,7 @@ uv run kinlayer status --json
 - Priority: High
 - Status: Backlog
 - Depends on: T042, T043, T044
+- 설명: 중복 사람 fixture와 smoke test로 merge 후 검색, graph, context가 올바르게 이어지는지 검증한다.
 - Files:
   - Modify: `docs/specs/acceptance-scenarios.md`
   - Modify: `README.md`
@@ -1033,6 +1079,7 @@ uv run kinlayer status --json
 - Priority: High
 - Status: Done
 - Depends on: T024, T026, T032
+- 설명: Web 관리 화면에서 내부 ID 노출을 줄이고 ontology 기반 relationship control을 제공한다.
 - Files:
   - Modify: `docs/specs/web-ui-spec.md`
   - Modify: `backend/src/kinlayer_backend/services/relationships.py`
@@ -1095,6 +1142,7 @@ uv run kinlayer status --json
 - Priority: Critical
 - Status: Done
 - Depends on: T012, T016, T017, T024
+- 설명: agent가 잘못된 relationship edge type을 쓰려 할 때 감사 로그와 디버그 정보를 남긴다.
 - Files:
   - Modify: `docs/specs/api-spec.md`
   - Modify: `docs/specs/data-model.md`
@@ -1156,6 +1204,7 @@ uv run kinlayer status --json
 - Priority: Critical
 - Status: Done
 - Depends on: T035, T047
+- 설명: agent가 Kinlayer에 무엇을 어떻게 기록해야 하는지 복사해 쓸 수 있는 instruction pack을 만든다.
 - Files:
   - Add: `docs/agents/agent-write-instruction-pack.md`
   - Modify: `docs/agents/agent-integration-notes.md`
@@ -1197,6 +1246,7 @@ uv run kinlayer status --json
 - Priority: Critical
 - Status: Backlog
 - Depends on: T036, T037, T047, T048
+- 설명: agent write 앞단에 deterministic schema guard, low-risk normalization, diagnostics dry-run을 추가한다.
 - Files:
   - Modify: `docs/specs/api-spec.md`
   - Modify: `docs/specs/candidate-lifecycle-and-payload.md`
@@ -1259,6 +1309,7 @@ uv run kinlayer status --json
 - Priority: High
 - Status: Backlog
 - Depends on: T033, T034, T039, T049
+- 설명: 일반 profile fact를 명시적 검토를 거쳐 구조화된 fact로 승격하는 workflow를 만든다.
 - Files:
   - Modify: `docs/specs/data-model.md`
   - Modify: `docs/specs/api-spec.md`
@@ -1310,6 +1361,7 @@ uv run kinlayer status --json
 - Priority: High
 - Status: Backlog
 - Depends on: T012, T016, T048, T049
+- 설명: observation의 사건 날짜와 적용 기간을 candidate -> canonical -> retrieval -> Web까지 보존한다.
 - Files:
   - Modify: `docs/specs/data-model.md`
   - Modify: `docs/specs/api-spec.md`
@@ -1353,6 +1405,7 @@ uv run kinlayer status --json
 - Priority: Low
 - Status: Backlog
 - Depends on: T040, T045, T049, T050, T051
+- 설명: 선택 기능으로 LLM이 기존 데이터를 분석해 정리 후보를 만들되 직접 canonical write는 못 하게 한다.
 - Files:
   - Modify: `docs/specs/prd.md`
   - Modify: `docs/specs/api-spec.md`
@@ -1404,6 +1457,7 @@ uv run kinlayer status --json
 - Priority: High
 - Status: Done
 - Depends on: T034
+- 설명: agent write operation 기록을 API/CLI/Web에서 조회하고 export할 수 있게 한다.
 - Files:
   - Modify: `docs/specs/api-spec.md`
   - Modify: `docs/specs/data-model.md`
@@ -1452,6 +1506,49 @@ uv run kinlayer status --json
   - This task is for later review with a coding agent: the exported file should be small, redacted, deterministic, and easy to paste or attach back into a Codex session.
   - Keep this narrower than a full audit timeline. The first useful loop is "what did the agent try to write, what did Kinlayer persist or reject, and why?"
   - Implemented as a standalone agent write operation audit/export surface; later T047/T049 work can append richer diagnostics without changing the export shape.
+
+#### Task T054. Structured profile fact content validation
+- Priority: High
+- Status: Ready
+- Depends on: T033, T034
+- 설명: Structured Profile Facts의 `content`가 `fact_type`별 의미에 맞게 저장되도록 최소 검증과 입력 가이드를 추가한다.
+- Files:
+  - Modify: `backend/src/kinlayer_backend/services/entities.py`
+  - Modify: `backend/src/kinlayer_backend/services/candidates.py`
+  - Modify: `backend/src/kinlayer_backend/services/corrections.py`
+  - Modify: `frontend/src/routes/PersonDetail.tsx`
+  - Modify: `frontend/src/api/client.ts`
+  - Modify: `docs/specs/api-spec.md`
+  - Modify: `docs/specs/candidate-lifecycle-and-payload.md`
+  - Modify: `docs/agents/agent-write-instruction-pack.md`
+  - Test: `backend/tests/test_entities_api.py`
+  - Test: `backend/tests/test_candidates_api.py`
+  - Test: `backend/tests/test_corrections_api.py`
+  - Test: `frontend/src/App.test.tsx`
+- Design:
+  - Treat Structured Profile Facts as typed profile fields, not a free-form memo surface. General Profile Facts and Observations remain the holding areas for uncertain or prose-like context.
+  - Validation must live in the backend service layer so Web, CLI, API clients, correction apply, and candidate accept/edit-accept paths share the same rules.
+  - `email` should require a single email-like value and reject prose, comma-separated lists, or uncertain phrasing. Store the canonical `content` and `value` consistently.
+  - `birth_date` should require an ISO date (`YYYY-MM-DD`) when the value is known. Partial or approximate dates should stay as a general fact or observation until a later partial-date design exists.
+  - `phone` should get pragmatic validation and normalization rather than country-perfect validation: allow digits, spaces, hyphens, parentheses, and leading `+`, then reject values without enough digits.
+  - Semantic fields such as `legal_name`, `organization`, `role`, `address`, and `memo` should not receive brittle regex validation. They should get UI placeholders/help text and backend trimming/empty-value rejection only.
+  - Error messages should explain the expected shape in operator language, for example `email facts must contain one email address`.
+  - The Web form should adapt placeholder/help text and input affordances to the selected `fact_type`, while still relying on server validation as the source of truth.
+- Acceptance Criteria:
+  - [ ] `POST /api/entity-facts` and `PATCH /api/entity-facts/{id}` validate structured `content` according to the selected `fact_type`.
+  - [ ] Candidate accept/edit-accept and explicit correction apply cannot create invalid structured profile facts through alternate write paths.
+  - [ ] Invalid structured values return the common `validation_error` response shape with a field-specific message.
+  - [ ] `email` rejects prose and non-email content, and accepts a single normal email address.
+  - [ ] `birth_date` accepts `YYYY-MM-DD` and rejects ambiguous/partial date strings.
+  - [ ] `phone` accepts common phone formatting and rejects values that do not contain a plausible phone number.
+  - [ ] `legal_name`, `organization`, `role`, `address`, and `memo` remain permissive enough for real-world text while still trimming and rejecting empty content.
+  - [ ] `/people/:id` shows type-specific placeholder/help text for structured fact content input and edit fields.
+  - [ ] Tests cover direct API writes, candidate/correction write paths, and Web validation display for invalid structured content.
+  - [ ] Docs tell agents and operators to use General Profile Facts or Observations when a typed field value is uncertain or not shape-valid.
+- Notes:
+  - Do not introduce a separate contact table in this task. Keep `entity_facts` as canonical storage.
+  - Do not attempt full international phone/address parsing. Prefer conservative guardrails over false precision.
+  - This task complements T050: promotion into Structured Profile Facts should require both explicit type choice and type-valid content.
 
 ---
 
@@ -1552,4 +1649,6 @@ flowchart TD
   T050 --> T052
   T051 --> T052
   T034 --> T053
+  T033 --> T054
+  T034 --> T054
 ```

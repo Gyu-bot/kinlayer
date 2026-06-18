@@ -20,6 +20,7 @@ import {
   updateFact,
   updatePerson,
 } from "../api/client";
+import {FieldHelp, helpCopy} from "../components/FieldHelp";
 import {
   edgeTypeOptions,
   normalizeOptionValue,
@@ -296,15 +297,15 @@ export function PersonDetail({id, onNavigate}: Props) {
 
       <div className="summary-grid">
         <div>
-          <span>Status</span>
+          <span>{helpCopy.status.label}</span>
           <strong>{person.status}</strong>
         </div>
         <div>
-          <span>Sensitivity</span>
+          <span>{helpCopy.sensitivity.label}</span>
           <strong>{person.sensitivity}</strong>
         </div>
         <div>
-          <span>Policy</span>
+          <span>{helpCopy.policy.label}</span>
           <strong>{person.ai_use_policy}</strong>
         </div>
         <div>
@@ -315,6 +316,7 @@ export function PersonDetail({id, onNavigate}: Props) {
 
       <section className="detail-section">
         <h2>Profile</h2>
+        <p className="section-help">이 사람을 식별하고 AI가 이 사람 정보를 다루는 기본 규칙입니다.</p>
         <form className="edit-grid" onSubmit={saveProfile}>
           <label>
             Display name
@@ -326,7 +328,7 @@ export function PersonDetail({id, onNavigate}: Props) {
             />
           </label>
           <label>
-            Sensitivity
+            <FieldHelp {...helpCopy.sensitivity} />
             <select
               value={profileDraft.sensitivity}
               onChange={(event) =>
@@ -341,7 +343,7 @@ export function PersonDetail({id, onNavigate}: Props) {
             </select>
           </label>
           <label>
-            AI use policy
+            <FieldHelp {...helpCopy.policy} />
             <select
               value={profileDraft.ai_use_policy}
               onChange={(event) =>
@@ -356,7 +358,7 @@ export function PersonDetail({id, onNavigate}: Props) {
             </select>
           </label>
           <label className="wide">
-            Profile note
+            <FieldHelp label="Profile note" help="이 사람을 기억할 때 바로 떠올릴 짧은 설명" />
             <textarea
               value={profileDraft.short_note}
               onChange={(event) =>
@@ -370,9 +372,10 @@ export function PersonDetail({id, onNavigate}: Props) {
 
       <section className="detail-section">
         <h2>Aliases</h2>
+        <p className="section-help">별명, 영문 이름, 줄여 부르는 이름처럼 같은 사람을 찾는 데 쓰는 이름입니다.</p>
         <form className="inline-form" onSubmit={addAlias}>
           <label>
-            New alias
+            <FieldHelp label="New alias" />
             <input value={newAlias} onChange={(event) => setNewAlias(event.target.value)} />
           </label>
           <button type="submit">Add alias</button>
@@ -410,6 +413,7 @@ export function PersonDetail({id, onNavigate}: Props) {
 
       <section className="detail-section">
         <h2>Structured Profile Facts</h2>
+        <p className="section-help">이메일, 역할, 소속처럼 종류가 정해진 정보입니다. 검색과 정책 적용에 더 안정적으로 쓰입니다.</p>
         <FactCreateForm
           newFact={newFact}
           factTypes={factTypes}
@@ -431,6 +435,7 @@ export function PersonDetail({id, onNavigate}: Props) {
 
       <section className="detail-section">
         <h2>General Profile Facts</h2>
+        <p className="section-help">아직 정해진 종류로 나누기 애매하지만, 이 사람을 이해하는 데 도움이 되는 정보입니다.</p>
         <FactTable
           facts={generalFacts}
           factDrafts={factDrafts}
@@ -444,9 +449,10 @@ export function PersonDetail({id, onNavigate}: Props) {
 
       <section className="detail-section">
         <h2>Relationships</h2>
+        <p className="section-help">나 또는 다른 사람과의 관계입니다. AI가 응답 전 관계 맥락을 잡는 데 사용합니다.</p>
         <form className="edit-grid" onSubmit={addRelationship}>
           <label>
-            Related person
+            <FieldHelp label="Related person" />
             <select
               value={newEdge.to_entity_id}
               onChange={(event) => setNewEdge({...newEdge, to_entity_id: event.target.value})}
@@ -461,7 +467,7 @@ export function PersonDetail({id, onNavigate}: Props) {
             </select>
           </label>
           <label>
-            Relationship type
+            <FieldHelp label="Relationship type" help="어떤 관계로 기억할지" />
             <select
               value={newEdge.relation_type}
               onChange={(event) => setNewEdge({...newEdge, relation_type: event.target.value})}
@@ -474,14 +480,14 @@ export function PersonDetail({id, onNavigate}: Props) {
             </select>
           </label>
           <label className="wide">
-            Relationship note
+            <FieldHelp label="Relationship note" help="관계를 판단한 짧은 근거" />
             <input
               value={newEdge.claim_text}
               onChange={(event) => setNewEdge({...newEdge, claim_text: event.target.value})}
             />
           </label>
           <label>
-            Relationship sensitivity
+            <FieldHelp label="Relationship sensitivity" help={helpCopy.sensitivity.help} />
             <select
               value={newEdge.sensitivity}
               onChange={(event) => setNewEdge({...newEdge, sensitivity: event.target.value})}
@@ -494,7 +500,7 @@ export function PersonDetail({id, onNavigate}: Props) {
             </select>
           </label>
           <label>
-            Relationship AI use policy
+            <FieldHelp label="Relationship AI use policy" help={helpCopy.policy.help} />
             <select
               value={newEdge.ai_use_policy}
               onChange={(event) => setNewEdge({...newEdge, ai_use_policy: event.target.value})}
@@ -514,7 +520,7 @@ export function PersonDetail({id, onNavigate}: Props) {
               <tr>
                 <th>Type</th>
                 <th>Claim</th>
-                <th>Policy</th>
+                <th>{helpCopy.policy.label}</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -543,17 +549,20 @@ export function PersonDetail({id, onNavigate}: Props) {
 
       <ObservationSection
         title="Stable Observations"
+        description="오래 유지되는 선호, 주의점, 배경처럼 계속 참고해도 되는 맥락입니다."
         observations={contextCard?.stable_context ?? []}
         onDelete={(observationId) => runAction(() => deleteObservation(observationId))}
       />
       <ObservationSection
         title="Recent Observations"
+        description="최근 대화나 사건처럼 시간 감각이 중요한 맥락입니다."
         observations={contextCard?.recent_context ?? []}
         onDelete={(observationId) => runAction(() => deleteObservation(observationId))}
       />
 
       <section className="detail-section">
         <h2>Provenance</h2>
+        <p className="section-help">이 정보가 어디서 왔는지 확인하는 짧은 근거입니다.</p>
         <p className="muted">
           Facts {contextCard?.provenance_summary.fact_count ?? 0} / Edges{" "}
           {contextCard?.provenance_summary.edge_count ?? 0} / Observations{" "}
@@ -594,7 +603,7 @@ function FactCreateForm({
   return (
     <form className="edit-grid" onSubmit={onSubmit}>
       <label>
-        New structured fact type
+        <FieldHelp label="New structured fact type" help="이메일, 역할, 소속처럼 어떤 정보인지" />
         <select
           value={newFact.fact_type}
           onChange={(event) => setNewFact({...newFact, fact_type: event.target.value})}
@@ -607,14 +616,14 @@ function FactCreateForm({
         </select>
       </label>
       <label className="wide">
-        New structured fact content
+        <FieldHelp label="New structured fact content" />
         <input
           value={newFact.content}
           onChange={(event) => setNewFact({...newFact, content: event.target.value})}
         />
       </label>
       <label>
-        New structured fact sensitivity
+        <FieldHelp label="New structured fact sensitivity" help={helpCopy.sensitivity.help} />
         <select
           value={newFact.sensitivity}
           onChange={(event) => setNewFact({...newFact, sensitivity: event.target.value})}
@@ -627,7 +636,7 @@ function FactCreateForm({
         </select>
       </label>
       <label>
-        New structured fact AI use policy
+        <FieldHelp label="New structured fact AI use policy" help={helpCopy.policy.help} />
         <select
           value={newFact.ai_use_policy}
           onChange={(event) => setNewFact({...newFact, ai_use_policy: event.target.value})}
@@ -668,8 +677,8 @@ function FactTable({
           <tr>
             <th>Type</th>
             <th>Content</th>
-            <th>Claim</th>
-            <th>Policy</th>
+            <th>{helpCopy.claim.label}</th>
+            <th>{helpCopy.policy.label}</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -896,16 +905,19 @@ function RelationshipRow({
 
 function ObservationSection({
   title,
+  description,
   observations,
   onDelete,
 }: {
   title: string;
+  description: string;
   observations: Observation[];
   onDelete: (observationId: string) => void;
 }) {
   return (
     <section className="detail-section">
       <h2>{title}</h2>
+      <p className="section-help">{description}</p>
       <div className="debug-stack">
         {observations.map((observation) => (
           <article className="match-summary" key={observation.id}>
@@ -915,9 +927,9 @@ function ObservationSection({
             </div>
             <p>{observation.content}</p>
             <div className="pill-row">
-              <span className="pill">{observation.claim_type}</span>
-              <span className="pill">{observation.ai_use_policy}</span>
-              <span className="pill">{observation.sensitivity}</span>
+              <span className="pill">{helpCopy.claim.label}: {observation.claim_type}</span>
+              <span className="pill">{helpCopy.policy.label}: {observation.ai_use_policy}</span>
+              <span className="pill">{helpCopy.sensitivity.label}: {observation.sensitivity}</span>
             </div>
             <button type="button" className="secondary" onClick={() => onDelete(observation.id)}>
               Delete observation

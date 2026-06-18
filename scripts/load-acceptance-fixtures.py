@@ -388,6 +388,7 @@ def load_fixtures(client: ApiClient) -> dict[str, Any]:
             },
             "correction_source": {
                 "source_type": "agent_conversation",
+                "source_actor": "user",
                 "user_explicit": True,
                 "excerpt": "Correction: Alex prefers concise async written updates before calls.",
                 "source_ref": "acceptance-fixture-correction",

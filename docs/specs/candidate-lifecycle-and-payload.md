@@ -156,12 +156,28 @@ candidate_evidence
 - created_at
 ```
 
+Candidate evidence responses may also include source metadata resolved from the linked episode:
+
+```text
+source_type
+source_ref
+source_description
+body_hash
+actor
+```
+
 Implementation note:
 
 - DB stores `payload` as JSONB.
 - API/Pydantic layer validates payload by `candidate_type`.
 - This avoids both untyped chaos and over-normalized candidate tables.
 - Use `candidate_evidence`, not `candidates.evidence_episode_ids`, as the canonical evidence model.
+- Agent-submitted candidates require at least one evidence item. Manual user-created candidates may
+  omit evidence when explicitly entered by the user.
+- Agent evidence must reference an existing episode, include a non-empty user-authored excerpt,
+  confidence in `[0, 1]`, and enough episode provenance to trace source type/ref. Agent runtimes
+  should place stable `source_message_id` and `source_turn_id` values in `source_ref` or structured
+  source metadata when available.
 
 ---
 

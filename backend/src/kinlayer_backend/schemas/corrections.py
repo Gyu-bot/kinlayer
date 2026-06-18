@@ -6,6 +6,7 @@ from kinlayer_backend.schemas.common import APIModel
 
 class CorrectionSource(APIModel):
     source_type: str
+    source_actor: str = "user"
     user_explicit: bool
     excerpt: str
     source_ref: str | None = None
@@ -28,3 +29,5 @@ class CorrectionApplyResponse(APIModel):
     old_record_ref: str
     new_record_ref: str
     episode_id: str
+    source_actor: str
+    submitted_by: str

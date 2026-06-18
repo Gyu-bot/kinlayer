@@ -51,6 +51,56 @@ Candidate planning should distinguish:
 Dry-run and audit diagnostics should list found mentions, exclusions, entity-resolution results,
 planned candidates, no-op reasons, and redacted/log-safe metadata.
 
+### Post-turn examples
+
+These examples describe adapter behavior after a user turn. Kinlayer core validates the submitted
+API payloads; it does not run the extraction model itself.
+
+Named person mention:
+
+```text
+User: 민지한테 답장 뭐라 하지?
+Adapter:
+1. Call entity resolve with surface "민지" and any current-turn aliases/hints.
+2. If exactly one existing person matches, retrieve context for that entity before drafting.
+3. If the turn reveals a new relationship observation, submit an observation candidate with evidence.
+4. Do not write directly to canonical observations unless the user explicitly corrects a known record.
+```
+
+Pronoun-only ambiguity:
+
+```text
+User: 그 사람이 또 연락했어
+Adapter:
+1. Do not create a new person from the pronoun.
+2. If recent-turn context cannot identify one existing person, produce no Kinlayer write or mark an
+   existing candidate as needs_clarification.
+3. Ask the user which person they mean before submitting a candidate.
+```
+
+Explicit correction:
+
+```text
+User: Alex는 직장 동료가 아니라 사촌이야
+Adapter:
+1. Resolve "Alex" and locate the exact old canonical relationship record.
+2. If exactly one supported old_record_ref is found, call correction apply with
+   correction_source.user_explicit = true, source_actor = user, and submitted_by/created_by = ai_agent.
+3. If the target or old record is ambiguous, submit no direct correction and ask for clarification.
+```
+
+No-write subjects:
+
+```text
+User: 테일러 스위프트 콘서트 기사 봤어?
+User: 셜록 홈즈라면 뭐라고 했을까?
+User: 마케터들은 보통 이런 답장을 싫어하나?
+Adapter:
+1. Treat public figures/news subjects, fictional/example characters, and generic groups as no-write
+   cases for Kinlayer relationship memory.
+2. Record the no-write reason only in adapter dry-run/audit diagnostics when available.
+```
+
 ---
 
 ## 2. Integration Principle

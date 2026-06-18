@@ -496,6 +496,25 @@ pre {
   color: #66756d;
 }
 
+.section-help {
+  margin: -4px 0 14px;
+  color: #66756d;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.field-label {
+  display: grid;
+  gap: 3px;
+}
+
+.field-help {
+  color: #66756d;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
 @media (max-width: 760px) {
   .shell {
     padding: 18px;

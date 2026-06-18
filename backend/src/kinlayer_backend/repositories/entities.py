@@ -17,11 +17,14 @@ class EntityRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def add_entity(self, payload: dict) -> Entity:
+    def add_entity(self, payload: dict, commit: bool = True) -> Entity:
         entity = Entity(**payload)
         self.session.add(entity)
-        self.session.commit()
-        self.session.refresh(entity)
+        if commit:
+            self.session.commit()
+            self.session.refresh(entity)
+        else:
+            self.session.flush()
         return entity
 
     def get_entity(self, entity_id: str) -> Entity | None:
@@ -30,6 +33,15 @@ class EntityRepository:
     def find_self(self) -> Entity | None:
         statement = select(Entity).where(Entity.system_role == "self")
         return self.session.execute(statement).scalar_one_or_none()
+
+    def resolvable_entities(
+        self,
+        entity_type: str | None = None,
+    ) -> list[Entity]:
+        statement = select(Entity).where(Entity.status == "active")
+        if entity_type:
+            statement = statement.where(Entity.entity_type == entity_type)
+        return self.session.execute(statement.order_by(Entity.display_name)).scalars().all()
 
     def list_entities(
         self,
@@ -84,15 +96,18 @@ class EntityRepository:
         items = self.session.execute(statement).scalars().all()
         return items, total
 
-    def add_alias(self, entity_id: str, payload: dict) -> EntityAlias:
+    def add_alias(self, entity_id: str, payload: dict, commit: bool = True) -> EntityAlias:
         alias = EntityAlias(
             entity_id=entity_id,
             normalized_alias=normalize_name(payload["alias"]),
             **payload,
         )
         self.session.add(alias)
-        self.session.commit()
-        self.session.refresh(alias)
+        if commit:
+            self.session.commit()
+            self.session.refresh(alias)
+        else:
+            self.session.flush()
         return alias
 
     def get_alias(self, alias_id: str) -> EntityAlias | None:
@@ -101,16 +116,19 @@ class EntityRepository:
     def list_aliases(self, entity_id: str) -> tuple[list[EntityAlias], int]:
         statement = (
             select(EntityAlias)
-            .where(EntityAlias.entity_id == entity_id)
+            .where(EntityAlias.entity_id == entity_id, EntityAlias.status == "active")
             .order_by(EntityAlias.created_at)
         )
         return _page(self.session, statement, 200, 0)
 
-    def add_fact(self, payload: dict) -> EntityFact:
+    def add_fact(self, payload: dict, commit: bool = True) -> EntityFact:
         fact = EntityFact(**payload)
         self.session.add(fact)
-        self.session.commit()
-        self.session.refresh(fact)
+        if commit:
+            self.session.commit()
+            self.session.refresh(fact)
+        else:
+            self.session.flush()
         return fact
 
     def get_fact(self, fact_id: str) -> EntityFact | None:

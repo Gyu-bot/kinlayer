@@ -81,6 +81,13 @@ def test_agent_write_operations_list_and_export_success_and_rejection(client) ->
                 "claim_text": "This should be an observation.",
                 "claim_type": "fact",
             },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "This should be an observation.",
+                    "confidence": 0.5,
+                }
+            ],
             "confidence": 0.5,
             "created_by": "ai_agent",
         },

@@ -14,11 +14,14 @@ class RelationshipRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def add_edge(self, payload: dict) -> EntityEdge:
+    def add_edge(self, payload: dict, commit: bool = True) -> EntityEdge:
         edge = EntityEdge(**payload)
         self.session.add(edge)
-        self.session.commit()
-        self.session.refresh(edge)
+        if commit:
+            self.session.commit()
+            self.session.refresh(edge)
+        else:
+            self.session.flush()
         return edge
 
     def get_edge(self, edge_id: str) -> EntityEdge | None:
@@ -49,14 +52,22 @@ class RelationshipRepository:
         filters.append(EntityEdge.status == (status or "active"))
         return page(self.session, statement.where(*filters).order_by(EntityEdge.created_at.desc()), limit, offset)
 
-    def add_observation(self, payload: dict, related_entities: list[dict]) -> Observation:
+    def add_observation(
+        self,
+        payload: dict,
+        related_entities: list[dict],
+        commit: bool = True,
+    ) -> Observation:
         observation = Observation(**payload)
         self.session.add(observation)
         self.session.flush()
         for related in related_entities:
             self.session.add(ObservationEntity(observation_id=observation.id, **related))
-        self.session.commit()
-        self.session.refresh(observation)
+        if commit:
+            self.session.commit()
+            self.session.refresh(observation)
+        else:
+            self.session.flush()
         return observation
 
     def get_observation(self, observation_id: str) -> Observation | None:
@@ -95,11 +106,14 @@ class RelationshipRepository:
         filters.append(Observation.status == (status or "active"))
         return page(self.session, statement.where(*filters).distinct().order_by(Observation.created_at.desc()), limit, offset)
 
-    def add_episode(self, payload: dict) -> Episode:
+    def add_episode(self, payload: dict, commit: bool = True) -> Episode:
         episode = Episode(**payload)
         self.session.add(episode)
-        self.session.commit()
-        self.session.refresh(episode)
+        if commit:
+            self.session.commit()
+            self.session.refresh(episode)
+        else:
+            self.session.flush()
         return episode
 
     def get_episode(self, episode_id: str) -> Episode | None:

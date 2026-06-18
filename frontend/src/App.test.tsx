@@ -224,15 +224,16 @@ describe("App route shell", () => {
     render(<App />);
 
     expect(await screen.findByRole("option", {name: "Vendor contact"})).toBeInTheDocument();
-    expect(screen.getByLabelText("Initial relationship type")).toHaveValue("vendor_contact");
-    expect(screen.getByLabelText("Sensitivity")).toHaveValue("high");
+    expect(screen.getByLabelText(/Initial relationship type/)).toHaveValue("vendor_contact");
+    expect(screen.getByLabelText(/Sensitivity/)).toHaveValue("high");
     expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
-    expect(screen.getByLabelText("AI use policy")).toHaveValue("ask_before_use");
+    expect(screen.getByLabelText(/AI use policy/)).toHaveValue("ask_before_use");
     expect(screen.getByRole("option", {name: "Ask before use"})).toBeInTheDocument();
-    expect(screen.getByLabelText("Profile fact type")).toHaveValue("birthday");
+    expect(screen.getByLabelText(/Profile fact type/)).toHaveValue("birthday");
     expect(screen.getByRole("option", {name: "Birthday"})).toBeInTheDocument();
-    expect(screen.getByLabelText("Initial observation type")).toHaveValue("follow_up_context");
+    expect(screen.getByLabelText(/Initial observation type/)).toHaveValue("follow_up_context");
     expect(screen.getByRole("option", {name: "Follow-up context"})).toBeInTheDocument();
+    expect(screen.getByText("이메일, 역할, 소속처럼 정리해서 저장할 항목")).toBeInTheDocument();
     expect(screen.queryByRole("option", {name: "user_preference_about_person"})).not.toBeInTheDocument();
   });
 
@@ -431,14 +432,19 @@ describe("App route shell", () => {
     render(<App />);
 
     await screen.findByRole("option", {name: "Friend"});
+    expect(screen.getByText("Sensitivity")).toBeInTheDocument();
+    expect(screen.getByText("AI use policy")).toBeInTheDocument();
+    expect(screen.getByText("Initial Relationship")).toBeInTheDocument();
+    expect(screen.getByText("Initial Observation")).toBeInTheDocument();
+    expect(screen.getByText("이 정보가 얼마나 조심스럽게 다뤄져야 하는지")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Display name"), {target: {value: "박서연"}});
-    fireEvent.change(screen.getByLabelText("Initial relationship type"), {
+    fireEvent.change(screen.getByLabelText(/Initial relationship type/), {
       target: {value: "friend"},
     });
-    fireEvent.change(screen.getByLabelText("Initial relationship note"), {
+    fireEvent.change(screen.getByLabelText(/Initial relationship note/), {
       target: {value: "서연은 사용자와 오래 알고 지낸 친구다."},
     });
-    fireEvent.change(screen.getByLabelText("Initial observation type"), {
+    fireEvent.change(screen.getByLabelText(/Initial observation type/), {
       target: {value: "recent_interaction"},
     });
     fireEvent.change(screen.getByLabelText("Initial observation"), {
@@ -889,36 +895,44 @@ describe("App route shell", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
     );
-    const profileSensitivity = screen.getByLabelText("Sensitivity");
-    const profilePolicy = screen.getByLabelText("AI use policy");
+    expect(screen.getAllByText("Sensitivity").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("AI use policy").length).toBeGreaterThan(0);
+    expect(screen.getByText("Structured Profile Facts")).toBeInTheDocument();
+    expect(screen.getByText("General Profile Facts")).toBeInTheDocument();
+    expect(screen.getByText("Stable Observations")).toBeInTheDocument();
+    expect(screen.getByText("Recent Observations")).toBeInTheDocument();
+    expect(screen.getByText("Provenance")).toBeInTheDocument();
+    expect(screen.getAllByText("이 정보가 얼마나 조심스럽게 다뤄져야 하는지").length).toBeGreaterThan(0);
+    const profileSensitivity = screen.getAllByLabelText(/Sensitivity/)[0];
+    const profilePolicy = screen.getAllByLabelText(/AI use policy/)[0];
     expect(profileSensitivity).toHaveValue("medium");
     expect(within(profileSensitivity).getByRole("option", {name: "High"})).toBeInTheDocument();
     expect(profilePolicy).toHaveValue("cautious_use");
     expect(within(profilePolicy).getByRole("option", {name: "Ask before use"})).toBeInTheDocument();
-    expect(screen.getByLabelText("New structured fact type")).toHaveValue("email");
+    expect(screen.getByLabelText(/New structured fact type/)).toHaveValue("email");
     expect(screen.getAllByRole("option", {name: "Birthday"}).length).toBeGreaterThan(0);
     fireEvent.change(screen.getByLabelText("Display name"), {target: {value: "김민지 수정"}});
-    fireEvent.change(screen.getByLabelText("Profile note"), {target: {value: "새 메모"}});
+    fireEvent.change(screen.getByLabelText(/Profile note/), {target: {value: "새 메모"}});
     fireEvent.click(screen.getByRole("button", {name: "Save profile"}));
     await waitFor(() => expect(screen.getByRole("heading", {level: 1, name: "김민지 수정"})).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText("New alias"), {target: {value: "MJ"}});
+    fireEvent.change(screen.getByLabelText(/New alias/), {target: {value: "MJ"}});
     fireEvent.click(screen.getByRole("button", {name: "Add alias"}));
     await waitFor(() => expect(screen.getByDisplayValue("MJ")).toBeInTheDocument());
-    fireEvent.change(screen.getAllByLabelText("Alias")[1], {target: {value: "민지님"}});
+    fireEvent.change(screen.getAllByLabelText(/Alias/)[1], {target: {value: "민지님"}});
     fireEvent.click(screen.getAllByRole("button", {name: "Update alias"})[1]);
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/aliases/alias-1"))).toBe(true));
 
-    fireEvent.change(screen.getByLabelText("New structured fact content"), {
+    fireEvent.change(screen.getByLabelText(/New structured fact content/), {
       target: {value: "new@example.com"},
     });
-    fireEvent.change(screen.getByLabelText("New structured fact type"), {
+    fireEvent.change(screen.getByLabelText(/New structured fact type/), {
       target: {value: "birthday"},
     });
-    fireEvent.change(screen.getByLabelText("New structured fact sensitivity"), {
+    fireEvent.change(screen.getByLabelText(/New structured fact sensitivity/), {
       target: {value: "high"},
     });
-    fireEvent.change(screen.getByLabelText("New structured fact AI use policy"), {
+    fireEvent.change(screen.getByLabelText(/New structured fact AI use policy/), {
       target: {value: "ask_before_use"},
     });
     fireEvent.click(screen.getByRole("button", {name: "Add structured fact"}));
@@ -945,12 +959,12 @@ describe("App route shell", () => {
     });
     fireEvent.click(screen.getAllByRole("button", {name: "Update fact"})[0]);
 
-    fireEvent.change(screen.getByLabelText("Related person"), {target: {value: "person-2"}});
-    fireEvent.change(screen.getByLabelText("Relationship note"), {target: {value: "협업 파트너"}});
-    fireEvent.change(screen.getByLabelText("Relationship sensitivity"), {
+    fireEvent.change(screen.getByLabelText(/Related person/), {target: {value: "person-2"}});
+    fireEvent.change(screen.getByLabelText(/Relationship note/), {target: {value: "협업 파트너"}});
+    fireEvent.change(screen.getAllByLabelText(/Relationship sensitivity/)[0], {
       target: {value: "high"},
     });
-    fireEvent.change(screen.getByLabelText("Relationship AI use policy"), {
+    fireEvent.change(screen.getAllByLabelText(/Relationship AI use policy/)[0], {
       target: {value: "ask_before_use"},
     });
     fireEvent.click(screen.getByRole("button", {name: "Add relationship"}));
@@ -1046,11 +1060,11 @@ describe("App route shell", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
     );
-    fireEvent.change(screen.getByLabelText("Related person"), {target: {value: "person-2"}});
-    fireEvent.change(screen.getByLabelText("Relationship type"), {
+    fireEvent.change(screen.getByLabelText(/Related person/), {target: {value: "person-2"}});
+    fireEvent.change(screen.getByLabelText(/Relationship type/), {
       target: {value: "vendor_contact"},
     });
-    fireEvent.change(screen.getByLabelText("Relationship note"), {target: {value: "벤더 담당자"}});
+    fireEvent.change(screen.getByLabelText(/Relationship note/), {target: {value: "벤더 담당자"}});
     fireEvent.click(screen.getByRole("button", {name: "Add relationship"}));
 
     await waitFor(() =>
@@ -1107,10 +1121,10 @@ describe("App route shell", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
     );
-    fireEvent.change(screen.getByLabelText("New structured fact type"), {
+    fireEvent.change(screen.getByLabelText(/New structured fact type/), {
       target: {value: "unsupported_fact"},
     });
-    fireEvent.change(screen.getByLabelText("New structured fact content"), {
+    fireEvent.change(screen.getByLabelText(/New structured fact content/), {
       target: {value: "bad"},
     });
     fireEvent.click(screen.getByRole("button", {name: "Add structured fact"}));
@@ -1200,14 +1214,21 @@ describe("App route shell", () => {
     );
     expect(screen.getAllByText(/후속 확인이 필요하다/).length).toBeGreaterThan(0);
     expect(screen.getByText("회의 말미에 다음 액션을 물었다.")).toBeInTheDocument();
+    expect(screen.getAllByText("ai_agent").length).toBeGreaterThan(1);
+    expect(screen.getByText("agent_conversation")).toBeInTheDocument();
+    expect(screen.getByText("thread-candidate")).toBeInTheDocument();
+    expect(screen.getByText("sha256:candidate")).toBeInTheDocument();
     expect(screen.getAllByText("김민지").length).toBeGreaterThan(0);
+    expect(screen.getByRole("option", {name: "edited_accepted"})).toBeInTheDocument();
+    expect(screen.getByRole("option", {name: "superseded"})).toBeInTheDocument();
     expect(screen.getByRole("option", {name: "Observation"})).toBeInTheDocument();
     expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
     expect(screen.queryByText("candidate-1")).not.toBeInTheDocument();
     expect(fetchMock.mock.calls[0][0]).toContain("/api/candidates?status=pending&limit=50");
 
-    fireEvent.change(screen.getByLabelText("Candidate type"), {target: {value: "observation"}});
-    fireEvent.change(screen.getByLabelText("Sensitivity"), {target: {value: "high"}});
+    expect(screen.getByText("AI가 제안한 정보의 형태")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Candidate type/), {target: {value: "observation"}});
+    fireEvent.change(screen.getByLabelText(/Sensitivity/), {target: {value: "high"}});
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([url]) => String(url).includes("candidate_type=observation"))).toBe(
         true,
@@ -1217,24 +1238,18 @@ describe("App route shell", () => {
       true,
     );
 
-    fireEvent.click(screen.getByRole("button", {name: "Accept"}));
-    await waitFor(() => expect(screen.getByText("observations record")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", {name: "Reject"}));
-    await waitFor(() => expect(screen.getAllByText("rejected").length).toBeGreaterThan(0));
-    fireEvent.click(screen.getByRole("button", {name: "Archive"}));
-    await waitFor(() => expect(screen.getAllByText("archived").length).toBeGreaterThan(0));
-    fireEvent.click(screen.getByRole("button", {name: "Needs clarification"}));
-    await waitFor(() =>
-      expect(screen.getAllByText("needs_clarification").length).toBeGreaterThan(0),
-    );
+    expect(screen.getByRole("button", {name: "Accept"})).toBeEnabled();
+    expect(screen.getByRole("button", {name: "Reject"})).toBeEnabled();
+    expect(screen.getByRole("button", {name: "Archive"})).toBeEnabled();
+    expect(screen.getByRole("button", {name: "Needs clarification"})).toBeEnabled();
 
-    expect(screen.queryByLabelText("Edited payload JSON")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Edited payload JSON/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", {name: "Show raw/edit payload"}));
-    fireEvent.change(screen.getByLabelText("Edited payload JSON"), {target: {value: "{"}});
+    fireEvent.change(screen.getByLabelText(/Edited payload JSON/), {target: {value: "{"}});
     fireEvent.click(screen.getByRole("button", {name: "Edit accept"}));
     expect(screen.getByText("Invalid edited payload JSON.")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Edited payload JSON"), {
+    fireEvent.change(screen.getByLabelText(/Edited payload JSON/), {
       target: {
         value: JSON.stringify({
           subject_entity_id: "person-1",
@@ -1246,6 +1261,52 @@ describe("App route shell", () => {
     });
     fireEvent.click(screen.getByRole("button", {name: "Edit accept"}));
     await waitFor(() => expect(screen.getByText("observations record")).toBeInTheDocument());
+    expect(screen.getByRole("button", {name: "Accept"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Reject"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Archive"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Needs clarification"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Edit accept unavailable"})).toBeDisabled();
+  });
+
+  it("gates review-only candidate actions", async () => {
+    window.history.pushState({}, "", "/candidates");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.endsWith("/api/ontology")) {
+          return jsonResponse(ontologyFixture());
+        }
+        if (url.includes("/api/entities?")) {
+          return jsonResponse({items: [], limit: 50, offset: 0, total: 0});
+        }
+        if (url.includes("/api/candidates?")) {
+          return jsonResponse({
+            items: [
+              candidateFixture({
+                candidate_type: "merge",
+                payload: {
+                  source_entity_id: "person-old",
+                  target_entity_id: "person-new",
+                  reason: "same alias",
+                },
+              }),
+            ],
+            limit: 50,
+            offset: 0,
+            total: 1,
+          });
+        }
+        throw new Error(`Unexpected URL ${url}`);
+      }),
+    );
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText("merge").length).toBeGreaterThan(0));
+    expect(screen.getByRole("button", {name: "Accept"})).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", {name: "Show raw/edit payload"}));
+    expect(screen.queryByRole("button", {name: "Edit accept"})).not.toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Reject"})).toBeEnabled();
   });
 
   it("summarizes candidates without showing candidate IDs by default", async () => {
@@ -1281,7 +1342,7 @@ describe("App route shell", () => {
     expect(screen.queryByText("candidate-technical-id")).not.toBeInTheDocument();
     expect(screen.queryByText("candidate-1")).not.toBeInTheDocument();
     expect(screen.queryByText("person-1")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Edited payload JSON")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Edited payload JSON/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", {name: "Show raw/edit payload"})).toBeInTheDocument();
   });
 
@@ -1669,10 +1730,12 @@ describe("App route shell", () => {
     await waitFor(() => expect(screen.getAllByText("김민지").length).toBeGreaterThan(0));
     expect(screen.getByText("민지")).toBeInTheDocument();
     expect(screen.getByText("1 relationships / 1 recent")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Sensitivity filter/)).toBeInTheDocument();
+    expect(screen.getByText("정보가 얼마나 조심스러운지로 좁혀 보기")).toBeInTheDocument();
     expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
     expect(screen.queryByText("person-1")).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Status filter"), {target: {value: "active"}});
-    fireEvent.change(screen.getByLabelText("Sensitivity filter"), {target: {value: "high"}});
+    fireEvent.change(screen.getByLabelText(/Status filter/), {target: {value: "active"}});
+    fireEvent.change(screen.getByLabelText(/Sensitivity filter/), {target: {value: "high"}});
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([url]) => String(url).includes("status=active"))).toBe(
         true,
@@ -1814,6 +1877,11 @@ function candidateFixture(overrides: Partial<Record<string, unknown>> = {}) {
         episode_id: "episode-1",
         excerpt: "회의 말미에 다음 액션을 물었다.",
         confidence: 0.8,
+        source_type: "agent_conversation",
+        source_ref: "thread-candidate",
+        source_description: "Candidate evidence",
+        body_hash: "sha256:candidate",
+        actor: "ai_agent",
         created_at: "2026-06-10T00:00:00Z",
       },
     ],
@@ -1821,7 +1889,7 @@ function candidateFixture(overrides: Partial<Record<string, unknown>> = {}) {
     sensitivity: "medium",
     suggested_action: "accept",
     status: "pending",
-    created_by: "agent",
+    created_by: "ai_agent",
     created_at: "2026-06-10T00:00:00Z",
     updated_at: "2026-06-10T00:00:00Z",
     resolved_at: null,

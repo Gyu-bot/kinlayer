@@ -1,12 +1,16 @@
+import pytest
+
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_session_maker
 from kinlayer_backend.models import (
     Candidate,
     EdgeEvidence,
+    EntityEdge,
     EntityFactEvidence,
     Episode,
     ObservationEvidence,
 )
+from kinlayer_backend.services.corrections import CorrectionService
 
 
 def create_person(client, name: str) -> dict:
@@ -138,6 +142,100 @@ def test_explicit_edge_correction_supersedes_old_record_and_links_evidence(
         assert len(evidence_rows) == 1
         assert evidence_rows[0].excerpt == episode.body_excerpt
         assert session.query(Candidate).count() == 0
+
+
+def test_explicit_correction_records_user_source_and_agent_submitter(client, database_url) -> None:
+    user = create_person(client, "User")
+    alex = create_person(client, "Alex")
+    old_edge = create_edge(client, user["id"], alex["id"], "former_coworker")
+
+    response = client.post(
+        "/api/corrections/apply",
+        json={
+            "old_record_ref": f"entity_edges:{old_edge['id']}",
+            "new_record": {
+                "record_type": "entity_edges",
+                "payload": {
+                    "from_entity_id": user["id"],
+                    "to_entity_id": alex["id"],
+                    "relation_type": "client_contact",
+                    "claim_text": "Alex is a client contact.",
+                    "claim_type": "fact",
+                },
+            },
+            "correction_source": {
+                "source_type": "agent_conversation",
+                "source_actor": "user",
+                "user_explicit": True,
+                "excerpt": "No, Alex is a client contact.",
+                "source_ref": "thread-correction-source",
+            },
+            "created_by": "ai_agent",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source_actor"] == "user"
+    assert body["submitted_by"] == "ai_agent"
+    with create_session_maker(Settings(database_url=database_url))() as session:
+        episode = session.get(Episode, body["episode_id"])
+        assert episode.actor == "user"
+        assert episode.source_ref == "thread-correction-source"
+        assert "submitted_by=ai_agent" in episode.source_description
+
+
+def test_correction_apply_rolls_back_new_record_when_evidence_link_fails(
+    client,
+    database_url,
+    monkeypatch,
+) -> None:
+    user = create_person(client, "User")
+    alex = create_person(client, "Alex")
+    old_edge = create_edge(client, user["id"], alex["id"], "former_coworker")
+
+    def fail_link(self, record_ref, episode_id, excerpt):
+        raise RuntimeError("simulated correction evidence failure")
+
+    monkeypatch.setattr(CorrectionService, "_link_evidence", fail_link)
+
+    payload = {
+        "old_record_ref": f"entity_edges:{old_edge['id']}",
+        "new_record": {
+            "record_type": "entity_edges",
+            "payload": {
+                "from_entity_id": user["id"],
+                "to_entity_id": alex["id"],
+                "relation_type": "client_contact",
+                "claim_text": "Alex is a client contact.",
+                "claim_type": "fact",
+            },
+        },
+        "correction_source": {
+            "source_type": "agent_conversation",
+            "user_explicit": True,
+            "excerpt": "No, Alex is a client contact.",
+            "source_ref": "thread-correction-atomic",
+        },
+        "created_by": "ai_agent",
+    }
+
+    with create_session_maker(Settings(database_url=database_url))() as session:
+        with pytest.raises(RuntimeError, match="simulated correction evidence failure"):
+            CorrectionService(session).apply_correction(payload)
+        session.rollback()
+        old_after = session.get(EntityEdge, old_edge["id"])
+        assert old_after.status == "active"
+        assert old_after.invalidated_by_edge_id is None
+        assert (
+            session.query(EntityEdge)
+            .filter(
+                EntityEdge.source_candidate_id.is_(None),
+                EntityEdge.relation_type == "client_contact",
+            )
+            .count()
+            == 0
+        )
 
 
 def test_invalid_edge_correction_apply_records_submitted_relation_type(client) -> None:

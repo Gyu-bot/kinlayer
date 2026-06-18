@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 from fastapi.testclient import TestClient
 
 from kinlayer_backend.config import Settings
@@ -70,6 +73,24 @@ def create_observation(client, entity_id: str, content: str, **overrides) -> dic
             "claim_type": "fact",
             "created_by": "user",
             **overrides,
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def create_episode(client, excerpt: str) -> dict:
+    response = client.post(
+        "/api/episodes",
+        json={
+            "source_type": "agent_conversation",
+            "source_ref": "context-candidate-test",
+            "source_description": "Context candidate test",
+            "body_excerpt": excerpt,
+            "body_hash": "sha256:" + hashlib.sha256(excerpt.encode()).hexdigest(),
+            "actor": "ai_agent",
+            "sensitivity": "medium",
+            "retention_policy": "excerpt_only",
         },
     )
     assert response.status_code == 201
@@ -252,6 +273,49 @@ def test_context_pack_low_confidence_or_ambiguity_asks_clarifying_question(clien
     low = client.post("/api/context/pack", json={"query": "Nobody"}).json()
     assert low["context_pack"]["suggested_response_policy"] == "ask_clarifying_question"
     assert low["context_pack"]["confidence"] == "low"
+
+
+def test_context_pack_does_not_surface_rejected_candidate_context(client) -> None:
+    alex = create_person(client, "Alex Kim")
+    alexander = create_person(client, "Alexander Kim")
+    create_alias(client, alex["id"], "Alex")
+    create_alias(client, alexander["id"], "Alex")
+    candidate_text = "Alex might want the rejected-candidate-only reminder."
+    episode = create_episode(client, candidate_text)
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "observation",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "subject_entity_id": alex["id"],
+                "observation_type": "recent_interaction",
+                "content": candidate_text,
+                "claim_type": "inference",
+                "ai_use_policy": "cautious_use",
+                "sensitivity": "medium",
+            },
+            "evidence": [{"episode_id": episode["id"], "excerpt": candidate_text, "confidence": 0.8}],
+            "confidence": 0.8,
+            "sensitivity": "medium",
+            "suggested_action": "review",
+            "created_by": "ai_agent",
+        },
+    )
+    assert candidate.status_code == 201
+    rejected = client.post(f"/api/candidates/{candidate.json()['id']}/reject")
+    assert rejected.status_code == 200
+
+    pack = client.post(
+        "/api/context/pack",
+        json={"query": candidate_text, "entity_hints": [alex["id"]]},
+    )
+    ambiguous = client.post("/api/context/pack", json={"query": "Alex"})
+
+    assert pack.status_code == 200
+    assert candidate_text not in json.dumps(pack.json()["context_pack"], ensure_ascii=False)
+    assert ambiguous.json()["context_pack"]["ambiguity_detected"] is True
+    assert ambiguous.json()["context_pack"]["suggested_response_policy"] == "ask_clarifying_question"
 
 
 def test_context_card_returns_entity_relationship_context_and_provenance(client) -> None:

@@ -1,11 +1,23 @@
 import {useEffect, useState} from "react";
 
 import {editAcceptCandidate, formatApiError, getOntology, listCandidates, listPeople, runCandidateAction} from "../api/client";
+import {FieldHelp} from "../components/FieldHelp";
 import {includeAllOption, registryOptions, type SelectOption} from "../ontologyOptions";
 import type {Candidate, CandidateFilters} from "../types/candidates";
 import type {Entity} from "../types/entities";
 
-const statuses = ["pending", "all", "accepted", "rejected", "archived", "needs_clarification"];
+const statuses = [
+  "pending",
+  "all",
+  "accepted",
+  "edited_accepted",
+  "rejected",
+  "archived",
+  "needs_clarification",
+  "superseded",
+];
+const terminalStatuses = new Set(["accepted", "edited_accepted", "rejected", "archived", "superseded"]);
+const reviewOnlyTypes = new Set(["merge", "conflict", "supersede"]);
 
 function summarizeCandidate(candidate: Candidate) {
   const payload = candidate.payload;
@@ -43,6 +55,10 @@ function canonicalSummary(candidate: Candidate) {
   return `${recordType || "Canonical"} record`;
 }
 
+function rawRefSummary(value: string | null) {
+  return value && value.trim() ? value : "None";
+}
+
 function formatTimestamp(value: string | null) {
   if (!value) {
     return "Unknown";
@@ -63,6 +79,7 @@ export function Candidates() {
   const [selected, setSelected] = useState<Candidate | null>(null);
   const [editedPayload, setEditedPayload] = useState("");
   const [showRawPayload, setShowRawPayload] = useState(false);
+  const [supersedesCandidateId, setSupersedesCandidateId] = useState("");
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,20 +116,22 @@ export function Candidates() {
     setSelected(candidate);
     setEditedPayload(JSON.stringify(candidate.payload, null, 2));
     setShowRawPayload(false);
+    setSupersedesCandidateId("");
   }
 
   function mergeCandidate(candidate: Candidate) {
     setSelected(candidate);
     setCandidates((current) => current.map((item) => (item.id === candidate.id ? candidate : item)));
     setEditedPayload(JSON.stringify(candidate.payload, null, 2));
+    setSupersedesCandidateId("");
     setError(null);
   }
 
-  function action(endpoint: string) {
+  function action(endpoint: string, payload: Record<string, unknown> = {}) {
     if (!selected) {
       return;
     }
-    runCandidateAction(selected.id, endpoint)
+    runCandidateAction(selected.id, endpoint, payload)
       .then(mergeCandidate)
       .catch((err: unknown) => setError(formatApiError(err)));
   }
@@ -137,6 +156,19 @@ export function Candidates() {
       .catch((err: unknown) => setError(formatApiError(err)));
   }
 
+  function supersede() {
+    if (!supersedesCandidateId.trim()) {
+      setError("Superseding candidate ID is required.");
+      return;
+    }
+    action("supersede", {supersedes_candidate_id: supersedesCandidateId.trim()});
+  }
+
+  const selectedIsResolved = selected ? terminalStatuses.has(selected.status) : true;
+  const selectedIsReviewOnly = selected ? reviewOnlyTypes.has(selected.candidate_type) : false;
+  const canCanonicalize = Boolean(selected && !selectedIsResolved && !selectedIsReviewOnly);
+  const canResolve = Boolean(selected && !selectedIsResolved);
+
   return (
     <section className="page-section" aria-labelledby="candidates-title">
       <div className="toolbar">
@@ -149,7 +181,7 @@ export function Candidates() {
 
       <div className="filter-grid">
         <label>
-          <span>Status</span>
+          <FieldHelp label="Status" help="검토 전인지, 승인/거절/보류됐는지" />
           <select value={filters.status} onChange={(event) => updateFilter("status", event.target.value)}>
             {statuses.map((status) => (
               <option value={status} key={status}>
@@ -159,7 +191,7 @@ export function Candidates() {
           </select>
         </label>
         <label>
-          <span>Candidate type</span>
+          <FieldHelp label="Candidate type" help="AI가 제안한 정보의 형태" />
           <select
             value={filters.candidate_type}
             onChange={(event) => updateFilter("candidate_type", event.target.value)}
@@ -172,7 +204,7 @@ export function Candidates() {
           </select>
         </label>
         <label>
-          <span>Sensitivity</span>
+          <FieldHelp label="Sensitivity" help="정보가 얼마나 조심스러운지로 좁혀 보기" />
           <select
             value={filters.sensitivity}
             onChange={(event) => updateFilter("sensitivity", event.target.value)}
@@ -245,36 +277,81 @@ export function Candidates() {
                   <dd>{selected.confidence.toFixed(2)}</dd>
                 </div>
                 <div>
+                  <dt>Created by</dt>
+                  <dd>{selected.created_by}</dd>
+                </div>
+                <div>
+                  <dt>Suggested action</dt>
+                  <dd>{selected.suggested_action ?? "None"}</dd>
+                </div>
+                <div>
                   <dt>Target</dt>
                   <dd>{targetSummary(selected, people)}</dd>
                 </div>
                 <div>
-                  <dt>Created</dt>
+                  <dt>Created at</dt>
                   <dd>{formatTimestamp(selected.created_at)}</dd>
                 </div>
                 <div>
-                  <dt>Canonical</dt>
+                  <dt>Canonical record</dt>
                   <dd>{canonicalSummary(selected)}</dd>
+                </div>
+                <div>
+                  <dt>Canonical ref</dt>
+                  <dd>{rawRefSummary(selected.canonical_record_ref)}</dd>
+                </div>
+                <div>
+                  <dt>Superseded candidate</dt>
+                  <dd>{rawRefSummary(selected.supersedes_candidate_id)}</dd>
+                </div>
+                <div>
+                  <dt>Superseded record</dt>
+                  <dd>{rawRefSummary(selected.supersedes_record_ref)}</dd>
                 </div>
               </dl>
               <div className="action-row">
-                <button type="button" onClick={() => action("accept")}>
+                <button type="button" disabled={!canCanonicalize} onClick={() => action("accept")}>
                   Accept
                 </button>
-                <button type="button" className="secondary" onClick={() => action("reject")}>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={!canResolve}
+                  onClick={() => action("reject")}
+                >
                   Reject
                 </button>
-                <button type="button" className="secondary" onClick={() => action("archive")}>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={!canResolve}
+                  onClick={() => action("archive")}
+                >
                   Archive
                 </button>
                 <button
                   type="button"
                   className="secondary"
+                  disabled={!canResolve}
                   onClick={() => action("needs-clarification")}
                 >
                   Needs clarification
                 </button>
               </div>
+              {canResolve ? (
+                <div className="inline-form">
+                  <label>
+                    <FieldHelp label="Superseding candidate ID" help="이 후보가 더 새 후보로 바뀌었을 때 입력" />
+                    <input
+                      value={supersedesCandidateId}
+                      onChange={(event) => setSupersedesCandidateId(event.target.value)}
+                    />
+                  </label>
+                  <button type="button" className="secondary" onClick={supersede}>
+                    Supersede
+                  </button>
+                </div>
+              ) : null}
               <button
                 type="button"
                 className="secondary"
@@ -286,14 +363,14 @@ export function Candidates() {
                 <section>
                   <h3>Raw/edit payload</h3>
                   <label className="json-editor">
-                    <span>Edited payload JSON</span>
+                    <FieldHelp label="Edited payload JSON" help="원본 제안을 고쳐 확정 기록으로 만들 때만 사용" />
                     <textarea
                       value={editedPayload}
                       onChange={(event) => setEditedPayload(event.target.value)}
                     />
                   </label>
-                  <button type="button" onClick={editAccept}>
-                    Edit accept
+                  <button type="button" disabled={!canCanonicalize} onClick={editAccept}>
+                    {canCanonicalize ? "Edit accept" : "Edit accept unavailable"}
                   </button>
                   <pre>{JSON.stringify(selected.payload, null, 2)}</pre>
                 </section>
@@ -302,7 +379,40 @@ export function Candidates() {
                 <h3>Evidence</h3>
                 <div className="debug-stack">
                   {selected.evidence.map((evidence) => (
-                    <p key={evidence.id}>{evidence.excerpt ?? "Evidence record"}</p>
+                    <dl className="definition-list compact" key={evidence.id}>
+                      <div>
+                        <dt>Excerpt</dt>
+                        <dd>{evidence.excerpt ?? "Evidence record"}</dd>
+                      </div>
+                      <div>
+                        <dt>Confidence</dt>
+                        <dd>{evidence.confidence ?? "Unknown"}</dd>
+                      </div>
+                      <div>
+                        <dt>Episode</dt>
+                        <dd>{evidence.episode_id}</dd>
+                      </div>
+                      <div>
+                        <dt>Source type</dt>
+                        <dd>{evidence.source_type ?? "Unknown"}</dd>
+                      </div>
+                      <div>
+                        <dt>Source ref</dt>
+                        <dd>{evidence.source_ref ?? "None"}</dd>
+                      </div>
+                      <div>
+                        <dt>Source description</dt>
+                        <dd>{evidence.source_description ?? "None"}</dd>
+                      </div>
+                      <div>
+                        <dt>Body hash</dt>
+                        <dd>{evidence.body_hash ?? "None"}</dd>
+                      </div>
+                      <div>
+                        <dt>Actor</dt>
+                        <dd>{evidence.actor ?? "Unknown"}</dd>
+                      </div>
+                    </dl>
                   ))}
                   {selected.evidence.length === 0 ? <p className="muted">No evidence.</p> : null}
                 </div>

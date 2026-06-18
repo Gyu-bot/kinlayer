@@ -43,6 +43,29 @@ class EntityRead(EntityBase):
     updated_at: datetime
 
 
+class EntityResolveRequest(APIModel):
+    surface: str
+    aliases: list[str] = Field(default_factory=list)
+    relation_hint: str | None = None
+    entity_type: str | None = None
+    source: dict[str, Any] = Field(default_factory=dict)
+    limit: int = Field(default=5, ge=1, le=25)
+
+
+class EntityResolveMatch(APIModel):
+    entity_id: str
+    display_name: str
+    entity_type: str
+    score: float
+    match_reasons: list[str]
+
+
+class EntityResolveResponse(APIModel):
+    surface: str
+    ambiguity: str
+    matches: list[EntityResolveMatch]
+
+
 class AliasCreate(APIModel):
     alias: str
     status: str = "active"

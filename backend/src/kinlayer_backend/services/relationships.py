@@ -44,7 +44,7 @@ class RelationshipService:
             raise api_error(422, "validation_error", "Invalid relation_type.")
         return edge_type
 
-    def create_edge(self, payload: dict[str, Any]) -> EntityEdge:
+    def create_edge(self, payload: dict[str, Any], commit: bool = True) -> EntityEdge:
         validate_common(payload, self.session)
         from_entity = self._entity(payload["from_entity_id"])
         to_entity = self._entity(payload["to_entity_id"])
@@ -56,7 +56,7 @@ class RelationshipService:
             raise api_error(422, "validation_error", "Relation endpoint entity types do not match.")
         if payload.get("directed") is None:
             payload["directed"] = edge_type.directed_default
-        return self.repository.add_edge(payload)
+        return self.repository.add_edge(payload, commit=commit)
 
     def patch_edge(self, edge: EntityEdge, payload: dict[str, Any]) -> EntityEdge:
         validate_common(payload, self.session)
@@ -92,7 +92,7 @@ class RelationshipService:
         if not self.session.execute(statement).scalar_one_or_none():
             raise api_error(422, "validation_error", "Invalid observation_type.")
 
-    def create_observation(self, payload: dict[str, Any]) -> Observation:
+    def create_observation(self, payload: dict[str, Any], commit: bool = True) -> Observation:
         related_entities = payload.pop("related_entities", [])
         validate_common(payload, self.session)
         self._entity(payload["subject_entity_id"])
@@ -102,8 +102,8 @@ class RelationshipService:
             if related["role"] not in OBSERVATION_ROLES:
                 raise api_error(422, "validation_error", "Invalid related entity role.")
         payload["embedding_status"] = "pending"
-        observation = self.repository.add_observation(payload, related_entities)
-        EmbeddingService(self.session, self.settings).embed_observation(observation)
+        observation = self.repository.add_observation(payload, related_entities, commit=commit)
+        EmbeddingService(self.session, self.settings).embed_observation(observation, commit=commit)
         return observation
 
     def patch_observation(self, observation: Observation, payload: dict[str, Any]) -> Observation:
@@ -129,10 +129,10 @@ class RelationshipService:
         self.repository.commit_refresh(observation)
         return observation
 
-    def create_episode(self, payload: dict[str, Any]) -> Episode:
+    def create_episode(self, payload: dict[str, Any], commit: bool = True) -> Episode:
         validate_common(payload, self.session)
         if not is_allowed_registry_value(self.session, "retention_policy", payload["retention_policy"]):
             raise api_error(422, "validation_error", "Invalid retention_policy.")
         if not is_allowed_registry_value(self.session, "evidence_source_type", payload["source_type"]):
             raise api_error(422, "validation_error", "Invalid source_type.")
-        return self.repository.add_episode(payload)
+        return self.repository.add_episode(payload, commit=commit)

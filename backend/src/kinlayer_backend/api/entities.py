@@ -19,6 +19,8 @@ from kinlayer_backend.schemas.entities import (
     EntityList,
     EntityPatch,
     EntityRead,
+    EntityResolveRequest,
+    EntityResolveResponse,
 )
 from kinlayer_backend.services.entities import EntityService
 
@@ -52,6 +54,11 @@ def list_entities(
         offset=offset,
     )
     return {"items": items, "limit": limit, "offset": offset, "total": total}
+
+
+@router.post("/api/entities/resolve", response_model=EntityResolveResponse)
+def resolve_entity(payload: EntityResolveRequest, session: SessionDep):
+    return EntityService(session).resolve_entity(payload.model_dump())
 
 
 @router.get("/api/entities/{entity_id}", response_model=EntityRead)

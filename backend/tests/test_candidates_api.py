@@ -6,11 +6,13 @@ from kinlayer_backend.database import create_session_maker
 from kinlayer_backend.models import (
     Candidate,
     EdgeEvidence,
+    EntityEdge,
     EntityFactEvidence,
     Observation,
     ObservationEvidence,
 )
 from kinlayer_backend.schemas.candidates import CandidateCreate
+from kinlayer_backend.services.candidates import CandidateService
 
 
 def create_person(client, name: str) -> dict:
@@ -139,6 +141,11 @@ def test_candidate_create_validates_payload_and_stores_evidence(client) -> None:
     assert body["payload"]["content"] == "Alex prefers concise follow-ups."
     assert body["evidence"][0]["episode_id"] == episode["id"]
     assert body["evidence"][0]["excerpt"] == "Alex prefers concise follow-ups."
+    assert body["evidence"][0]["source_type"] == "agent_conversation"
+    assert body["evidence"][0]["source_ref"] == "thread-candidate"
+    assert body["evidence"][0]["source_description"] == "Candidate evidence"
+    assert body["evidence"][0]["body_hash"] == "sha256:candidate"
+    assert body["evidence"][0]["actor"] == "ai_agent"
     assert body["evidence"][0]["created_at"] is not None
     assert client.get("/api/observations", params={"subject_entity_id": person["id"]}).json()[
         "total"
@@ -156,6 +163,77 @@ def test_candidate_create_validates_payload_and_stores_evidence(client) -> None:
 
     assert invalid.status_code == 422
     assert invalid.json()["error"]["code"] == "validation_error"
+
+
+def test_agent_candidate_requires_traceable_non_empty_evidence(client) -> None:
+    person = create_person(client, "Alex")
+
+    missing_evidence = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "observation",
+            "target_entity_id": person["id"],
+            "payload": {
+                "subject_entity_id": person["id"],
+                "observation_type": "communication_preference",
+                "content": "Alex prefers concise follow-ups.",
+                "claim_type": "pattern",
+            },
+            "confidence": 0.72,
+            "created_by": "ai_agent",
+        },
+    )
+    assert missing_evidence.status_code == 422
+    assert missing_evidence.json()["error"]["code"] == "validation_error"
+
+    weak_episode = client.post(
+        "/api/episodes",
+        json={
+            "source_type": "agent_conversation",
+            "source_ref": None,
+            "source_description": "Missing source ref",
+            "body_excerpt": "Alex prefers concise follow-ups.",
+            "body_hash": "sha256:weak",
+            "actor": "ai_agent",
+            "sensitivity": "medium",
+            "retention_policy": "excerpt_only",
+        },
+    ).json()
+    weak_evidence = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "observation",
+            "target_entity_id": person["id"],
+            "payload": {
+                "subject_entity_id": person["id"],
+                "observation_type": "communication_preference",
+                "content": "Alex prefers concise follow-ups.",
+                "claim_type": "pattern",
+            },
+            "evidence": [{"episode_id": weak_episode["id"], "excerpt": " ", "confidence": 0.8}],
+            "confidence": 0.72,
+            "created_by": "ai_agent",
+        },
+    )
+    assert weak_evidence.status_code == 422
+    assert weak_evidence.json()["error"]["code"] == "validation_error"
+
+    manual = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "observation",
+            "target_entity_id": person["id"],
+            "payload": {
+                "subject_entity_id": person["id"],
+                "observation_type": "communication_preference",
+                "content": "Alex prefers concise follow-ups.",
+                "claim_type": "pattern",
+            },
+            "confidence": 0.72,
+            "created_by": "user",
+        },
+    )
+    assert manual.status_code == 201
 
 
 def test_candidate_submit_rejects_semantically_invalid_payloads(client) -> None:
@@ -566,6 +644,13 @@ def test_accept_supported_candidate_types_write_matching_canonical_records(
         json={
             "candidate_type": "new_entity",
             "payload": {"entity_type": "person", "display_name": "Jordan"},
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Jordan should be added as a person.",
+                    "confidence": 0.8,
+                }
+            ],
             "confidence": 0.8,
             "created_by": "ai_agent",
         },
@@ -579,6 +664,13 @@ def test_accept_supported_candidate_types_write_matching_canonical_records(
             "candidate_type": "alias",
             "target_entity_id": alex["id"],
             "payload": {"entity_id": alex["id"], "alias": "알렉스"},
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex also goes by 알렉스.",
+                    "confidence": 0.8,
+                }
+            ],
             "confidence": 0.8,
             "created_by": "ai_agent",
         },
@@ -660,3 +752,57 @@ def test_accept_supported_candidate_types_write_matching_canonical_records(
             .count()
             == 1
         )
+
+
+def test_candidate_accept_rolls_back_canonical_write_when_evidence_copy_fails(
+    client,
+    database_url,
+    monkeypatch,
+) -> None:
+    user = create_person(client, "User")
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "relationship_edge",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "from_entity_id": user["id"],
+                "to_entity_id": alex["id"],
+                "relation_type": "client_contact",
+                "claim_text": "Alex is a client contact.",
+                "claim_type": "fact",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex is a client contact.",
+                    "confidence": 0.8,
+                }
+            ],
+            "confidence": 0.8,
+            "created_by": "ai_agent",
+        },
+    ).json()
+
+    def fail_copy(self, candidate, edge_id):
+        raise RuntimeError("simulated evidence failure")
+
+    monkeypatch.setattr(CandidateService, "_copy_edge_evidence", fail_copy)
+
+    with create_session_maker(Settings(database_url=database_url))() as session:
+        service = CandidateService(session)
+        row = session.get(Candidate, candidate["id"])
+        with pytest.raises(RuntimeError, match="simulated evidence failure"):
+            service.accept_candidate(row)
+        session.rollback()
+        persisted_candidate = session.get(Candidate, candidate["id"])
+        assert persisted_candidate.status == "pending"
+        assert persisted_candidate.canonical_record_ref is None
+        orphan_count = (
+            session.query(EntityEdge)
+            .filter(EntityEdge.source_candidate_id == candidate["id"])
+            .count()
+        )
+        assert orphan_count == 0

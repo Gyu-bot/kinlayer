@@ -1,6 +1,7 @@
 import {useEffect, useState} from "react";
 
 import {getAliases, getContextCard, getOntology, listPeople} from "../api/client";
+import {FieldHelp, helpCopy} from "../components/FieldHelp";
 import {includeAllOption, registryOptions, type SelectOption} from "../ontologyOptions";
 import type {Entity, EntityAlias} from "../types/entities";
 
@@ -106,7 +107,7 @@ export function PeopleList({onNavigate}: Props) {
       </label>
       <div className="filter-grid">
         <label>
-          <span>Status filter</span>
+          <FieldHelp label="Status filter" help="현재 보이는 사람 기록의 상태로 좁혀 보기" />
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
             <option value="all">all</option>
             <option value="active">active</option>
@@ -115,7 +116,7 @@ export function PeopleList({onNavigate}: Props) {
           </select>
         </label>
         <label>
-          <span>Sensitivity filter</span>
+          <FieldHelp label="Sensitivity filter" help="정보가 얼마나 조심스러운지로 좁혀 보기" />
           <select
             value={sensitivityFilter}
             onChange={(event) => setSensitivityFilter(event.target.value)}
@@ -138,9 +139,9 @@ export function PeopleList({onNavigate}: Props) {
           <thead>
             <tr>
               <th>Name</th>
-              <th>Status</th>
-              <th>Sensitivity</th>
-              <th>Policy</th>
+              <th>{helpCopy.status.label}</th>
+              <th>{helpCopy.sensitivity.label}</th>
+              <th>{helpCopy.policy.label}</th>
               <th>Relationships</th>
               <th>Last referenced</th>
               <th>Actions</th>

@@ -75,11 +75,14 @@ class EmbeddingService:
                 processed += 1
         return {"processed": processed, "failed": failed, "skipped": skipped}
 
-    def embed_observation(self, observation: Observation) -> str:
+    def embed_observation(self, observation: Observation, commit: bool = True) -> str:
         if self.provider == "disabled":
             observation.embedding_status = observation.embedding_status or "pending"
-            self.session.commit()
-            self.session.refresh(observation)
+            if commit:
+                self.session.commit()
+                self.session.refresh(observation)
+            else:
+                self.session.flush()
             return observation.embedding_status
         try:
             embedding = self.generate_embedding(observation.content)
@@ -96,8 +99,11 @@ class EmbeddingService:
             observation.embedding_model = self.model
             observation.embedding_dim = None
             observation.embedding_created_at = None
-        self.session.commit()
-        self.session.refresh(observation)
+        if commit:
+            self.session.commit()
+            self.session.refresh(observation)
+        else:
+            self.session.flush()
         return observation.embedding_status
 
     def generate_embedding(self, text: str) -> list[float]:

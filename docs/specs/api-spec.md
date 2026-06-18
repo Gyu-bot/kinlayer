@@ -225,6 +225,55 @@ Purpose: get one entity.
 
 Response: entity object.
 
+### `POST /api/entities/resolve`
+
+Purpose: agent-facing deterministic entity resolution before candidate/correction planning.
+
+Request:
+
+```json
+{
+  "surface": "민지",
+  "aliases": ["Minji"],
+  "relation_hint": "회의 전 한국어 요약",
+  "entity_type": "person",
+  "source": {
+    "kind": "agent",
+    "include_self": false
+  },
+  "limit": 5
+}
+```
+
+Response:
+
+```json
+{
+  "surface": "민지",
+  "ambiguity": "single_strong_match",
+  "matches": [
+    {
+      "entity_id": "uuid",
+      "display_name": "민지",
+      "entity_type": "person",
+      "score": 1.0,
+      "match_reasons": ["alias_exact"]
+    }
+  ]
+}
+```
+
+Semantics:
+
+- Matching is deterministic: display name, canonical name, aliases, normalized tokens, and fuzzy
+  name/alias similarity.
+- Ambiguity values are `no_match`, `single_strong_match`, `multiple_close_matches`, and
+  `low_confidence_match`.
+- The endpoint does not call an LLM and does not decide whether a mention is fictional, public,
+  generic, or relationship-relevant.
+- Protected `self` is excluded unless the request explicitly sets `source.include_self = true` or
+  uses `source.system_role = self`.
+
 ### `PATCH /api/entities/{id}`
 
 Purpose: update entity lightweight metadata/policies.
@@ -534,6 +583,11 @@ Validation:
 
 - `payload` validated by `candidate_type` using typed schemas.
 - Evidence writes to `candidate_evidence` join table.
+- `created_by = ai_agent` candidates require at least one evidence item.
+- Evidence must reference an existing episode with supported source type, non-empty excerpt,
+  confidence in `[0, 1]`, source ref, body hash, and actor.
+- Candidate responses include evidence source metadata when available: `source_type`, `source_ref`,
+  `source_description`, `body_hash`, and `actor`.
 
 ### `GET /api/candidates`
 
@@ -641,8 +695,10 @@ Request:
   },
   "correction_source": {
     "source_type": "agent_conversation",
+    "source_actor": "user",
     "user_explicit": true,
     "excerpt": "No, Alex is a client contact, not a former coworker.",
+    "source_ref": "source_message_id:source_turn_id",
     "occurred_at": "2026-06-10T00:00:00Z"
   },
   "created_by": "ai_agent"
@@ -655,7 +711,9 @@ Response:
 {
   "old_record_ref": "entity_edges:old_uuid",
   "new_record_ref": "entity_edges:new_uuid",
-  "episode_id": "uuid"
+  "episode_id": "uuid",
+  "source_actor": "user",
+  "submitted_by": "ai_agent"
 }
 ```
 
@@ -670,6 +728,8 @@ Side effects:
 Validation:
 
 - Requires `user_explicit = true` for direct apply.
+- Requires exactly one supported `old_record_ref`; ambiguous targets must be clarified before direct apply.
+- Records the user-authored correction source separately from the submitting agent/runtime.
 - Agent-inferred corrections must use candidates instead.
 
 ---

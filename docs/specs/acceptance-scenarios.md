@@ -277,9 +277,43 @@ An AI agent follows the write instruction pack and does not submit schema-pollut
 
 ---
 
+## Scenario K — Post-Turn Agent Write Flow
+
+### Goal
+
+After a user turn, an AI agent can choose between entity resolution, candidate submission, direct
+explicit correction, clarification, and no-write outcomes without polluting canonical memory.
+
+### Steps
+
+1. User says: `민지한테 답장 뭐라 하지?`
+2. Agent calls entity resolve for `민지`; a single existing person match allows retrieval and any
+   newly inferred context becomes a candidate, not a direct canonical write.
+3. User says: `그 사람이 또 연락했어`
+4. Agent treats the pronoun-only reference as no-op or `needs_clarification` unless current-turn
+   evidence unambiguously identifies one person.
+5. User says: `Alex는 직장 동료가 아니라 사촌이야`
+6. Agent applies correction directly only when `Alex` and exactly one old canonical record are
+   unambiguous; otherwise it asks for clarification or submits a review candidate.
+7. User mentions a public figure/news subject, fictional/example character, or generic group.
+8. Agent produces no Kinlayer candidate for those no-write subjects.
+
+### Pass Criteria
+
+- Entity resolve returns matched entity IDs, scores, match reasons, and an ambiguity label.
+- Agent-submitted candidates include current-turn user-authored evidence and episode provenance.
+- Pronoun-only ambiguity never creates a new person.
+- Direct correction apply records `source_actor = user` and submitter identity separately.
+- Rejected, ambiguous, or no-write outcomes do not surface as trusted confirmed context in retrieve
+  or pack responses.
+- Acceptance API/CLI smoke scripts exercise resolve, candidate submit/list/show, accept, reject,
+  clarify, correction apply, corrected retrieval, and provenance inspection.
+
+---
+
 ## MVP Exit Bar
 
-The MVP is not done until scenarios A through J pass in a local Docker Compose environment.
+The MVP is not done until scenarios A through K pass in a local Docker Compose environment.
 
 Minimum verification artifacts:
 
@@ -289,6 +323,6 @@ Minimum verification artifacts:
 - CLI can call API;
 - embedding provider can be smoke-tested;
 - `python3 scripts/load-acceptance-fixtures.py` creates protected self, two fixture people, aliases, facts, edges, observations, episodes, evidence, one pending candidate, one accepted candidate, and one correction;
-- `python3 scripts/smoke-acceptance-api.py` verifies API scenarios including candidate acceptance, context pack, policy buckets, graph, ontology, embeddings, and optional token boundary when `KINLAYER_API_TOKEN` is set;
-- `scripts/smoke-acceptance-cli.sh` verifies CLI status, people, candidate, correction, context/retrieval, graph/debug, and embedding workflows.
-- scenarios A-J are manually or automatically verified.
+- `python3 scripts/smoke-acceptance-api.py` verifies API scenarios including entity resolve, candidate acceptance, canonical evidence linkage, explicit correction provenance, corrected context pack behavior, policy buckets, graph, ontology, embeddings, and optional token boundary when `KINLAYER_API_TOKEN` is set;
+- `scripts/smoke-acceptance-cli.sh` verifies CLI status, people, entity resolve, candidate submit/list/show/accept/reject/clarify, correction, context/retrieval, graph/debug, and embedding workflows.
+- scenarios A-K are manually or automatically verified.

@@ -368,6 +368,27 @@ class CandidateEvidence(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     candidate: Mapped[Candidate] = relationship(back_populates="evidence")
+    episode: Mapped[Episode] = relationship()
+
+    @property
+    def source_type(self) -> str | None:
+        return self.episode.source_type if self.episode else None
+
+    @property
+    def source_ref(self) -> str | None:
+        return self.episode.source_ref if self.episode else None
+
+    @property
+    def source_description(self) -> str | None:
+        return self.episode.source_description if self.episode else None
+
+    @property
+    def body_hash(self) -> str | None:
+        return self.episode.body_hash if self.episode else None
+
+    @property
+    def actor(self) -> str | None:
+        return self.episode.actor if self.episode else None
 
 
 class AgentWriteOperationAudit(Base, TimestampMixin):

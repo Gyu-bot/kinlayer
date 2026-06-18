@@ -289,6 +289,30 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
     source_episode = episode(client, f"acceptance-api-smoke-{stamp}", f"API smoke episode {stamp}")
     assert_true(client.get(f"/api/episodes/{source_episode['id']}")["body_hash"].startswith("sha256:"), "episode get failed")
     assert_true(client.get("/api/episodes?source_type=agent_conversation")["total"] >= 1, "episode list failed")
+    resolved_minji = client.post(
+        "/api/entities/resolve",
+        {
+            "surface": "민지",
+            "aliases": ["Minji Fixture"],
+            "relation_hint": "회의 전 한국어 요약",
+            "entity_type": "person",
+            "source": {"kind": "agent"},
+        },
+    )
+    assert_true(
+        any(match["entity_id"] == minji_id for match in resolved_minji["matches"]),
+        "entity resolve missed Minji",
+    )
+    unresolved_pronoun = client.post(
+        "/api/entities/resolve",
+        {
+            "surface": "그 사람",
+            "entity_type": "person",
+            "source": {"kind": "agent"},
+        },
+    )
+    assert_true(unresolved_pronoun["ambiguity"] == "no_match", "pronoun-only resolve should not match")
+    assert_true(unresolved_pronoun["matches"] == [], "pronoun-only resolve returned matches")
 
     reject_candidate = observation_candidate(client, minji_id, self_id, f"Reject candidate smoke {stamp}", f"reject-{stamp}")
     archive_candidate = observation_candidate(client, minji_id, self_id, f"Archive candidate smoke {stamp}", f"archive-{stamp}")
@@ -317,6 +341,29 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
     )
     assert_true(edited["canonical_record_ref"].startswith("observations:"), "candidate edit-accept canonical ref failed")
     assert_true(client.delete(f"/api/candidates/{delete_candidate['id']}")["status"] == "archived", "candidate delete/archive failed")
+
+    post_turn_content = f"Post-turn accepted candidate smoke {stamp}"
+    post_turn_candidate = observation_candidate(
+        client,
+        minji_id,
+        self_id,
+        post_turn_content,
+        f"post-turn-candidate-{stamp}",
+    )
+    post_turn_detail = client.get(f"/api/candidates/{post_turn_candidate['id']}")
+    assert_true(post_turn_detail["evidence"][0]["source_type"] == "agent_conversation", "candidate evidence source type missing")
+    assert_true(post_turn_detail["evidence"][0]["source_ref"] == f"post-turn-candidate-{stamp}", "candidate evidence source ref missing")
+    accepted_post_turn = client.post(f"/api/candidates/{post_turn_candidate['id']}/accept", {})
+    assert_true(
+        accepted_post_turn["canonical_record_ref"].startswith("observations:"),
+        "post-turn candidate accept canonical ref failed",
+    )
+    accepted_post_turn_observation_id = accepted_post_turn["canonical_record_ref"].split(":", 1)[1]
+    accepted_post_turn_observation = client.get(f"/api/observations/{accepted_post_turn_observation_id}")
+    assert_true(
+        accepted_post_turn_observation["source_candidate_id"] == post_turn_candidate["id"],
+        "accepted candidate did not link canonical observation to candidate",
+    )
 
     superseded = observation_candidate(client, minji_id, self_id, f"Superseded candidate smoke {stamp}", f"superseded-{stamp}")
     superseding = observation_candidate(client, minji_id, self_id, f"Superseding candidate smoke {stamp}", f"superseding-{stamp}")
@@ -355,6 +402,44 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
 
     correction = fixtures["correction"]
     assert_true(correction["new_record_ref"].startswith("observations:"), "correction apply fixture failed")
+    assert_true(correction["source_actor"] == "user", "fixture correction source actor missing")
+    assert_true(correction["submitted_by"] == "ai_agent", "fixture correction submitter missing")
+
+    corrected_content = f"Post-turn corrected observation smoke {stamp}"
+    explicit_correction = client.post(
+        "/api/corrections/apply",
+        {
+            "old_record_ref": accepted_post_turn["canonical_record_ref"],
+            "new_record": {
+                "record_type": "observations",
+                "payload": {
+                    "subject_entity_id": minji_id,
+                    "related_entity_ids": [self_id],
+                    "observation_type": "recent_interaction",
+                    "content": corrected_content,
+                    "claim_type": "fact",
+                    "confidence": 1,
+                    "sensitivity": "medium",
+                    "ai_use_policy": "cautious_use",
+                    "recency_weight": 1,
+                },
+            },
+            "correction_source": {
+                "source_type": "agent_conversation",
+                "source_actor": "user",
+                "user_explicit": True,
+                "excerpt": corrected_content,
+                "source_ref": f"post-turn-correction-{stamp}",
+            },
+            "created_by": "ai_agent",
+        },
+    )
+    assert_true(explicit_correction["source_actor"] == "user", "explicit correction source actor failed")
+    assert_true(explicit_correction["submitted_by"] == "ai_agent", "explicit correction submitter failed")
+    assert_true(
+        client.get(f"/api/observations/{accepted_post_turn_observation_id}")["status"] == "superseded",
+        "explicit correction did not supersede old observation",
+    )
 
     agent_operations = client.get("/api/agent-operations?limit=50")
     assert_true(agent_operations["total"] >= 1, "agent write operation list missing records")
@@ -401,6 +486,21 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
     packed_text = json.dumps(packed, ensure_ascii=False)
     assert_true("다음 회의 전 한국어 요약" in packed_text, "accepted canonical context missing from pack")
     assert_true("long phone calls" not in packed_text, "superseded correction context surfaced")
+    assert_true("Reject candidate smoke" not in packed_text, "rejected candidate context surfaced")
+
+    corrected_pack = client.post(
+        "/api/context/pack",
+        {
+            "query": corrected_content,
+            "entity_hints": [minji_id],
+            "focal_entity_id": self_id,
+            "include_debug": True,
+            "limit": 5,
+        },
+    )["context_pack"]
+    corrected_pack_text = json.dumps(corrected_pack, ensure_ascii=False)
+    assert_true(corrected_content in corrected_pack_text, "explicit correction context missing from pack")
+    assert_true(post_turn_content not in corrected_pack_text, "superseded post-turn context surfaced")
 
     sensitive_pack = client.post(
         "/api/context/pack",

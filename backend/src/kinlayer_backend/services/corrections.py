@@ -30,24 +30,31 @@ class CorrectionService:
         self.session = session
 
     def apply_correction(self, payload: dict[str, Any]) -> dict[str, str]:
-        source = payload["correction_source"]
-        if source["user_explicit"] is not True:
-            raise api_error(
-                422,
-                "validation_error",
-                "Direct correction apply requires explicit user correction.",
-            )
-        old_prefix, old_id = self._parse_record_ref(payload["old_record_ref"])
-        old_record = self._get_record(old_prefix, old_id)
-        new_record_ref = self._write_new_record(payload["new_record"], payload["created_by"])
-        episode = self._create_correction_episode(source, payload["created_by"])
-        self._link_evidence(new_record_ref, episode.id, source["excerpt"])
-        self._supersede_old_record(old_record, new_record_ref)
-        return {
-            "old_record_ref": payload["old_record_ref"],
-            "new_record_ref": new_record_ref,
-            "episode_id": episode.id,
-        }
+        try:
+            source = payload["correction_source"]
+            if source["user_explicit"] is not True:
+                raise api_error(
+                    422,
+                    "validation_error",
+                    "Direct correction apply requires explicit user correction.",
+                )
+            old_prefix, old_id = self._parse_record_ref(payload["old_record_ref"])
+            old_record = self._get_record(old_prefix, old_id)
+            new_record_ref = self._write_new_record(payload["new_record"], payload["created_by"])
+            episode = self._create_correction_episode(source, payload["created_by"])
+            self._link_evidence(new_record_ref, episode.id, source["excerpt"])
+            self._supersede_old_record(old_record, new_record_ref)
+            self.session.commit()
+            return {
+                "old_record_ref": payload["old_record_ref"],
+                "new_record_ref": new_record_ref,
+                "episode_id": episode.id,
+                "source_actor": source.get("source_actor", "user"),
+                "submitted_by": payload["created_by"],
+            }
+        except Exception:
+            self.session.rollback()
+            raise
 
     def _parse_record_ref(self, record_ref: str) -> tuple[str, str]:
         prefix, separator, record_id = record_ref.partition(":")
@@ -68,7 +75,7 @@ class CorrectionService:
         record_type = new_record["record_type"]
         payload = {"created_by": created_by, **new_record["payload"]}
         if record_type == "entity_edges":
-            edge = RelationshipService(self.session).create_edge(payload)
+            edge = RelationshipService(self.session).create_edge(payload, commit=False)
             return f"entity_edges:{edge.id}"
         if record_type == "observations":
             related_entity_ids = payload.pop("related_entity_ids", [])
@@ -76,27 +83,32 @@ class CorrectionService:
                 "related_entities",
                 [{"entity_id": entity_id, "role": "related"} for entity_id in related_entity_ids],
             )
-            observation = RelationshipService(self.session).create_observation(payload)
+            observation = RelationshipService(self.session).create_observation(payload, commit=False)
             return f"observations:{observation.id}"
         if record_type == "entity_facts":
-            fact = EntityService(self.session).create_fact(payload)
+            fact = EntityService(self.session).create_fact(payload, commit=False)
             return f"entity_facts:{fact.id}"
         raise api_error(422, "validation_error", "Unsupported new record type.")
 
     def _create_correction_episode(self, source: dict[str, Any], created_by: str) -> Episode:
         excerpt = source["excerpt"]
+        source_actor = source.get("source_actor", "user")
         return RelationshipRepository(self.session).add_episode(
             {
                 "source_type": "correction",
                 "source_ref": source.get("source_ref"),
-                "source_description": f"Explicit correction from {source['source_type']}",
+                "source_description": (
+                    f"Explicit correction from {source['source_type']}; "
+                    f"source_actor={source_actor}; submitted_by={created_by}"
+                ),
                 "body_excerpt": excerpt,
                 "body_hash": f"sha256:{sha256(excerpt.encode()).hexdigest()}",
-                "actor": created_by,
+                "actor": source_actor,
                 "occurred_at": source.get("occurred_at"),
                 "sensitivity": "medium",
                 "retention_policy": "excerpt_only",
-            }
+            },
+            commit=False,
         )
 
     def _link_evidence(self, record_ref: str, episode_id: str, excerpt: str) -> None:
@@ -123,7 +135,7 @@ class CorrectionService:
                     confidence=1.0,
                 )
             )
-        self.session.commit()
+        self.session.flush()
 
     def _supersede_old_record(self, record, new_record_ref: str) -> None:
         if hasattr(record, "status"):
@@ -133,5 +145,4 @@ class CorrectionService:
         new_prefix, _separator, new_id = new_record_ref.partition(":")
         if isinstance(record, EntityEdge) and new_prefix == "entity_edges":
             record.invalidated_by_edge_id = new_id
-        self.session.commit()
-        self.session.refresh(record)
+        self.session.flush()

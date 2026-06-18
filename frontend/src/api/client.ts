@@ -399,10 +399,14 @@ export async function exportAgentOperations(filters: AgentOperationFilters) {
   return requestText(`/api/agent-operations/export?${params.toString()}`);
 }
 
-export async function runCandidateAction(candidateId: string, action: string) {
+export async function runCandidateAction(
+  candidateId: string,
+  action: string,
+  payload: Record<string, unknown> = {},
+) {
   return request<Candidate>(`/api/candidates/${candidateId}/${action}`, {
     method: "POST",
-    body: JSON.stringify({resolved_by: "user"}),
+    body: JSON.stringify({resolved_by: "user", ...payload}),
   });
 }
 

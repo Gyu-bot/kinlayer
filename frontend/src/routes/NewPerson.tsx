@@ -1,6 +1,7 @@
 import {FormEvent, useEffect, useState} from "react";
 
 import {createPerson, getOntology} from "../api/client";
+import {FieldHelp, helpCopy} from "../components/FieldHelp";
 import {
   edgeTypeOptions,
   normalizeOptionValue,
@@ -111,7 +112,7 @@ export function NewPerson({onNavigate}: Props) {
         </label>
         <div className="form-grid">
           <label>
-            <span>Sensitivity</span>
+            <FieldHelp {...helpCopy.sensitivity} />
             <select value={sensitivity} onChange={(e) => setSensitivity(e.target.value)}>
               {optionsWithCurrent(sensitivityOptions, sensitivity).map((option) => (
                 <option key={option.value} value={option.value}>
@@ -121,7 +122,7 @@ export function NewPerson({onNavigate}: Props) {
             </select>
           </label>
           <label>
-            <span>AI use policy</span>
+            <FieldHelp {...helpCopy.policy} />
             <select value={aiUsePolicy} onChange={(e) => setAiUsePolicy(e.target.value)}>
               {optionsWithCurrent(policyOptions, aiUsePolicy).map((option) => (
                 <option key={option.value} value={option.value}>
@@ -132,12 +133,12 @@ export function NewPerson({onNavigate}: Props) {
           </label>
         </div>
         <label>
-          <span>Short note</span>
+          <FieldHelp label="Short note" help="이 사람을 기억할 때 바로 떠올릴 한 줄" />
           <textarea value={shortNote} onChange={(e) => setShortNote(e.target.value)} />
         </label>
         <div className="form-grid">
           <label>
-            <span>Profile fact type</span>
+            <FieldHelp label="Profile fact type" help="이메일, 역할, 소속처럼 정리해서 저장할 항목" />
             <select value={factType} onChange={(e) => setFactType(e.target.value)}>
               {optionsWithCurrent(factTypeOptions, factType).map((option) => (
                 <option key={option.value} value={option.value}>
@@ -147,7 +148,7 @@ export function NewPerson({onNavigate}: Props) {
             </select>
           </label>
           <label>
-            <span>Profile fact</span>
+            <FieldHelp label="Profile fact" />
             <input value={factContent} onChange={(e) => setFactContent(e.target.value)} />
           </label>
         </div>
@@ -155,7 +156,7 @@ export function NewPerson({onNavigate}: Props) {
           <h2>Initial Relationship</h2>
           <div className="form-grid">
             <label>
-              <span>Initial relationship type</span>
+              <FieldHelp label="Initial relationship type" help="나와 이 사람이 어떤 관계인지" />
               <select
                 value={initialRelationshipType}
                 onChange={(e) => setInitialRelationshipType(e.target.value)}
@@ -168,7 +169,7 @@ export function NewPerson({onNavigate}: Props) {
               </select>
             </label>
             <label>
-              <span>Initial relationship note</span>
+              <FieldHelp label="Initial relationship note" help="관계를 판단한 짧은 근거" />
               <input
                 value={initialRelationshipNote}
                 onChange={(e) => setInitialRelationshipNote(e.target.value)}
@@ -180,7 +181,7 @@ export function NewPerson({onNavigate}: Props) {
           <h2>Initial Observation</h2>
           <div className="form-grid">
             <label>
-              <span>Initial observation type</span>
+              <FieldHelp label="Initial observation type" help="최근 일, 선호, 주의점처럼 AI가 참고할 맥락의 종류" />
               <select
                 value={initialObservationType}
                 onChange={(e) => setInitialObservationType(e.target.value)}
@@ -193,7 +194,7 @@ export function NewPerson({onNavigate}: Props) {
               </select>
             </label>
             <label>
-              <span>Initial observation</span>
+              <FieldHelp label="Initial observation" />
               <textarea
                 value={initialObservation}
                 onChange={(e) => setInitialObservation(e.target.value)}

@@ -88,6 +88,59 @@ def test_person_create_posts_entity_and_aliases(monkeypatch) -> None:
     assert calls[1][0].endswith("/api/entities/entity-id/aliases")
 
 
+def test_person_resolve_posts_agent_resolution_payload(monkeypatch) -> None:
+    calls = []
+
+    def fake_post(url, headers, json, timeout):
+        calls.append((url, json))
+        return DummyResponse(
+            200,
+            {
+                "surface": "알렉스",
+                "ambiguity": "single_strong_match",
+                "matches": [
+                    {
+                        "entity_id": "entity-id",
+                        "display_name": "Alex Kim",
+                        "score": 1.0,
+                        "match_reasons": ["exact_alias"],
+                    }
+                ],
+            },
+        )
+
+    monkeypatch.setattr(cli.httpx, "post", fake_post)
+
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "person",
+            "resolve",
+            "알렉스",
+            "--alias",
+            "Alex",
+            "--relation-hint",
+            "coworker",
+            "--entity-type",
+            "person",
+            "--source-kind",
+            "agent",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert calls[0][0].endswith("/api/entities/resolve")
+    assert calls[0][1] == {
+        "surface": "알렉스",
+        "aliases": ["Alex"],
+        "relation_hint": "coworker",
+        "entity_type": "person",
+        "source": {"kind": "agent"},
+    }
+    assert json.loads(result.stdout)["matches"][0]["entity_id"] == "entity-id"
+
+
 def test_embedding_status_cli_reads_api(monkeypatch) -> None:
     def fake_get(url, headers, timeout):
         return DummyResponse(200, {"provider": "disabled", "status": "disabled"})

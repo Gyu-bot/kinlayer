@@ -21,12 +21,16 @@ Run after `scripts/load-acceptance-fixtures.py` against the local stack.
   - Profile fact creation/edit controls use ontology-backed fact type, sensitivity, and AI use policy selectors.
   - Evidence from accepted candidates or corrections appears in the provenance section when present.
 - `/candidates`
-  - Status, type, and sensitivity filters render; type and sensitivity options come from ontology policy values.
+  - Status, type, and sensitivity filters render; status includes `pending`, `accepted`, `edited_accepted`, `rejected`, `archived`, `needs_clarification`, and `superseded`.
+  - Type and sensitivity options come from ontology policy values.
   - Pending candidates can be selected.
-  - Candidate list/detail show summary, type, status, confidence, target summary, and created timestamp without visible candidate or entity IDs.
+  - Candidate list/detail show summary, type, status, confidence, created_by, suggested_action, target summary, canonical record summary/ref, supersede refs when present, and created timestamp without visible candidate or entity IDs in default list labels.
+  - Evidence panel shows excerpt, confidence, episode ID, source type, source ref, source description, body hash, and actor when returned by the API.
   - Raw/edit payload JSON appears only after opening the explicit raw/edit payload affordance.
   - Switching to accepted status shows the accepted fixture candidate as a canonical record summary rather than a raw canonical record ref.
-  - Accept, reject, archive, needs clarification, and edit-accept controls are visible.
+  - Accept and edit-accept are disabled or unavailable for review-only candidate types such as merge, conflict, and supersede.
+  - Reject, archive, needs clarification, and supersede controls are available only for candidate statuses where lifecycle actions are valid.
+  - Server validation errors from candidate lifecycle actions render in the detail panel.
 - `/graph`
   - Ego graph renders from protected self with at least self plus two people.
   - Entity selector and ontology relation/status/sensitivity filters render, with relation and sensitivity values loaded from ontology.
