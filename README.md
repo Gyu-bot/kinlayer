@@ -202,6 +202,14 @@ http://<server-ip>:8765
 
 Web UI를 `http://<server-ip>:5173`으로 열면 기본 API 주소도 같은 host의 `:8765`를 사용합니다. 다른 API 주소를 강제로 쓰고 싶으면 `.env`에 `VITE_KINLAYER_API_URL`을 설정하고 컨테이너를 다시 올립니다.
 
+로컬 스택이 뜬 뒤 fixture와 API/CLI 수용 스모크를 실행할 수 있습니다. 이 스모크는 후보 승인, 명시적 정정, 중복 사람 병합, 검색/context/graph 연속성을 함께 확인합니다.
+
+```bash
+python3 scripts/load-acceptance-fixtures.py --api-url http://127.0.0.1:8765
+python3 scripts/smoke-acceptance-api.py --api-url http://127.0.0.1:8765
+KINLAYER_API_URL=http://127.0.0.1:8765 scripts/smoke-acceptance-cli.sh
+```
+
 로컬 bearer token은 기본 설치에 필요하지 않습니다. `.env`의 `KINLAYER_API_TOKEN`을 비워두면 Web UI와 API를 바로 사용할 수 있습니다.
 
 로컬 네트워크에 API를 공개하는 경우에는 `.env`에 값을 넣고 컨테이너를 다시 올리는 것을 권장합니다.

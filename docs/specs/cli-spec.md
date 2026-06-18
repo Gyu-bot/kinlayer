@@ -86,6 +86,7 @@ This keeps the CLI focused on stable agent/debug workflows while preserving the 
 kinlayer person create --name "Alex"
 kinlayer person list
 kinlayer person show <entity_id>
+kinlayer person duplicates <entity_id>
 ```
 
 ### `person create`
@@ -125,6 +126,29 @@ Options:
 ```bash
 --json
 ```
+
+### `person duplicates`
+
+Runs duplicate detection for a source person and optionally creates a merge candidate through the
+canonical API.
+
+Options:
+
+```bash
+--limit 5
+--create-candidate
+--evidence-episode-id <episode_id>
+--evidence-excerpt "..."
+--evidence-confidence 0.9
+--json
+```
+
+Expected behavior:
+
+- `--json` returns the API duplicate-candidate response for agents and smoke tests;
+- human-readable output shows the recommended action, created candidate if any, and candidate
+  target summaries;
+- `--create-candidate` requires evidence episode and excerpt flags.
 
 ---
 
@@ -210,12 +234,33 @@ Options:
 
 Accepts candidate as-is and immediately writes canonical record.
 
+Options:
+
+```bash
+--resolution-note "User confirmed this exact merge."
+--note "User confirmed this exact merge."
+--resolved-by ai_agent
+--json
+```
+
 Expected behavior:
 
 - set status `accepted`;
 - set resolved fields;
 - create canonical record;
 - set `canonical_record_ref`.
+
+For `merge` candidates, accept atomically merges the source person into the target person and sets
+`canonical_record_ref = entities:<target_entity_id>`. Agents may use this command only after
+explicit current-turn user confirmation for the exact source-target merge and should set
+`--resolved-by ai_agent` plus a confirmation note.
+
+### `candidate show`
+
+Shows a candidate. JSON output returns the full API response.
+
+For `merge` candidates, human-readable output includes source and target context-card summaries,
+merge reason, fields to merge, and risk notes before any lifecycle action is taken.
 
 ### `candidate edit-accept`
 

@@ -19,6 +19,8 @@ class GraphService:
         focal = self.repository.get_entity(entity_id)
         if not focal:
             raise api_error(404, "not_found", "Entity not found.")
+        focal = self._redirect_merged_entity(focal)
+        entity_id = focal.id
         edges = self.repository.ego_edges(
             entity_id,
             relation_type=relation_type,
@@ -68,3 +70,11 @@ class GraphService:
             ],
             "filters_applied": filters_applied,
         }
+
+    def _redirect_merged_entity(self, entity):
+        if entity.status != "merged":
+            return entity
+        merged_ref = (entity.properties or {}).get("merged_entity_ref")
+        if not merged_ref or not merged_ref.startswith("entities:"):
+            return entity
+        return self.repository.get_entity(merged_ref.split(":", 1)[1]) or entity

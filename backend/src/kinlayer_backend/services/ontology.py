@@ -109,7 +109,7 @@ REGISTRY_SEEDS: dict[str, list[tuple[str, str, str]]] = {
 }
 
 CREATED_BY_VALUES = {"user", "ai_agent", "connector", "import", "system"}
-ENTITY_STATUSES = {"active", "deleted"}
+ENTITY_STATUSES = {"active", "merged", "deleted"}
 CONFIRMATION_STATUSES = {"confirmed", "candidate", "rejected", "deprecated", "merged", "disputed"}
 RECORD_STATUSES = {"active", "deprecated", "disputed", "superseded", "deleted"}
 CANDIDATE_STATUSES = {

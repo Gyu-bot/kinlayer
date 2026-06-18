@@ -19,6 +19,8 @@ from kinlayer_backend.services.ontology import (
 STRONG_RESOLVE_THRESHOLD = 0.85
 LOW_CONFIDENCE_THRESHOLD = 0.55
 CLOSE_MATCH_DELTA = 0.08
+DUPLICATE_MATCH_THRESHOLD = 0.68
+DEFAULT_MERGE_FIELDS = ["aliases", "profile_facts", "edges", "observations"]
 
 
 def validate_common(payload: dict[str, Any], session: Session, fact_type: bool = False) -> None:
@@ -161,6 +163,156 @@ class EntityService:
             "ambiguity": self._resolve_ambiguity(matches),
             "matches": matches[:limit],
         }
+
+    def duplicate_candidates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        source = self.repository.get_entity(payload["source_entity_id"])
+        if not source:
+            raise api_error(404, "not_found", "Source entity not found.")
+        if source.system_role == "self":
+            raise api_error(403, "forbidden", "Protected self cannot be used for person merge.")
+        matches = []
+        for target in self.repository.resolvable_entities(source.entity_type):
+            if target.id == source.id or target.system_role == "self":
+                continue
+            score, reasons = self._duplicate_score(source, target)
+            if score < DUPLICATE_MATCH_THRESHOLD:
+                continue
+            action = "create_merge_candidate" if score >= 0.75 else "needs_clarification"
+            reason = self._duplicate_reason(source, target, reasons)
+            matches.append(
+                {
+                    "source_entity_id": source.id,
+                    "target_entity_id": target.id,
+                    "display_name": target.display_name,
+                    "score": score,
+                    "match_reasons": sorted(reasons),
+                    "recommended_action": action,
+                    "reason": reason,
+                    "fields_to_merge": DEFAULT_MERGE_FIELDS,
+                    "risk_notes": self._duplicate_risk_notes(score, reasons),
+                }
+            )
+        matches.sort(key=lambda item: (-item["score"], item["display_name"]))
+        limit = payload.get("limit", 5)
+        ranked = matches[:limit]
+        recommended_action = self._duplicate_action(ranked)
+        created_candidate = None
+        if payload.get("create_candidate"):
+            if recommended_action != "create_merge_candidate" or not ranked:
+                raise api_error(
+                    409,
+                    "conflict",
+                    "Duplicate result is not strong enough to create a merge candidate.",
+                )
+            if not payload.get("evidence"):
+                raise api_error(
+                    422,
+                    "validation_error",
+                    "Merge candidate creation requires evidence.",
+                )
+            top = ranked[0]
+            from kinlayer_backend.services.candidates import CandidateService
+
+            created_candidate = CandidateService(self.session).create_candidate(
+                {
+                    "candidate_type": "merge",
+                    "target_entity_id": top["target_entity_id"],
+                    "payload": {
+                        "source_entity_id": source.id,
+                        "target_entity_id": top["target_entity_id"],
+                        "reason": top["reason"],
+                        "fields_to_merge": top["fields_to_merge"],
+                        "merge_plan": {
+                            "aliases": "copy_non_conflicting",
+                            "profile_facts": "copy_non_conflicting",
+                            "edges": "repoint_without_self_or_duplicate_edges",
+                            "observations": "repoint_related_entities",
+                        },
+                        "field_conflict_policy": {
+                            "display_name": "keep_target",
+                            "canonical_name": "keep_target",
+                            "sensitivity": "use_more_restrictive",
+                            "ai_use_policy": "use_more_restrictive",
+                        },
+                        "risk_notes": top["risk_notes"],
+                        "merged_entity_ref": f"entities:{top['target_entity_id']}",
+                    },
+                    "evidence": payload["evidence"],
+                    "confidence": top["score"],
+                    "sensitivity": source.sensitivity or "medium",
+                    "suggested_action": "review",
+                    "created_by": payload.get("created_by") or "ai_agent",
+                }
+            )
+        return {
+            "source_entity_id": source.id,
+            "recommended_action": recommended_action,
+            "candidates": ranked,
+            "created_candidate": created_candidate,
+        }
+
+    def _duplicate_score(self, source: Entity, target: Entity) -> tuple[float, set[str]]:
+        reasons: set[str] = set()
+        score = 0.0
+        source_aliases = self._active_alias_names(source)
+        target_aliases = self._active_alias_names(target)
+        source_names = self._identity_names(source)
+        target_names = self._identity_names(target)
+        source_normalized = {normalize_name(name) for name in source_names if name}
+        target_normalized = {normalize_name(name) for name in target_names if name}
+        source_alias_normalized = {normalize_name(name) for name in source_aliases if name}
+        target_alias_normalized = {normalize_name(name) for name in target_aliases if name}
+
+        if source_alias_normalized & target_alias_normalized:
+            reasons.add("exact_alias_overlap")
+            score = max(score, 1.0)
+        if source_normalized & target_normalized:
+            reasons.add("exact_name_overlap")
+            score = max(score, 0.95)
+
+        for left in source_normalized:
+            left_tokens = set(left.split())
+            for right in target_normalized:
+                if not left or not right:
+                    continue
+                right_tokens = set(right.split())
+                if left_tokens & right_tokens:
+                    reasons.add("normalized_name_overlap")
+                    score = max(score, 0.72)
+                similarity = self._trigram_similarity(left, right)
+                if similarity >= 0.35:
+                    reasons.add("fuzzy_name_similarity")
+                    score = max(score, round(0.68 + min(similarity, 1.0) * 0.2, 3))
+        return round(score, 3), reasons
+
+    def _identity_names(self, entity: Entity) -> list[str]:
+        return [
+            entity.display_name,
+            entity.canonical_name or "",
+            *self._active_alias_names(entity),
+        ]
+
+    def _active_alias_names(self, entity: Entity) -> list[str]:
+        return [alias.alias for alias in entity.aliases if alias.status == "active"]
+
+    def _duplicate_action(self, matches: list[dict[str, Any]]) -> str:
+        if not matches:
+            return "no_match"
+        if len(matches) > 1 and matches[0]["score"] - matches[1]["score"] <= CLOSE_MATCH_DELTA:
+            return "needs_clarification"
+        if matches[0]["score"] >= 0.75:
+            return "create_merge_candidate"
+        return "needs_clarification"
+
+    def _duplicate_reason(self, source: Entity, target: Entity, reasons: set[str]) -> str:
+        reason_list = ", ".join(sorted(reasons)) or "weak duplicate signal"
+        return f"{source.display_name} and {target.display_name} share duplicate signals: {reason_list}."
+
+    def _duplicate_risk_notes(self, score: float, reasons: set[str]) -> list[str]:
+        notes = ["Review before merging; Kinlayer never auto-merges duplicate people."]
+        if "exact_alias_overlap" not in reasons and score < 0.9:
+            notes.append("Name similarity is not enough for direct canonical write.")
+        return notes
 
     def _resolve_score(self, entity: Entity, queries: list[str]) -> tuple[float, set[str]]:
         reasons: set[str] = set()

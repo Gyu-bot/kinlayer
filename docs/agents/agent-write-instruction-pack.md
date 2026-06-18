@@ -208,10 +208,18 @@ Create an episode when the candidate needs provenance:
 }
 ```
 
-This is review-only. Agents may submit this candidate with evidence and confidence, but they must not
-call or simulate person merge execution. Protected self must not be source or target for a normal
-person merge. Weak or pronoun-only identity evidence should ask for clarification instead of proposing
-a direct merge.
+This is a review workflow. Agents may submit this candidate with evidence and confidence, or use
+`POST /api/entities/duplicate-candidates` to inspect duplicate signals and create a pending merge
+candidate with traceable evidence. They may call candidate accept for person merge execution only
+when the current turn contains explicit user confirmation for the exact source-target merge. In that
+case, call accept with `resolved_by = ai_agent` and a `resolution_note` that captures the user
+confirmation. Protected self must not be source or target for a normal person merge. Weak or
+pronoun-only identity evidence should ask for clarification instead of proposing a merge.
+
+When a reviewer accepts a merge candidate, Kinlayer marks the source person `merged`, stores
+`properties.merged_entity_ref = entities:<target>`, and treats the target as canonical in retrieval,
+context-card, and graph output. Agents should rely on those API outputs rather than keeping their own
+source-to-target mapping.
 
 If the runtime cannot create the hash itself, use the adapter-provided episode helper. Do not invent an unverifiable hash.
 
@@ -527,6 +535,19 @@ If the user says "Minji is important to me" or "I should be careful with Minji",
 ```
 
 ### 10.6 `merge`
+
+Preferred discovery flow:
+
+1. Use entity resolution first for the current-turn person mention.
+2. If two existing person records may be duplicates, call
+   `POST /api/entities/duplicate-candidates` with `create_candidate = false`.
+3. If the result recommends `create_merge_candidate`, call the same endpoint with
+   `create_candidate = true` and evidence from a user-authored episode.
+4. If the user confirms the exact source-target merge in the current turn, call
+   `POST /api/candidates/{candidate_id}/accept` with `resolved_by = ai_agent` and a
+   `resolution_note` recording that confirmation.
+5. If the user has not confirmed the exact merge, leave accept/reject/archive/clarify to the
+   reviewer workflow.
 
 ```json
 {

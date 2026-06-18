@@ -283,9 +283,33 @@ def load_fixtures(client: ApiClient) -> dict[str, Any]:
         ["민지", "Minji Fixture"],
         note="Acceptance fixture Korean semantic retrieval contact.",
     )
+    merge_target = ensure_person(
+        client,
+        "Acceptance Jordan Lee",
+        ["Acceptance Jordan", "Acceptance JL Shared"],
+        note="Acceptance fixture canonical merge target.",
+    )
+    merge_source = ensure_person(
+        client,
+        "Acceptance J. Lee",
+        ["Acceptance J Lee", "Acceptance JL Shared"],
+        note="Acceptance fixture duplicate merge source.",
+    )
 
     alex_fact = ensure_fact(client, alex["id"], "contact_note", "Prefers concise written updates before calls.")
     minji_fact = ensure_fact(client, minji["id"], "role", "Launch planning collaborator.")
+    merge_target_fact = ensure_fact(
+        client,
+        merge_target["id"],
+        "organization",
+        "Canonical Labs.",
+    )
+    merge_source_fact = ensure_fact(
+        client,
+        merge_source["id"],
+        "organization",
+        "Legacy Labs.",
+    )
     alex_edge = ensure_edge(
         client,
         self_entity["id"],
@@ -299,6 +323,13 @@ def load_fixtures(client: ApiClient) -> dict[str, Any]:
         minji["id"],
         "friend",
         "Acceptance Minji is a trusted friend for Korean retrieval smoke verification.",
+    )
+    merge_source_edge = ensure_edge(
+        client,
+        self_entity["id"],
+        merge_source["id"],
+        "former_coworker",
+        "Acceptance J. Lee previously worked with self before canonical merge review.",
     )
     korean_observation = ensure_observation(
         client,
@@ -316,6 +347,13 @@ def load_fixtures(client: ApiClient) -> dict[str, Any]:
         sensitivity="high",
         ai_use_policy="never_surface",
         recency_weight=0.2,
+    )
+    merge_source_observation = ensure_observation(
+        client,
+        merge_source["id"],
+        "communication_preference",
+        "Acceptance J. Lee prefers merge review notes with concise source-target summaries.",
+        related_entity_ids=[self_entity["id"]],
     )
 
     accepted_episode = create_episode(
@@ -399,13 +437,28 @@ def load_fixtures(client: ApiClient) -> dict[str, Any]:
 
     return {
         "self_id": self_entity["id"],
-        "people": {"alex": alex["id"], "minji": minji["id"]},
-        "facts": {"alex": alex_fact["id"], "minji": minji_fact["id"]},
-        "edges": {"alex": alex_edge["id"], "minji": minji_edge["id"]},
+        "people": {
+            "alex": alex["id"],
+            "minji": minji["id"],
+            "merge_target": merge_target["id"],
+            "merge_source": merge_source["id"],
+        },
+        "facts": {
+            "alex": alex_fact["id"],
+            "minji": minji_fact["id"],
+            "merge_target": merge_target_fact["id"],
+            "merge_source": merge_source_fact["id"],
+        },
+        "edges": {
+            "alex": alex_edge["id"],
+            "minji": minji_edge["id"],
+            "merge_source": merge_source_edge["id"],
+        },
         "observations": {
             "korean_semantic": korean_observation["id"],
             "sensitive_never_surface": never_surface_observation["id"],
             "corrected_old": old_observation["id"],
+            "merge_source": merge_source_observation["id"],
         },
         "episodes": {
             "accepted_candidate": accepted_episode["id"],

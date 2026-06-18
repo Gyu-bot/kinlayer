@@ -301,6 +301,166 @@ def test_agent_entity_resolve_reports_ambiguity_and_excludes_self_by_default(cli
     assert requested_self.json()["matches"][0]["entity_id"] == self_entity["id"]
 
 
+def test_duplicate_detection_returns_ranked_actions_without_mutating_entities(client) -> None:
+    alex = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex Kim", "created_by": "user"},
+    ).json()
+    alex_duplicate = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex K.", "created_by": "user"},
+    ).json()
+    unrelated = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Jordan Lee", "created_by": "user"},
+    ).json()
+    assert client.post(
+        f"/api/entities/{alex['id']}/aliases",
+        json={"alias": "알렉스", "created_by": "user"},
+    ).status_code == 201
+    assert client.post(
+        f"/api/entities/{alex_duplicate['id']}/aliases",
+        json={"alias": "알렉스", "created_by": "user"},
+    ).status_code == 201
+
+    no_match = client.post(
+        "/api/entities/duplicate-candidates",
+        json={"source_entity_id": unrelated["id"], "limit": 5},
+    )
+    assert no_match.status_code == 200
+    assert no_match.json()["recommended_action"] == "no_match"
+    assert no_match.json()["candidates"] == []
+
+    strong = client.post(
+        "/api/entities/duplicate-candidates",
+        json={"source_entity_id": alex_duplicate["id"], "limit": 5},
+    )
+    assert strong.status_code == 200
+    strong_body = strong.json()
+    assert strong_body["recommended_action"] == "create_merge_candidate"
+    assert strong_body["candidates"][0]["target_entity_id"] == alex["id"]
+    assert strong_body["candidates"][0]["source_entity_id"] == alex_duplicate["id"]
+    assert strong_body["candidates"][0]["score"] >= 0.9
+    assert "exact_alias_overlap" in strong_body["candidates"][0]["match_reasons"]
+
+    listed = client.get("/api/entities", params={"entity_type": "person"})
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 3
+
+
+def test_duplicate_detection_handles_fuzzy_ambiguity_and_protected_self(client) -> None:
+    source = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Minji Kim", "created_by": "user"},
+    ).json()
+    first = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Minjee Kim", "created_by": "user"},
+    ).json()
+    second = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Minji K.", "created_by": "user"},
+    ).json()
+
+    ambiguous = client.post(
+        "/api/entities/duplicate-candidates",
+        json={"source_entity_id": source["id"], "limit": 5},
+    )
+    assert ambiguous.status_code == 200
+    body = ambiguous.json()
+    assert body["recommended_action"] == "needs_clarification"
+    assert {item["target_entity_id"] for item in body["candidates"][:2]} == {
+        first["id"],
+        second["id"],
+    }
+    assert all("fuzzy_name_similarity" in item["match_reasons"] for item in body["candidates"][:2])
+
+    self_entity = client.post(
+        "/api/entities",
+        json={
+            "entity_type": "person",
+            "display_name": "Me",
+            "created_by": "system",
+            "system_role": "self",
+            "is_system": True,
+        },
+    ).json()
+    protected = client.post(
+        "/api/entities/duplicate-candidates",
+        json={"source_entity_id": self_entity["id"], "limit": 5},
+    )
+    assert protected.status_code == 403
+    assert protected.json()["error"]["code"] == "forbidden"
+
+
+def test_duplicate_detection_can_create_evidence_backed_merge_candidate(client) -> None:
+    target = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex Kim", "created_by": "user"},
+    ).json()
+    source = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex K.", "created_by": "user"},
+    ).json()
+    assert client.post(
+        f"/api/entities/{target['id']}/aliases",
+        json={"alias": "알렉스", "created_by": "user"},
+    ).status_code == 201
+    assert client.post(
+        f"/api/entities/{source['id']}/aliases",
+        json={"alias": "알렉스", "created_by": "user"},
+    ).status_code == 201
+    episode = client.post(
+        "/api/episodes",
+        json={
+            "source_type": "agent_conversation",
+            "source_ref": "thread-duplicate",
+            "source_description": "Duplicate detection evidence",
+            "body_excerpt": "Alex K. and 알렉스 refer to the same person.",
+            "body_hash": "sha256:duplicate",
+            "actor": "ai_agent",
+            "sensitivity": "medium",
+            "retention_policy": "excerpt_only",
+        },
+    ).json()
+
+    missing_evidence = client.post(
+        "/api/entities/duplicate-candidates",
+        json={"source_entity_id": source["id"], "create_candidate": True},
+    )
+    assert missing_evidence.status_code == 422
+    assert missing_evidence.json()["error"]["code"] == "validation_error"
+
+    created = client.post(
+        "/api/entities/duplicate-candidates",
+        json={
+            "source_entity_id": source["id"],
+            "create_candidate": True,
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex K. and 알렉스 refer to the same person.",
+                    "confidence": 0.85,
+                }
+            ],
+        },
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["recommended_action"] == "create_merge_candidate"
+    assert body["created_candidate"]["candidate_type"] == "merge"
+    assert body["created_candidate"]["target_entity_id"] == target["id"]
+    assert body["created_candidate"]["payload"]["source_entity_id"] == source["id"]
+    assert body["created_candidate"]["payload"]["target_entity_id"] == target["id"]
+    assert body["created_candidate"]["payload"]["fields_to_merge"] == [
+        "aliases",
+        "profile_facts",
+        "edges",
+        "observations",
+    ]
+    assert body["created_candidate"]["evidence"][0]["episode_id"] == episode["id"]
+
+
 def test_entity_resolve_is_token_protected(database_url) -> None:
     from fastapi.testclient import TestClient
 

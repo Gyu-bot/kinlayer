@@ -732,7 +732,7 @@ MVP does not include:
 - contacts/calendar/message ingestion as core behavior;
 - macOS Messages/KakaoTalk connector implementation;
 - automatic person merge without review;
-- direct AI-agent person merge execution;
+- unconfirmed AI-agent person merge execution;
 - graph database as canonical source;
 - separate vector database;
 - community detection / graph analytics;

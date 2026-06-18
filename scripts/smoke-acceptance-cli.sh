@@ -2,6 +2,7 @@
 set -euo pipefail
 
 API_URL="${KINLAYER_API_URL:-http://127.0.0.1:8765}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-.uv-cache}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -9,12 +10,16 @@ fixture_json="$TMP_DIR/fixtures.json"
 person_json="$TMP_DIR/person.json"
 candidate_json="$TMP_DIR/candidate.json"
 invalid_candidate_json="$TMP_DIR/candidate-invalid-edge.json"
+invalid_agent_write_json="$TMP_DIR/agent-write-invalid-edge.json"
 candidate_edit_json="$TMP_DIR/candidate-edit.json"
 second_candidate_json="$TMP_DIR/candidate-second.json"
 reject_candidate_json="$TMP_DIR/candidate-reject.json"
 clarify_candidate_json="$TMP_DIR/candidate-clarify.json"
 correction_json="$TMP_DIR/correction.json"
 correction_result_json="$TMP_DIR/correction-result.json"
+duplicate_detection_json="$TMP_DIR/duplicate-detection.json"
+merge_candidate_json="$TMP_DIR/merge-candidate.json"
+merge_accept_json="$TMP_DIR/merge-accept.json"
 
 echo "== Load acceptance fixtures =="
 python3 scripts/load-acceptance-fixtures.py --api-url "$API_URL" > "$fixture_json"
@@ -25,6 +30,8 @@ read_fixture() {
 
 self_id="$(read_fixture self_id)"
 minji_id="$(read_fixture people.minji)"
+merge_source_id="$(read_fixture people.merge_source)"
+merge_target_id="$(read_fixture people.merge_target)"
 episode_id="$(read_fixture episodes.pending_candidate)"
 
 echo "== CLI status and init =="
@@ -41,6 +48,22 @@ cli_person_id="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))
 uv run kinlayer person list --query "Acceptance CLI" --json > "$TMP_DIR/person-list.json"
 uv run kinlayer person show "$cli_person_id" --json > "$TMP_DIR/person-show.json"
 uv run kinlayer person resolve "CLI Fixture" --alias "Acceptance CLI" --json > "$TMP_DIR/person-resolve.json"
+
+echo "== CLI duplicate merge =="
+uv run kinlayer person duplicates "$merge_source_id" --limit 5 --json > "$duplicate_detection_json"
+uv run kinlayer person duplicates "$merge_source_id" \
+  --create-candidate \
+  --evidence-episode-id "$episode_id" \
+  --evidence-excerpt "Acceptance Jordan Lee and Acceptance J. Lee are the same person." \
+  --json > "$merge_candidate_json"
+merge_candidate_id="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['created_candidate']['id'])" "$merge_candidate_json")"
+uv run kinlayer candidate show "$merge_candidate_id" > "$TMP_DIR/merge-candidate-show.txt"
+uv run kinlayer candidate accept "$merge_candidate_id" \
+  --resolved-by ai_agent \
+  --note "CLI smoke user confirmation for exact duplicate merge." \
+  --json > "$merge_accept_json"
+uv run kinlayer person show "$merge_source_id" --json > "$TMP_DIR/merge-source-show.json"
+uv run kinlayer context-card "$merge_target_id" --json > "$TMP_DIR/merge-target-card.json"
 
 echo "== CLI candidates =="
 python3 - "$candidate_json" "$cli_person_id" "$self_id" "$episode_id" <<'PY'
@@ -77,11 +100,11 @@ uv run kinlayer candidate show "$candidate_id" --json > "$TMP_DIR/candidate-show
 uv run kinlayer candidate accept "$candidate_id" --json > "$TMP_DIR/candidate-accept.json"
 accepted_ref="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['canonical_record_ref'])" "$TMP_DIR/candidate-accept.json")"
 
-python3 - "$invalid_candidate_json" "$minji_id" "$self_id" <<'PY'
+python3 - "$invalid_candidate_json" "$invalid_agent_write_json" "$minji_id" "$self_id" <<'PY'
 import json
 import sys
 
-path, person_id, self_id = sys.argv[1:4]
+path, agent_write_path, person_id, self_id = sys.argv[1:5]
 payload = {
     "candidate_type": "relationship_edge",
     "target_entity_id": person_id,
@@ -98,8 +121,9 @@ payload = {
     "created_by": "ai_agent",
 }
 open(path, "w").write(json.dumps(payload))
+open(agent_write_path, "w").write(json.dumps({"write_type": "candidate", "payload": payload}))
 PY
-uv run kinlayer agent-write validate "$invalid_candidate_json" --json > "$TMP_DIR/agent-write-invalid-validate.json"
+uv run kinlayer agent-write validate "$invalid_agent_write_json" --json > "$TMP_DIR/agent-write-invalid-validate.json"
 if uv run kinlayer candidate submit "$invalid_candidate_json" --json > "$TMP_DIR/candidate-invalid-edge.out" 2> "$TMP_DIR/candidate-invalid-edge.err"; then
   echo "Invalid relationship_edge candidate unexpectedly succeeded." >&2
   exit 1
@@ -262,17 +286,34 @@ uv run kinlayer graph ego "$self_id" --json > "$TMP_DIR/graph.json"
 uv run kinlayer embedding status --json > "$TMP_DIR/embedding-status.json"
 uv run kinlayer embedding backfill --limit 10 --json > "$TMP_DIR/embedding-backfill.json"
 
-python3 - "$TMP_DIR" "$minji_id" <<'PY'
+python3 - "$TMP_DIR" "$minji_id" "$merge_target_id" <<'PY'
 import json
 import pathlib
 import sys
 
 root = pathlib.Path(sys.argv[1])
 minji_id = sys.argv[2]
+merge_target_id = sys.argv[3]
 
 assert json.load(open(root / "status.json"))["api"] == "ok"
 assert json.load(open(root / "person-show.json"))["entity"]["display_name"].startswith("Acceptance CLI Person")
 assert any(match["entity_id"] == json.load(open(root / "person-show.json"))["entity"]["id"] for match in json.load(open(root / "person-resolve.json"))["matches"])
+duplicate_detection = json.load(open(root / "duplicate-detection.json"))
+assert duplicate_detection["recommended_action"] == "create_merge_candidate"
+assert duplicate_detection["candidates"]
+merge_candidate = json.load(open(root / "merge-candidate.json"))["created_candidate"]
+assert merge_candidate["candidate_type"] == "merge"
+merge_show = open(root / "merge-candidate-show.txt").read()
+assert "Merge review:" in merge_show and "Acceptance J. Lee" in merge_show
+assert json.load(open(root / "merge-accept.json"))["canonical_record_ref"] == f"entities:{merge_target_id}"
+assert json.load(open(root / "merge-accept.json"))["resolved_by"] == "ai_agent"
+merge_source = json.load(open(root / "merge-source-show.json"))["entity"]
+assert merge_source["status"] == "merged"
+assert merge_source["confirmation_status"] == "merged"
+assert merge_source["properties"]["merged_entity_ref"] == f"entities:{merge_target_id}"
+merge_target_card = json.dumps(json.load(open(root / "merge-target-card.json")), ensure_ascii=False)
+assert "Acceptance J Lee" in merge_target_card
+assert "concise source-target summaries" in merge_target_card
 assert json.load(open(root / "candidate-accept.json"))["canonical_record_ref"].startswith("observations:")
 assert json.load(open(root / "candidate-edit-accept.json"))["status"] == "edited_accepted"
 agent_write_validation = json.load(open(root / "agent-write-invalid-validate.json"))

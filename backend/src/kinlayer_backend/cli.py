@@ -127,6 +127,62 @@ def _emit_context_summary(payload: dict[str, Any]) -> None:
         )
 
 
+def _display_name_from_context_card(payload: dict[str, Any], fallback: str) -> str:
+    entity = payload.get("entity")
+    if isinstance(entity, dict):
+        display_name = entity.get("display_name")
+        if isinstance(display_name, str) and display_name.strip():
+            return display_name.strip()
+    return fallback
+
+
+def _emit_merge_candidate_summary(payload: dict[str, Any]) -> bool:
+    if payload.get("candidate_type") != "merge":
+        return False
+    merge_payload = payload.get("payload")
+    if not isinstance(merge_payload, dict):
+        return False
+    source_id = merge_payload.get("source_entity_id")
+    target_id = merge_payload.get("target_entity_id") or payload.get("target_entity_id")
+    if not isinstance(source_id, str) or not isinstance(target_id, str):
+        return False
+
+    source_response = _request("GET", f"/api/entities/{source_id}/context-card")
+    _raise_for_api(source_response)
+    target_response = _request("GET", f"/api/entities/{target_id}/context-card")
+    _raise_for_api(target_response)
+    source_card = source_response.json()
+    target_card = target_response.json()
+    source_name = _display_name_from_context_card(source_card, source_id)
+    target_name = _display_name_from_context_card(target_card, target_id)
+
+    typer.echo(f"Merge review: {source_name} -> {target_name}")
+    reason = merge_payload.get("reason")
+    if isinstance(reason, str) and reason.strip():
+        typer.echo(f"Reason: {reason.strip()}")
+    fields = merge_payload.get("fields_to_merge")
+    if isinstance(fields, list) and fields:
+        typer.echo(f"Fields: {', '.join(str(field) for field in fields)}")
+    risk_notes = merge_payload.get("risk_notes")
+    if isinstance(risk_notes, list):
+        for risk_note in risk_notes:
+            if isinstance(risk_note, str) and risk_note.strip():
+                typer.echo(f"Risk: {risk_note.strip()}")
+    typer.echo(
+        "Source: "
+        f"{len(source_card.get('aliases', []))} aliases, "
+        f"{len(source_card.get('profile_facts', []))} facts, "
+        f"{len(source_card.get('relationship_edges', []))} relationships"
+    )
+    typer.echo(
+        "Target: "
+        f"{len(target_card.get('aliases', []))} aliases, "
+        f"{len(target_card.get('profile_facts', []))} facts, "
+        f"{len(target_card.get('relationship_edges', []))} relationships"
+    )
+    return True
+
+
 @app.command()
 def serve(
     host: Annotated[str, typer.Option("--host")] = "127.0.0.1",
@@ -394,6 +450,8 @@ def candidate_show(
     if json_output:
         _emit(payload, json_output=True)
     else:
+        if _emit_merge_candidate_summary(payload):
+            return
         typer.echo(f"{payload['id']}  {payload['candidate_type']}  {payload['status']}")
 
 
@@ -401,9 +459,12 @@ def _candidate_action(
     candidate_id: str,
     action: str,
     resolution_note: str | None = None,
+    resolved_by: str = "user",
     json_output: bool = False,
 ) -> None:
-    payload = {"resolution_note": resolution_note} if resolution_note else {}
+    payload: dict[str, Any] = {"resolved_by": resolved_by}
+    if resolution_note:
+        payload["resolution_note"] = resolution_note
     response = _request("POST", f"/api/candidates/{candidate_id}/{action}", payload=payload)
     _raise_for_api(response)
     body = response.json()
@@ -418,36 +479,41 @@ def _candidate_action(
 @candidate_app.command("accept")
 def candidate_accept(
     candidate_id: str,
+    resolution_note: Annotated[str | None, typer.Option("--resolution-note", "--note")] = None,
+    resolved_by: Annotated[str, typer.Option("--resolved-by")] = "user",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    _candidate_action(candidate_id, "accept", json_output=json_output)
+    _candidate_action(candidate_id, "accept", resolution_note, resolved_by, json_output)
 
 
 @candidate_app.command("reject")
 def candidate_reject(
     candidate_id: str,
     resolution_note: Annotated[str | None, typer.Option("--resolution-note", "--note")] = None,
+    resolved_by: Annotated[str, typer.Option("--resolved-by")] = "user",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    _candidate_action(candidate_id, "reject", resolution_note, json_output)
+    _candidate_action(candidate_id, "reject", resolution_note, resolved_by, json_output)
 
 
 @candidate_app.command("archive")
 def candidate_archive(
     candidate_id: str,
     resolution_note: Annotated[str | None, typer.Option("--resolution-note", "--note")] = None,
+    resolved_by: Annotated[str, typer.Option("--resolved-by")] = "user",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    _candidate_action(candidate_id, "archive", resolution_note, json_output)
+    _candidate_action(candidate_id, "archive", resolution_note, resolved_by, json_output)
 
 
 @candidate_app.command("clarify")
 def candidate_clarify(
     candidate_id: str,
     resolution_note: Annotated[str | None, typer.Option("--resolution-note", "--note")] = None,
+    resolved_by: Annotated[str, typer.Option("--resolved-by")] = "user",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    _candidate_action(candidate_id, "needs-clarification", resolution_note, json_output)
+    _candidate_action(candidate_id, "needs-clarification", resolution_note, resolved_by, json_output)
 
 
 @candidate_app.command("edit-accept")
@@ -746,6 +812,54 @@ def person_resolve(
             f"{match['entity_id']}  {match['display_name']}  "
             f"{match['score']}  {','.join(match['match_reasons'])}"
         )
+
+
+@person_app.command("duplicates")
+def person_duplicates(
+    entity_id: str,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=25)] = 5,
+    create_candidate: Annotated[bool, typer.Option("--create-candidate")] = False,
+    evidence_episode_id: Annotated[str | None, typer.Option("--evidence-episode-id")] = None,
+    evidence_excerpt: Annotated[str | None, typer.Option("--evidence-excerpt")] = None,
+    evidence_confidence: Annotated[float, typer.Option("--evidence-confidence", min=0, max=1)] = 0.9,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    payload: dict[str, Any] = {
+        "source_entity_id": entity_id,
+        "limit": limit,
+        "create_candidate": create_candidate,
+    }
+    if create_candidate:
+        if not evidence_episode_id or not evidence_excerpt:
+            raise typer.BadParameter(
+                "--evidence-episode-id and --evidence-excerpt are required with --create-candidate"
+            )
+        payload["evidence"] = [
+            {
+                "episode_id": evidence_episode_id,
+                "excerpt": evidence_excerpt,
+                "confidence": evidence_confidence,
+            }
+        ]
+
+    response = _request("POST", "/api/entities/duplicate-candidates", payload=payload)
+    _raise_for_api(response)
+    body = response.json()
+    if json_output:
+        _emit(body, json_output=True)
+        return
+
+    typer.echo(f"Recommended action: {body.get('recommended_action', 'unknown')}")
+    created = body.get("created_candidate")
+    if isinstance(created, dict):
+        typer.echo(f"Created candidate: {created.get('id')} ({created.get('candidate_type')})")
+    for item in body.get("candidates", []):
+        if isinstance(item, dict):
+            typer.echo(
+                f"{item.get('target_entity_id')}  "
+                f"{item.get('display_name', '-')}  "
+                f"{item.get('score', '-')}"
+            )
 
 
 @person_app.command("show")

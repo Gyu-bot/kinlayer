@@ -40,10 +40,25 @@ examples, generic groups/professions, AI agents/bots/models, the protected self 
 entity, and pronoun-only references such as `that person`, `그 사람`, `걔`, or `그분` without a
 reliable current-turn user-provided identifier.
 
-Agents may propose `merge` candidates when two person entities may be duplicates, but they must not
-directly execute a person merge. Weak identity evidence or pronoun-only references should become
-`needs_clarification` or a review-only candidate, not a canonical merge. Any future merge execution
-is a user-reviewed Kinlayer API operation with protected-self constraints.
+Agents may propose `merge` candidates when two person entities may be duplicates. They may also
+execute the merge candidate when the current turn contains explicit user confirmation for that exact
+source-target merge. Weak identity evidence or pronoun-only references should become
+`needs_clarification` or a review candidate, not a canonical merge. The current supported flow is:
+
+1. Resolve the mentioned person with current-turn user-authored evidence.
+2. When duplicate suspicion remains, call `POST /api/entities/duplicate-candidates` with
+   `create_candidate = false` to inspect ranked duplicate signals.
+3. If the evidence is strong enough, call the same endpoint with `create_candidate = true` and
+   traceable episode evidence to create a pending `merge` candidate.
+4. If the user explicitly confirms the exact merge in the current turn, the agent may call
+   `POST /api/candidates/{candidate_id}/accept` with `resolved_by = ai_agent` and a
+   `resolution_note` that records the user confirmation. Otherwise, leave accept/reject/archive/
+   clarify to the manual reviewer workflow.
+
+Accepted merge execution is a user-confirmed Kinlayer API operation with protected-self constraints.
+After acceptance, the source person remains inspectable with `status = merged` and
+`properties.merged_entity_ref = entities:<target>`, while retrieval, context-card, and graph surfaces
+treat the target as canonical.
 
 Candidate planning should distinguish:
 

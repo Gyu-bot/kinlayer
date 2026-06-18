@@ -4,9 +4,11 @@ Run after `scripts/load-acceptance-fixtures.py` against the local stack.
 
 - `/people`
   - People table loads without visible error.
-  - Search and status/sensitivity filters are visible; sensitivity options come from ontology policy values.
+  - Search and status/sensitivity filters are visible; status includes `merged`, and sensitivity options come from ontology policy values.
   - Alias preview, relationship summary, status, sensitivity, and last referenced columns render.
   - Each person row has an explicit display-name open button that navigates to detail without showing UUIDs.
+  - Default active/all review does not show a merged source as a separate active person after merge acceptance.
+  - Switching the status filter to `merged` shows the merged source, including its merge target reference when opened.
 - `/people/new`
   - Person form renders.
   - Optional initial relationship and initial observation fields are visible.
@@ -20,6 +22,8 @@ Run after `scripts/load-acceptance-fixtures.py` against the local stack.
   - Add relationship uses a related-person selector and ontology-backed relationship type, sensitivity, and AI use policy selectors.
   - Profile fact creation/edit controls use ontology-backed fact type, sensitivity, and AI use policy selectors.
   - Evidence from accepted candidates or corrections appears in the provenance section when present.
+  - Opening the merge target after accepting the merge shows the moved source alias and source-side context.
+  - Opening the merged source directly remains possible for audit/inspection.
 - `/candidates`
   - Status, type, and sensitivity filters render; status includes `pending`, `accepted`, `edited_accepted`, `rejected`, `archived`, `needs_clarification`, and `superseded`.
   - Type and sensitivity options come from ontology policy values.
@@ -28,19 +32,25 @@ Run after `scripts/load-acceptance-fixtures.py` against the local stack.
   - Evidence panel shows excerpt, confidence, episode ID, source type, source ref, source description, body hash, and actor when returned by the API.
   - Raw/edit payload JSON appears only after opening the explicit raw/edit payload affordance.
   - Switching to accepted status shows the accepted fixture candidate as a canonical record summary rather than a raw canonical record ref.
-  - Accept and edit-accept are disabled or unavailable for review-only candidate types such as merge, conflict, and supersede.
+  - Merge candidates render a source/target comparison panel with aliases, facts, relationships, observations, evidence, merge fields, and risk notes.
+  - Merge accept remains disabled until the reviewer confirms the target and acknowledges audit/risk notes.
+  - Merge raw payload is inspectable, but edit-accept is unavailable for merge candidates.
+  - Conflict and supersede remain review-only candidate types with accept/edit-accept disabled or unavailable.
   - Reject, archive, needs clarification, and supersede controls are available only for candidate statuses where lifecycle actions are valid.
   - Server validation errors from candidate lifecycle actions render in the detail panel.
+  - After accepting a merge candidate, the candidate detail shows a canonical `entities` record summary/ref for the target.
 - `/graph`
   - Ego graph renders from protected self with at least self plus two people.
   - Entity selector and ontology relation/status/sensitivity filters render, with relation and sensitivity values loaded from ontology.
   - Node and edge detail panels can be opened without visible node or edge UUIDs by default.
+  - After merge acceptance, graph views show the canonical target relationship and do not show source and target as two active duplicate people.
 - `/retrieval-debug`
   - Retrieve and pack debug controls render.
   - Focal/candidate entity selectors render by display name.
   - A Korean query with selected fixture entities returns matched entity, bucket, score, and debug metadata.
   - Raw retrieval IDs appear only after opening the explicit raw payload affordance.
   - The accepted candidate observation is inspectable in the debug result after fixture load.
+  - A duplicate-source query after merge returns the canonical target and does not rank the merged source as a separate active match.
 - `/settings`
   - Health, config, embedding, and ontology sections render.
   - Local API token status is shown without exposing the token value.

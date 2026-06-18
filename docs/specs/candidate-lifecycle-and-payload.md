@@ -379,8 +379,11 @@ T043 implements atomic accept/merge execution.
 
 Merge rules:
 
-- AI agents may propose merge candidates but must not directly merge people.
-- Pronoun-only or weak identity similarity may create a clarification/merge candidate, not a direct merge.
+- AI agents may propose merge candidates and may accept them only after explicit current-turn user
+  confirmation for the exact source-target merge. The accept request should identify
+  `resolved_by = ai_agent` and include a `resolution_note` summarizing the user confirmation.
+- Pronoun-only or weak identity similarity may create a clarification/merge candidate, not an
+  accepted merge.
 - Protected self cannot be source or target for normal person merge unless both IDs refer to the same
   protected self row.
 - Execution must preserve auditability and keep the source inspectable as merged/deprecated, not deleted.

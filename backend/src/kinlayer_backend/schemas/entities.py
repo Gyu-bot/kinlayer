@@ -3,6 +3,7 @@ from typing import Any
 
 from pydantic import Field
 
+from kinlayer_backend.schemas.candidates import CandidateEvidenceCreate, CandidateRead
 from kinlayer_backend.schemas.common import APIModel, ListResponse
 
 
@@ -64,6 +65,33 @@ class EntityResolveResponse(APIModel):
     surface: str
     ambiguity: str
     matches: list[EntityResolveMatch]
+
+
+class DuplicateCandidateRequest(APIModel):
+    source_entity_id: str
+    limit: int = Field(default=5, ge=1, le=25)
+    create_candidate: bool = False
+    evidence: list[CandidateEvidenceCreate] = Field(default_factory=list)
+    created_by: str = "ai_agent"
+
+
+class DuplicateCandidateMatch(APIModel):
+    source_entity_id: str
+    target_entity_id: str
+    display_name: str
+    score: float
+    match_reasons: list[str]
+    recommended_action: str
+    reason: str
+    fields_to_merge: list[str]
+    risk_notes: list[str] = Field(default_factory=list)
+
+
+class DuplicateCandidateResponse(APIModel):
+    source_entity_id: str
+    recommended_action: str
+    candidates: list[DuplicateCandidateMatch]
+    created_candidate: CandidateRead | None = None
 
 
 class AliasCreate(APIModel):

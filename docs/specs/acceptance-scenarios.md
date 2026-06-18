@@ -311,9 +311,47 @@ explicit correction, clarification, and no-write outcomes without polluting cano
 
 ---
 
+## Scenario L — Duplicate Person Merge
+
+### Goal
+
+Duplicate AI-created person records can be detected, reviewed, merged into one canonical target,
+and then treated as a single active person by retrieval, context cards, and graph views.
+
+### Steps
+
+1. Fixture data contains two active people for the same real person, with overlapping aliases and
+   at least one conflicting profile fact.
+2. Duplicate detection runs for the source person and recommends a merge candidate for the target.
+3. Reviewer inspects source and target summaries side by side in CLI or Web, including aliases,
+   facts, relationships, observations, evidence, and risk notes.
+4. Reviewer explicitly confirms the target and accepts the merge candidate.
+5. Source aliases, facts, edges, observations, and provenance-safe context move to the target.
+6. Source person becomes `merged` and stores `properties.merged_entity_ref = entities:<target>`.
+7. Target remains active and canonical.
+8. Retrieval, context-card, and graph responses surface the target as canonical and do not show the
+   source as a separate active person.
+9. Protected-self, missing-target, same-source-target, and ambiguous multi-target attempts reject or
+   remain clarification/review flows.
+
+### Pass Criteria
+
+- `POST /api/entities/duplicate-candidates` finds the fixture pair by alias overlap.
+- Accepting the merge candidate returns `canonical_record_ref = entities:<target>`.
+- Direct source inspection shows `status = merged`, `confirmation_status = merged`, and the target
+  merge reference.
+- Default people lists hide the merged source; the source remains inspectable by direct ID or merged
+  status filtering.
+- API and CLI smoke scripts verify duplicate detection, merge accept, target context continuity,
+  retrieval canonicalization, graph continuity, and no active duplicate source node.
+- Web smoke verifies side-by-side merge review, risk acknowledgement, target confirmation, and
+  post-merge people/context behavior.
+
+---
+
 ## MVP Exit Bar
 
-The MVP is not done until scenarios A through K pass in a local Docker Compose environment.
+The MVP is not done until scenarios A through L pass in a local Docker Compose environment.
 
 Minimum verification artifacts:
 
@@ -322,7 +360,7 @@ Minimum verification artifacts:
 - Web UI loads;
 - CLI can call API;
 - embedding provider can be smoke-tested;
-- `python3 scripts/load-acceptance-fixtures.py` creates protected self, two fixture people, aliases, facts, edges, observations, episodes, evidence, one pending candidate, one accepted candidate, and one correction;
-- `python3 scripts/smoke-acceptance-api.py` verifies API scenarios including entity resolve, candidate acceptance, canonical evidence linkage, explicit correction provenance, corrected context pack behavior, policy buckets, graph, ontology, embeddings, and optional token boundary when `KINLAYER_API_TOKEN` is set;
-- `scripts/smoke-acceptance-cli.sh` verifies CLI status, people, entity resolve, candidate submit/list/show/accept/reject/clarify, correction, context/retrieval, graph/debug, and embedding workflows.
-- scenarios A-K are manually or automatically verified.
+- `python3 scripts/load-acceptance-fixtures.py` creates protected self, fixture people including a duplicate merge pair, aliases, facts, edges, observations, episodes, evidence, one pending candidate, one accepted candidate, and one correction;
+- `python3 scripts/smoke-acceptance-api.py` verifies API scenarios including entity resolve, duplicate detection, merge candidate acceptance, canonical evidence linkage, explicit correction provenance, corrected context pack behavior, policy buckets, graph, ontology, embeddings, and optional token boundary when `KINLAYER_API_TOKEN` is set;
+- `scripts/smoke-acceptance-cli.sh` verifies CLI status, people, entity resolve, duplicate detection, merge candidate show/accept, candidate submit/list/show/accept/reject/clarify, correction, context/retrieval, graph/debug, and embedding workflows.
+- scenarios A-L are manually or automatically verified.

@@ -1268,7 +1268,123 @@ describe("App route shell", () => {
     expect(screen.getByRole("button", {name: "Edit accept unavailable"})).toBeDisabled();
   });
 
-  it("gates review-only candidate actions", async () => {
+  it("renders merge candidates as source-target review and accepts after confirmations", async () => {
+    window.history.pushState({}, "", "/candidates");
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/ontology")) {
+        return jsonResponse(ontologyFixture());
+      }
+      if (url.includes("/api/entities?")) {
+        const query = new URL(String(url)).searchParams;
+        if (query.get("status") === "merged") {
+          return jsonResponse({
+            items: [entityFixture({id: "person-old", display_name: "Alex K.", status: "merged"})],
+            limit: 50,
+            offset: 0,
+            total: 1,
+          });
+        }
+        return jsonResponse({
+          items: [
+            entityFixture({id: "person-old", display_name: "Alex K."}),
+            entityFixture({id: "person-new", display_name: "Alex Kim"}),
+          ],
+          limit: 50,
+          offset: 0,
+          total: 2,
+        });
+      }
+      if (url.includes("/api/candidates?")) {
+        return jsonResponse({
+          items: [
+            candidateFixture({
+              candidate_type: "merge",
+              target_entity_id: "person-new",
+              payload: {
+                source_entity_id: "person-old",
+                target_entity_id: "person-new",
+                reason: "same alias",
+                fields_to_merge: ["aliases", "profile_facts", "edges", "observations"],
+                risk_notes: ["Conflicting organization facts require review."],
+              },
+            }),
+          ],
+          limit: 50,
+          offset: 0,
+          total: 1,
+        });
+      }
+      if (url.endsWith("/api/entities/person-old/context-card")) {
+        return jsonResponse(
+          contextCardFixture({
+            entity: entityFixture({id: "person-old", display_name: "Alex K."}),
+            aliases: [{id: "alias-old", entity_id: "person-old", alias: "AK"}],
+            profile_facts: [{id: "fact-old", fact_type: "organization", content: "Old Corp"}],
+            relationship_edges: [{id: "edge-old", relation_type: "former_coworker"}],
+            communication_context: [observationFixture({id: "obs-old", content: "Prefers concise updates."})],
+            provenance_summary: {fact_count: 1, edge_count: 1, observation_count: 1, evidence_count: 2, evidence: []},
+          }),
+        );
+      }
+      if (url.endsWith("/api/entities/person-new/context-card")) {
+        return jsonResponse(
+          contextCardFixture({
+            entity: entityFixture({id: "person-new", display_name: "Alex Kim"}),
+            aliases: [{id: "alias-new", entity_id: "person-new", alias: "알렉스"}],
+            profile_facts: [{id: "fact-new", fact_type: "organization", content: "New Corp"}],
+            provenance_summary: {fact_count: 1, edge_count: 0, observation_count: 0, evidence_count: 1, evidence: []},
+          }),
+        );
+      }
+      if (String(url).match(/\/api\/candidates\/[^/]+\/accept$/)) {
+        expect(JSON.parse(String(init?.body))).toMatchObject({resolved_by: "user"});
+        return jsonResponse(
+          candidateFixture({
+            candidate_type: "merge",
+            target_entity_id: "person-new",
+            status: "accepted",
+            canonical_record_ref: "entities:person-new",
+            payload: {
+              source_entity_id: "person-old",
+              target_entity_id: "person-new",
+              reason: "same alias",
+            },
+          }),
+        );
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText("merge").length).toBeGreaterThan(0));
+    expect(await screen.findByText("Merge review")).toBeInTheDocument();
+    expect(screen.getByText("Source")).toBeInTheDocument();
+    expect(screen.getAllByText("Target").length).toBeGreaterThan(0);
+    expect(screen.getByText("Alex K.")).toBeInTheDocument();
+    expect(screen.getAllByText("Alex Kim").length).toBeGreaterThan(0);
+    expect(screen.getByText("AK")).toBeInTheDocument();
+    expect(screen.getByText("알렉스")).toBeInTheDocument();
+    expect(screen.getByText(/Old Corp/)).toBeInTheDocument();
+    expect(screen.getByText(/New Corp/)).toBeInTheDocument();
+    expect(screen.getByText("Conflicting organization facts require review.")).toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Accept"})).toBeDisabled();
+    expect(screen.getByLabelText("Confirm target Alex Kim")).toBeInTheDocument();
+    expect(screen.getByLabelText("Acknowledge merge audit and risk notes")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: "Show raw/edit payload"}));
+    expect(screen.queryByRole("button", {name: "Edit accept"})).not.toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Reject"})).toBeEnabled();
+    fireEvent.click(screen.getByLabelText("Confirm target Alex Kim"));
+    expect(screen.getByRole("button", {name: "Accept"})).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("Acknowledge merge audit and risk notes"));
+    expect(screen.getByRole("button", {name: "Accept"})).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", {name: "Accept"}));
+    await waitFor(() => expect(screen.getByText("entities record")).toBeInTheDocument());
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/candidates/candidate-1/accept"))).toBe(true);
+  });
+
+  it("keeps conflict and supersede candidates review-only in the web UI", async () => {
     window.history.pushState({}, "", "/candidates");
     vi.stubGlobal(
       "fetch",
@@ -1281,16 +1397,7 @@ describe("App route shell", () => {
         }
         if (url.includes("/api/candidates?")) {
           return jsonResponse({
-            items: [
-              candidateFixture({
-                candidate_type: "merge",
-                payload: {
-                  source_entity_id: "person-old",
-                  target_entity_id: "person-new",
-                  reason: "same alias",
-                },
-              }),
-            ],
+            items: [candidateFixture({candidate_type: "conflict", payload: {record_refs: ["x"], conflict_type: "contradiction", description: "Conflict"}})],
             limit: 50,
             offset: 0,
             total: 1,
@@ -1302,10 +1409,8 @@ describe("App route shell", () => {
 
     render(<App />);
 
-    await waitFor(() => expect(screen.getAllByText("merge").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText("conflict").length).toBeGreaterThan(0));
     expect(screen.getByRole("button", {name: "Accept"})).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", {name: "Show raw/edit payload"}));
-    expect(screen.queryByRole("button", {name: "Edit accept"})).not.toBeInTheDocument();
     expect(screen.getByRole("button", {name: "Reject"})).toBeEnabled();
   });
 
@@ -1732,6 +1837,7 @@ describe("App route shell", () => {
     expect(screen.getByText("1 relationships / 1 recent")).toBeInTheDocument();
     expect(screen.getByLabelText(/Sensitivity filter/)).toBeInTheDocument();
     expect(screen.getByText("정보가 얼마나 조심스러운지로 좁혀 보기")).toBeInTheDocument();
+    expect(screen.getByRole("option", {name: "merged"})).toBeInTheDocument();
     expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
     expect(screen.queryByText("person-1")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/Status filter/), {target: {value: "active"}});

@@ -109,10 +109,19 @@ def delete_candidate(candidate_id: str, session: SessionDep):
 
 
 @router.post("/api/candidates/{candidate_id}/accept", response_model=CandidateRead)
-def accept_candidate(candidate_id: str, session: SessionDep):
+def accept_candidate(
+    candidate_id: str,
+    session: SessionDep,
+    payload: CandidateActionRequest | None = None,
+):
     candidate = _candidate_or_404(session, candidate_id)
+    payload = payload or CandidateActionRequest()
     try:
-        candidate = CandidateService(session).accept_candidate(candidate)
+        candidate = CandidateService(session).accept_candidate(
+            candidate,
+            resolution_note=payload.resolution_note,
+            resolved_by=payload.resolved_by,
+        )
     except HTTPException as exc:
         AgentOperationService(session).record_candidate_action_failure(
             candidate,

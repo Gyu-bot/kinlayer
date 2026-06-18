@@ -397,6 +397,63 @@ strong {
   gap: 8px;
 }
 
+.merge-review {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #d8ddd4;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfcfa;
+}
+
+.merge-review-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.merge-review-header h3,
+.merge-card h4 {
+  margin: 0;
+}
+
+.merge-review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.merge-card {
+  border: 1px solid #d8ddd4;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+  overflow-wrap: anywhere;
+}
+
+.warning-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: #7c3216;
+}
+
+.confirm-list {
+  display: grid;
+  gap: 8px;
+}
+
+.confirm-list label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 700;
+  color: #28352e;
+}
+
 .stacked-selects {
   display: grid;
   gap: 8px;
@@ -537,6 +594,7 @@ pre {
   .debug-grid,
   .filter-grid,
   .review-grid,
+  .merge-review-grid,
   .graph-layout {
     grid-template-columns: 1fr;
   }

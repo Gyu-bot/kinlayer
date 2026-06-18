@@ -12,11 +12,14 @@ from kinlayer_backend.models import (
     Candidate,
     EdgeEvidence,
     Entity,
+    EntityAlias,
     EntityEdge,
     EntityFact,
     EntityFactEvidence,
+    EntityMerge,
     Episode,
     Observation,
+    ObservationEntity,
     ObservationEvidence,
 )
 from kinlayer_backend.repositories.candidates import CandidateRepository
@@ -28,6 +31,7 @@ from kinlayer_backend.services.relationships import RelationshipService
 
 SUGGESTED_ACTIONS = {"review", "accept", "reject", "clarify"}
 TERMINAL_STATUSES = {"accepted", "edited_accepted", "rejected", "archived", "superseded"}
+DEFAULT_MERGE_FIELDS = ["aliases", "profile_facts", "edges", "observations"]
 
 
 class CandidateService:
@@ -118,6 +122,7 @@ class CandidateService:
     ) -> Candidate:
         try:
             self._ensure_resolvable(candidate)
+            candidate.resolved_by = resolved_by
             canonical_record_ref = self._write_canonical_record(candidate)
             candidate.canonical_record_ref = canonical_record_ref
             self._resolve(candidate, status, resolution_note, resolved_by, commit=False)
@@ -191,6 +196,10 @@ class CandidateService:
             target = self._entity(payload["target_entity_id"])
             if source.id == target.id:
                 raise api_error(422, "validation_error", "Merge source and target must differ.")
+            if source.system_role == "self" or target.system_role == "self":
+                raise api_error(403, "forbidden", "Protected self cannot be merged.")
+            if source.entity_type != "person" or target.entity_type != "person":
+                raise api_error(422, "validation_error", "Only person entities can be merged.")
             return
         if candidate_type == "conflict":
             for record_ref in payload["record_refs"]:
@@ -232,7 +241,9 @@ class CandidateService:
             return self._write_edge(candidate)
         if candidate.candidate_type == "observation":
             return self._write_observation(candidate)
-        if candidate.candidate_type in {"merge", "conflict", "supersede"}:
+        if candidate.candidate_type == "merge":
+            return self._write_merge(candidate)
+        if candidate.candidate_type in {"conflict", "supersede"}:
             raise api_error(
                 422,
                 "validation_error",
@@ -317,10 +328,173 @@ class CandidateService:
     def _write_merge(self, candidate: Candidate) -> str:
         source = self._entity(candidate.payload["source_entity_id"])
         target = self._entity(candidate.payload["target_entity_id"])
-        source.status = "deleted"
+        if source.id == target.id:
+            raise api_error(422, "validation_error", "Merge source and target must differ.")
+        if source.system_role == "self" or target.system_role == "self":
+            raise api_error(403, "forbidden", "Protected self cannot be merged.")
+        if source.entity_type != "person" or target.entity_type != "person":
+            raise api_error(422, "validation_error", "Only person entities can be merged.")
+        fields_to_merge = candidate.payload.get("fields_to_merge") or DEFAULT_MERGE_FIELDS
+        previous_refs = self._merge_previous_refs(source.id)
+        if "aliases" in fields_to_merge:
+            self._merge_aliases(source.id, target.id)
+        if "profile_facts" in fields_to_merge or "facts" in fields_to_merge:
+            self._merge_facts(source.id, target.id)
+        if "edges" in fields_to_merge:
+            self._repoint_merge_edges(source.id, target.id)
+        if "observations" in fields_to_merge:
+            self._repoint_merge_observations(source.id, target.id)
+        merged_entity_ref = f"entities:{target.id}"
+        source.status = "merged"
         source.confirmation_status = "merged"
+        source.properties = {
+            **(source.properties or {}),
+            "merged_entity_ref": merged_entity_ref,
+            "merge_candidate_id": candidate.id,
+        }
+        self.session.add(
+            EntityMerge(
+                source_entity_id=source.id,
+                target_entity_id=target.id,
+                candidate_id=candidate.id,
+                merge_plan={
+                    "fields_to_merge": fields_to_merge,
+                    **(candidate.payload.get("merge_plan") or {}),
+                },
+                conflict_decisions=candidate.payload.get("field_conflict_policy") or {},
+                actor=candidate.resolved_by or candidate.created_by,
+                canonical_record_ref=merged_entity_ref,
+                previous_refs=previous_refs,
+            )
+        )
         self.session.flush()
-        return f"entities:{target.id}"
+        return merged_entity_ref
+
+    def _merge_previous_refs(self, source_id: str) -> dict[str, list[str]]:
+        aliases = self.session.execute(
+            select(EntityAlias.id).where(EntityAlias.entity_id == source_id)
+        ).scalars().all()
+        facts = self.session.execute(
+            select(EntityFact.id).where(EntityFact.entity_id == source_id)
+        ).scalars().all()
+        edges = self.session.execute(
+            select(EntityEdge.id).where(
+                (EntityEdge.from_entity_id == source_id) | (EntityEdge.to_entity_id == source_id)
+            )
+        ).scalars().all()
+        observations = self.session.execute(
+            select(Observation.id).where(Observation.subject_entity_id == source_id)
+        ).scalars().all()
+        related_observations = self.session.execute(
+            select(ObservationEntity.observation_id).where(ObservationEntity.entity_id == source_id)
+        ).scalars().all()
+        return {
+            "aliases": aliases,
+            "profile_facts": facts,
+            "edges": edges,
+            "observations": sorted(set([*observations, *related_observations])),
+        }
+
+    def _merge_aliases(self, source_id: str, target_id: str) -> None:
+        target_aliases = {
+            alias.normalized_alias
+            for alias in self.session.execute(
+                select(EntityAlias).where(
+                    EntityAlias.entity_id == target_id,
+                    EntityAlias.status == "active",
+                )
+            ).scalars()
+        }
+        for alias in self.session.execute(
+            select(EntityAlias).where(
+                EntityAlias.entity_id == source_id,
+                EntityAlias.status == "active",
+            )
+        ).scalars():
+            if alias.normalized_alias in target_aliases:
+                alias.status = "deprecated"
+                continue
+            alias.entity_id = target_id
+            target_aliases.add(alias.normalized_alias)
+
+    def _merge_facts(self, source_id: str, target_id: str) -> None:
+        target_facts = self.session.execute(
+            select(EntityFact).where(EntityFact.entity_id == target_id, EntityFact.status == "active")
+        ).scalars().all()
+        for fact in self.session.execute(
+            select(EntityFact).where(EntityFact.entity_id == source_id, EntityFact.status == "active")
+        ).scalars():
+            duplicate = next(
+                (
+                    target_fact
+                    for target_fact in target_facts
+                    if target_fact.fact_type == fact.fact_type and target_fact.content == fact.content
+                ),
+                None,
+            )
+            conflict = any(
+                target_fact.fact_type == fact.fact_type and target_fact.content != fact.content
+                for target_fact in target_facts
+            )
+            if duplicate:
+                fact.status = "deprecated"
+                continue
+            if conflict:
+                continue
+            fact.entity_id = target_id
+            target_facts.append(fact)
+
+    def _repoint_merge_edges(self, source_id: str, target_id: str) -> None:
+        edges = self.session.execute(
+            select(EntityEdge).where(
+                EntityEdge.status == "active",
+                (EntityEdge.from_entity_id == source_id) | (EntityEdge.to_entity_id == source_id),
+            )
+        ).scalars().all()
+        for edge in edges:
+            next_from = target_id if edge.from_entity_id == source_id else edge.from_entity_id
+            next_to = target_id if edge.to_entity_id == source_id else edge.to_entity_id
+            if next_from == next_to or self._active_duplicate_edge(edge, next_from, next_to):
+                edge.status = "deprecated"
+                continue
+            edge.from_entity_id = next_from
+            edge.to_entity_id = next_to
+
+    def _active_duplicate_edge(self, edge: EntityEdge, from_entity_id: str, to_entity_id: str) -> bool:
+        statement = select(EntityEdge.id).where(
+            EntityEdge.id != edge.id,
+            EntityEdge.status == "active",
+            EntityEdge.from_entity_id == from_entity_id,
+            EntityEdge.to_entity_id == to_entity_id,
+            EntityEdge.relation_type == edge.relation_type,
+            EntityEdge.directed == edge.directed,
+        )
+        return self.session.execute(statement).first() is not None
+
+    def _repoint_merge_observations(self, source_id: str, target_id: str) -> None:
+        for observation in self.session.execute(
+            select(Observation).where(
+                Observation.status == "active",
+                Observation.subject_entity_id == source_id,
+            )
+        ).scalars():
+            observation.subject_entity_id = target_id
+        rows = self.session.execute(
+            select(ObservationEntity).where(ObservationEntity.entity_id == source_id)
+        ).scalars().all()
+        for row in rows:
+            duplicate = self.session.execute(
+                select(ObservationEntity).where(
+                    ObservationEntity.id != row.id,
+                    ObservationEntity.observation_id == row.observation_id,
+                    ObservationEntity.entity_id == target_id,
+                    ObservationEntity.role == row.role,
+                )
+            ).scalar_one_or_none()
+            if duplicate:
+                self.session.delete(row)
+            else:
+                row.entity_id = target_id
 
     def _write_conflict(self, candidate: Candidate) -> str:
         for record_ref in candidate.payload["record_refs"]:

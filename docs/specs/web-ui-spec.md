@@ -62,11 +62,13 @@ Required behavior:
 
 - list people with display name, aliases preview, relationship summary, status, sensitivity, last_referenced_at;
 - search by name/alias using API-backed query;
-- filter by status/sensitivity where API supports it;
+- filter by status/sensitivity where API supports it, including `merged` for audit inspection;
 - create button linking to `/people/new`;
 - open each person through an explicit display-name action, such as `Open {display_name}`,
   while keeping the entity ID internal;
 - click row/card to open `/people/:id` as a secondary shortcut.
+- hide merged source entities from the default active people workflow while allowing direct URL or
+  merged-status filter inspection.
 
 MVP non-goals:
 
@@ -166,14 +168,15 @@ MVP non-goals:
 
 - complete audit timeline;
 - full raw conversation viewer;
-- advanced merge UI.
+- bulk merge UI.
 
 Merge contract:
 
-- Web may display merge candidates as review-only items until the execution API exists.
+- Merge execution is reviewed from `/candidates`, not directly from person detail.
 - Review UI must show source/target names, aliases, facts, relationship edges, observations,
-  evidence counts, sensitivity/policy conflicts, protected self warnings, and risk notes before
-  enabling any future merge action.
+  sensitivity/policy conflicts, protected self warnings, and risk notes before enabling merge
+  accept.
+- Merge accept is disabled until the reviewer confirms the target and acknowledges audit/risk notes.
 - Web must not perform merge rewrites client-side; all state changes go through the canonical API.
 
 ---
@@ -189,6 +192,8 @@ Required behavior:
   confidence, target summary, and timestamps;
 - filter by status/type/sensitivity;
 - show candidate detail drawer/panel with evidence excerpts and suggested action;
+- render `merge` candidates with a source/target comparison panel, merge fields, risk warnings,
+  target confirmation, and audit acknowledgement;
 - keep raw/edit payload JSON behind an explicit raw payload affordance so internal entity IDs are not
   visible by default;
 - actions:
@@ -201,8 +206,10 @@ Required behavior:
 Expected action semantics:
 
 - accept/edit-accept call explicit action endpoints and may create canonical records;
+- merge accept calls the same candidate accept endpoint, returns a canonical `entities` record ref,
+  and does not expose edit-accept for merge candidates;
 - reject/archive/needs-clarification update candidate workflow state;
-- supersede links candidate replacement through API/CLI, but is not a current Web control.
+- supersede links candidate replacement through API/CLI and Web candidate detail controls.
 
 MVP non-goals:
 

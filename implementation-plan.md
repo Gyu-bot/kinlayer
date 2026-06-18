@@ -117,10 +117,10 @@ Scripts and docs:
 | T039 | Candidate review UI provenance and action gating | High | Done | T019, T037 |
 | T040 | Post-turn integration examples and acceptance smoke | High | Done | T035, T036, T038, T039 |
 | T041 | Person merge policy and contract docs | Critical | Done | T035 |
-| T042 | Duplicate detection and merge-candidate creation | High | Ready | T036, T041 |
-| T043 | Atomic person merge execution API | Critical | Ready | T038, T041 |
-| T044 | Merge review CLI and Web workflow | High | Backlog | T039, T043 |
-| T045 | Merge acceptance fixtures and retrieval verification | High | Backlog | T042, T043, T044 |
+| T042 | Duplicate detection and merge-candidate creation | High | Done | T036, T041 |
+| T043 | Atomic person merge execution API | Critical | Done | T038, T041 |
+| T044 | Merge review CLI and Web workflow | High | Done | T039, T043 |
+| T045 | Merge acceptance fixtures and retrieval verification | High | Done | T042, T043, T044 |
 | T046 | Admin Web UI ID hiding and ontology-backed relationship controls | High | Done | T024, T026, T032 |
 | T047 | Relationship edge-type enforcement audit and debug logging | Critical | Done | T012, T016, T017, T024 |
 | T048 | Agent Write Instruction Pack | Critical | Done | T035, T047 |
@@ -137,17 +137,15 @@ Scripts and docs:
 
 Last refreshed: 2026-06-18.
 
-- T042: Duplicate detection and merge-candidate creation.
-- T043: Atomic person merge execution API.
 - T050: Structured profile fact promotion workflow.
 - T051: Temporal observation recording and candidate payload preservation.
 - T054: Structured profile fact content validation.
 
 Notes:
 
-- T041 is `Done`; T042 and T043 are now unblocked for person merge implementation.
+- T042 through T045 are `Done`; person merge is complete through duplicate detection, atomic API execution, CLI/Web review, and acceptance smoke.
 - T049 is `Done`; T050 and T051 are now unblocked for structured fact promotion and temporal observation follow-up.
-- T052 remains `Backlog` until the merge exit bar and deterministic guard/profile/temporal follow-ups are complete.
+- T052 remains `Backlog` until deterministic guard/profile/temporal follow-ups are complete.
 
 ---
 
@@ -931,16 +929,16 @@ uv run kinlayer status --json
   - Modify: `docs/agents/agent-integration-notes.md`
   - Modify: `implementation-plan.md`
 - Design:
-  - Merge is a user-reviewed canonical maintenance operation, not an automatic AI write.
-  - The default flow is: duplicate signal -> `merge` candidate -> review diff -> accept/edit-accept -> atomic merge execution.
+  - Merge is a user-confirmed canonical maintenance operation, not an automatic AI write.
+  - The default flow is: duplicate signal -> `merge` candidate -> review/confirmation -> accept -> atomic merge execution.
   - Source entity is never hard-deleted. It becomes `status = merged` or equivalent deprecated state and records a durable pointer to the target entity.
   - Target entity remains canonical. Aliases, facts, relationships, observations, evidence references, graph edges, and retrieval surfaces are rewired or copied according to an explicit merge plan.
   - Protected `self` can never be merged into another entity or receive a normal person merge unless a future protected-self-specific operation is designed.
   - Merge is reversible only through explicit audit data and follow-up repair operations; do not promise one-click undo in MVP.
 - Acceptance Criteria:
   - [x] Docs define `source_entity_id`, `target_entity_id`, `merge_plan`, `field_conflict_policy`, and `merged_entity_ref` semantics.
-  - [x] Docs state that AI agents may propose merge candidates but must not directly merge people.
-  - [x] Docs state that pronoun-only or weak identity similarity may create a clarification/merge candidate, not a direct merge.
+  - [x] Docs state that AI agents may propose merge candidates and may accept them only after explicit current-turn user confirmation for the exact source-target merge.
+  - [x] Docs state that pronoun-only or weak identity similarity may create a clarification/merge candidate, not an accepted merge.
   - [x] Docs specify protected self constraints and reject any merge involving `system_role = self` unless both sides are the same self record.
   - [x] Docs define conflict handling for display name, canonical name, sensitivity, AI use policy, profile facts, aliases, active edges, and observations.
   - [x] Docs define retrieval behavior after merge: old source IDs resolve or redirect to target, source does not appear as a separate active person, and context cards include merged aliases/provenance.
@@ -951,7 +949,7 @@ uv run kinlayer status --json
 
 #### Task T042. Duplicate detection and merge-candidate creation
 - Priority: High
-- Status: Backlog
+- Status: Done
 - Depends on: T036, T041
 - 설명: 중복 사람을 감지하고 자동 병합이 아닌 review용 merge candidate를 만들 수 있게 한다.
 - Files:
@@ -970,19 +968,19 @@ uv run kinlayer status --json
   - The endpoint should return ranked possible duplicates and recommended next action: `no_match`, `use_existing_entity`, `create_merge_candidate`, or `needs_clarification`.
   - Creating a merge candidate must require evidence/provenance under the same agent evidence rules as T037.
 - Acceptance Criteria:
-  - [ ] Duplicate detection returns no result for unrelated people with different names and no alias/context overlap.
-  - [ ] Duplicate detection flags exact alias/name overlap as a strong duplicate signal.
-  - [ ] Duplicate detection flags fuzzy Korean/English name variants as possible duplicates without auto-merging.
-  - [ ] API can create a `merge` candidate from a duplicate detection result with `source_entity_id`, `target_entity_id`, `reason`, `fields_to_merge`, and `risk_notes`.
-  - [ ] Agent-submitted duplicate/merge candidates require evidence and never bypass review.
-  - [ ] Tests cover strong duplicate, possible duplicate, ambiguous multiple duplicate, and protected self rejection.
+  - [x] Duplicate detection returns no result for unrelated people with different names and no alias/context overlap.
+  - [x] Duplicate detection flags exact alias/name overlap as a strong duplicate signal.
+  - [x] Duplicate detection flags fuzzy Korean/English name variants as possible duplicates without auto-merging.
+  - [x] API can create a `merge` candidate from a duplicate detection result with `source_entity_id`, `target_entity_id`, `reason`, `fields_to_merge`, and `risk_notes`.
+  - [x] Agent-submitted duplicate/merge candidates require evidence and never bypass review.
+  - [x] Tests cover strong duplicate, possible duplicate, ambiguous multiple duplicate, and protected self rejection.
 - Notes:
   - This task detects and proposes. It must not mutate canonical entity references.
   - Keep thresholds conservative. False negatives are safer than false positive merges.
 
 #### Task T043. Atomic person merge execution API
 - Priority: Critical
-- Status: Backlog
+- Status: Done
 - Depends on: T038, T041
 - 설명: merge candidate accept 시 source 사람의 별칭/fact/edge/observation을 target으로 원자적으로 이전한다.
 - Files:
@@ -1010,22 +1008,22 @@ uv run kinlayer status --json
     - source entity: mark merged/deprecated and store target ref.
   - All merge rewrites must preserve `source_candidate_id`, evidence links, created timestamps where meaningful, and auditability.
 - Acceptance Criteria:
-  - [ ] Accepting a merge candidate performs alias/fact/edge/observation/source-entity updates in one transaction.
-  - [ ] Merge execution rejects source equals target.
-  - [ ] Merge execution rejects protected self as source or target for normal person merge.
-  - [ ] Merge execution handles duplicate aliases without creating unique constraint conflicts.
-  - [ ] Merge execution prevents invalid self-edges or duplicate active edges.
-  - [ ] Merge execution creates or updates a durable audit record that links back to the accepted candidate.
-  - [ ] Source entity is hidden from normal active people lists after merge.
-  - [ ] Context retrieve, context pack, context card, and graph use the target entity after merge.
-  - [ ] Failure-injection tests prove partial merge rewrites roll back completely.
+  - [x] Accepting a merge candidate performs alias/fact/edge/observation/source-entity updates in one transaction.
+  - [x] Merge execution rejects source equals target.
+  - [x] Merge execution rejects protected self as source or target for normal person merge.
+  - [x] Merge execution handles duplicate aliases without creating unique constraint conflicts.
+  - [x] Merge execution prevents invalid self-edges or duplicate active edges.
+  - [x] Merge execution creates or updates a durable audit record that links back to the accepted candidate.
+  - [x] Source entity is hidden from normal active people lists after merge.
+  - [x] Context retrieve, context pack, context card, and graph use the target entity after merge.
+  - [x] Failure-injection tests prove partial merge rewrites roll back completely.
 - Notes:
   - Prefer re-pointing references over copying records when it preserves evidence and timestamps cleanly.
   - Do not physically delete the source entity in MVP.
 
 #### Task T044. Merge review CLI and Web workflow
 - Priority: High
-- Status: Backlog
+- Status: Done
 - Depends on: T039, T043
 - 설명: CLI와 Web에서 merge candidate를 비교 검토하고 안전하게 accept/reject/archive할 수 있게 한다.
 - Files:
@@ -1047,20 +1045,20 @@ uv run kinlayer status --json
   - The review UI should show side-by-side source and target summaries: names, aliases, profile facts, relationships, observations, evidence count, sensitivity, policy, and conflict warnings.
   - Accept should be disabled until the reviewer confirms the target and acknowledges conflict/risk notes.
 - Acceptance Criteria:
-  - [ ] CLI can list duplicate candidates or run duplicate detection for a person.
-  - [ ] CLI can show a merge candidate with source/target summaries and JSON payload.
-  - [ ] CLI can accept/reject/archive/clarify merge candidates using existing candidate lifecycle commands.
-  - [ ] Web candidate detail renders merge candidates with source/target comparison instead of raw JSON only.
-  - [ ] Web shows clear warnings for protected self, conflicts, duplicate edges, and irreversible audit implications.
-  - [ ] Web hides merged source entities from default people list but allows inspection through direct link or archived/merged filter.
-  - [ ] Browser verification confirms side-by-side review, accept flow, and post-merge people/context state.
+  - [x] CLI can list duplicate candidates or run duplicate detection for a person.
+  - [x] CLI can show a merge candidate with source/target summaries and JSON payload.
+  - [x] CLI can accept/reject/archive/clarify merge candidates using existing candidate lifecycle commands.
+  - [x] Web candidate detail renders merge candidates with source/target comparison instead of raw JSON only.
+  - [x] Web shows clear warnings for protected self, conflicts, duplicate edges, and irreversible audit implications.
+  - [x] Web hides merged source entities from default people list but allows inspection through direct link or archived/merged filter.
+  - [x] Browser verification confirms side-by-side review, accept flow, and post-merge people/context state.
 - Notes:
   - Do not add drag-and-drop or bulk merge UI in MVP.
   - Keep all state changes API-backed; no Web-only merge behavior.
 
 #### Task T045. Merge acceptance fixtures and retrieval verification
 - Priority: High
-- Status: Backlog
+- Status: Done
 - Depends on: T042, T043, T044
 - 설명: 중복 사람 fixture와 smoke test로 merge 후 검색, graph, context가 올바르게 이어지는지 검증한다.
 - Files:
@@ -1078,13 +1076,13 @@ uv run kinlayer status --json
   - Verify the safe path: duplicate detection proposes merge candidate, reviewer accepts with explicit merge plan, source becomes merged, target receives safe aliases/context, conflicts remain reviewable.
   - Verify the unsafe path: protected self merge and ambiguous multiple-target merge are rejected or clarified.
 - Acceptance Criteria:
-  - [ ] Acceptance scenarios include duplicate AI-created person records and user-reviewed merge.
-  - [ ] API smoke verifies merge candidate creation, accept, audit record, source merged status, and target context continuity.
-  - [ ] CLI smoke verifies duplicate detection and merge candidate lifecycle commands.
-  - [ ] Context smoke proves merged source context appears under target and source does not rank as a separate active person.
-  - [ ] Graph smoke proves source/target duplicate nodes do not both appear as active people after merge.
-  - [ ] Web smoke checklist covers merge review and merged source visibility.
-  - [ ] Final verification includes backend tests, API smoke, CLI smoke, frontend tests/build, and browser verification for merge UI.
+  - [x] Acceptance scenarios include duplicate AI-created person records and user-reviewed merge.
+  - [x] API smoke verifies merge candidate creation, accept, audit record, source merged status, and target context continuity.
+  - [x] CLI smoke verifies duplicate detection and merge candidate lifecycle commands.
+  - [x] Context smoke proves merged source context appears under target and source does not rank as a separate active person.
+  - [x] Graph smoke proves source/target duplicate nodes do not both appear as active people after merge.
+  - [x] Web smoke checklist covers merge review and merged source visibility.
+  - [x] Final verification includes backend tests, API smoke, CLI smoke, frontend tests/build, and browser verification for merge UI.
 - Notes:
   - This is the exit bar for person merge functionality.
   - Keep merge fixtures deterministic and small enough to debug by hand.

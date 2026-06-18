@@ -1,5 +1,8 @@
+import json
+
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import text
 
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_session_maker
@@ -7,8 +10,10 @@ from kinlayer_backend.models import (
     Candidate,
     EdgeEvidence,
     EntityEdge,
+    EntityFact,
     EntityFactEvidence,
     Observation,
+    ObservationEntity,
     ObservationEvidence,
 )
 from kinlayer_backend.schemas.candidates import CandidateCreate
@@ -521,7 +526,13 @@ def test_accept_observation_candidate_writes_canonical_record_and_evidence(
         "Alex prefers concise follow-ups.",
     )
 
-    accepted = client.post(f"/api/candidates/{candidate['id']}/accept")
+    accepted = client.post(
+        f"/api/candidates/{candidate['id']}/accept",
+        json={
+            "resolved_by": "ai_agent",
+            "resolution_note": "User explicitly confirmed this merge in the current turn.",
+        },
+    )
 
     assert accepted.status_code == 200
     body = accepted.json()
@@ -806,3 +817,307 @@ def test_candidate_accept_rolls_back_canonical_write_when_evidence_copy_fails(
             .count()
         )
         assert orphan_count == 0
+
+
+def test_accept_merge_candidate_repoints_person_records_and_creates_audit(
+    client,
+    database_url,
+) -> None:
+    target = create_person(client, "Alex Kim")
+    source = create_person(client, "Alex K.")
+    colleague = create_person(client, "Jordan Lee")
+    assert client.post(
+        f"/api/entities/{source['id']}/aliases",
+        json={"alias": "알렉스", "created_by": "user"},
+    ).status_code == 201
+    source_fact = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": source["id"],
+            "fact_type": "organization",
+            "content": "Example Corp",
+            "claim_type": "fact",
+            "confidence": 0.9,
+            "created_by": "user",
+            "source_candidate_id": "candidate-source-fact",
+        },
+    ).json()
+    source_edge = client.post(
+        "/api/edges",
+        json={
+            "from_entity_id": source["id"],
+            "to_entity_id": colleague["id"],
+            "relation_type": "former_coworker",
+            "directed": True,
+            "claim_text": "Alex worked with Jordan.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    source_observation = client.post(
+        "/api/observations",
+        json={
+            "subject_entity_id": source["id"],
+            "related_entities": [{"entity_id": colleague["id"], "role": "related"}],
+            "observation_type": "communication_preference",
+            "content": "Alex prefers concise follow-ups.",
+            "claim_type": "pattern",
+            "created_by": "user",
+        },
+    ).json()
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "merge",
+            "target_entity_id": target["id"],
+            "payload": {
+                "source_entity_id": source["id"],
+                "target_entity_id": target["id"],
+                "reason": "Alias and relationship context indicate a duplicate.",
+                "fields_to_merge": ["aliases", "profile_facts", "edges", "observations"],
+                "risk_notes": ["Reviewed by user."],
+            },
+            "confidence": 0.91,
+            "created_by": "user",
+            "suggested_action": "review",
+        },
+    ).json()
+
+    accepted = client.post(
+        f"/api/candidates/{candidate['id']}/accept",
+        json={
+            "resolved_by": "ai_agent",
+            "resolution_note": "User explicitly confirmed this merge in the current turn.",
+        },
+    )
+
+    assert accepted.status_code == 200
+    body = accepted.json()
+    assert body["status"] == "accepted"
+    assert body["resolved_by"] == "ai_agent"
+    assert body["resolution_note"] == "User explicitly confirmed this merge in the current turn."
+    assert body["canonical_record_ref"] == f"entities:{target['id']}"
+    merged_source = client.get(f"/api/entities/{source['id']}").json()
+    assert merged_source["status"] == "merged"
+    assert merged_source["confirmation_status"] == "merged"
+    assert merged_source["properties"]["merged_entity_ref"] == f"entities:{target['id']}"
+
+    default_people = client.get("/api/entities", params={"entity_type": "person"}).json()
+    assert {item["id"] for item in default_people["items"]} == {target["id"], colleague["id"]}
+    aliases = client.get(f"/api/entities/{target['id']}/aliases").json()["items"]
+    assert any(item["alias"] == "알렉스" for item in aliases)
+    target_card = client.get(f"/api/entities/{target['id']}/context-card").json()
+    assert [fact["id"] for fact in target_card["profile_facts"]] == [source_fact["id"]]
+    assert [edge["id"] for edge in target_card["relationship_edges"]] == [source_edge["id"]]
+    assert [item["id"] for item in target_card["communication_context"]] == [
+        source_observation["id"]
+    ]
+
+    with create_session_maker(Settings(database_url=database_url))() as session:
+        fact = session.get(EntityFact, source_fact["id"])
+        edge = session.get(EntityEdge, source_edge["id"])
+        observation = session.get(Observation, source_observation["id"])
+        merge = (
+            session.execute(
+                text(
+                    "select source_entity_id, target_entity_id, canonical_record_ref, "
+                    "merge_plan, actor from entity_merges where candidate_id = :candidate_id"
+                ),
+                {"candidate_id": candidate["id"]},
+            )
+            .mappings()
+            .one()
+        )
+        assert fact.entity_id == target["id"]
+        assert fact.source_candidate_id == "candidate-source-fact"
+        assert edge.from_entity_id == target["id"]
+        assert observation.subject_entity_id == target["id"]
+        assert merge["source_entity_id"] == source["id"]
+        assert merge["target_entity_id"] == target["id"]
+        assert merge["canonical_record_ref"] == f"entities:{target['id']}"
+        assert merge["actor"] == "ai_agent"
+        merge_plan = merge["merge_plan"]
+        if isinstance(merge_plan, str):
+            merge_plan = json.loads(merge_plan)
+        assert merge_plan["fields_to_merge"] == [
+            "aliases",
+            "profile_facts",
+            "edges",
+            "observations",
+        ]
+
+
+def test_merge_candidate_rejects_self_and_same_entity(client) -> None:
+    self_entity = client.post(
+        "/api/entities",
+        json={
+            "entity_type": "person",
+            "display_name": "Me",
+            "created_by": "system",
+            "system_role": "self",
+            "is_system": True,
+        },
+    ).json()
+    alex = create_person(client, "Alex")
+
+    same_entity = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "merge",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "source_entity_id": alex["id"],
+                "target_entity_id": alex["id"],
+                "reason": "No-op merge should be rejected.",
+            },
+            "confidence": 0.8,
+            "created_by": "user",
+        },
+    )
+    assert same_entity.status_code == 422
+    assert same_entity.json()["error"]["code"] == "validation_error"
+
+    protected = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "merge",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "source_entity_id": self_entity["id"],
+                "target_entity_id": alex["id"],
+                "reason": "Protected self cannot be merged.",
+            },
+            "confidence": 0.8,
+            "created_by": "user",
+        },
+    )
+    assert protected.status_code == 403
+    assert protected.json()["error"]["code"] == "forbidden"
+
+
+def test_merge_candidate_accept_deprecates_duplicate_aliases_and_self_edges(client) -> None:
+    target = create_person(client, "Alex Kim")
+    source = create_person(client, "Alex K.")
+    assert client.post(
+        f"/api/entities/{target['id']}/aliases",
+        json={"alias": "AK", "created_by": "user"},
+    ).status_code == 201
+    client.post(
+        f"/api/entities/{source['id']}/aliases",
+        json={"alias": "AK", "created_by": "user"},
+    ).json()
+    self_edge = client.post(
+        "/api/edges",
+        json={
+            "from_entity_id": source["id"],
+            "to_entity_id": target["id"],
+            "relation_type": "client_contact",
+            "directed": True,
+            "claim_text": "Duplicate edge would become a self-edge.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "merge",
+            "target_entity_id": target["id"],
+            "payload": {
+                "source_entity_id": source["id"],
+                "target_entity_id": target["id"],
+                "reason": "Alias indicates a duplicate.",
+                "fields_to_merge": ["aliases", "edges"],
+            },
+            "confidence": 0.9,
+            "created_by": "user",
+        },
+    ).json()
+
+    accepted = client.post(f"/api/candidates/{candidate['id']}/accept")
+
+    assert accepted.status_code == 200
+    aliases = client.get(f"/api/entities/{target['id']}/aliases").json()["items"]
+    assert [alias["alias"] for alias in aliases] == ["AK"]
+    deprecated_alias = client.get(f"/api/entities/{source['id']}/aliases")
+    assert deprecated_alias.status_code == 200
+    assert deprecated_alias.json()["items"] == []
+    edge = client.get(f"/api/edges/{self_edge['id']}").json()
+    assert edge["status"] == "deprecated"
+    assert client.get("/api/edges", params={"entity_id": target["id"]}).json()["items"] == []
+
+
+def test_merge_candidate_accept_rolls_back_partial_rewrites(
+    client,
+    database_url,
+    monkeypatch,
+) -> None:
+    target = create_person(client, "Alex Kim")
+    source = create_person(client, "Alex K.")
+    client.post(
+        f"/api/entities/{source['id']}/aliases",
+        json={"alias": "알렉스", "created_by": "user"},
+    ).json()
+    observation = client.post(
+        "/api/observations",
+        json={
+            "subject_entity_id": source["id"],
+            "related_entities": [{"entity_id": source["id"], "role": "mentioned"}],
+            "observation_type": "communication_preference",
+            "content": "Alex prefers concise follow-ups.",
+            "claim_type": "pattern",
+            "created_by": "user",
+        },
+    ).json()
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "merge",
+            "target_entity_id": target["id"],
+            "payload": {
+                "source_entity_id": source["id"],
+                "target_entity_id": target["id"],
+                "reason": "Alias indicates a duplicate.",
+                "fields_to_merge": ["aliases", "observations"],
+            },
+            "confidence": 0.9,
+            "created_by": "user",
+        },
+    ).json()
+
+    def fail_observation_repoint(self, source_id, target_id):
+        raise RuntimeError("simulated merge observation failure")
+
+    monkeypatch.setattr(
+        CandidateService,
+        "_repoint_merge_observations",
+        fail_observation_repoint,
+        raising=False,
+    )
+
+    with create_session_maker(Settings(database_url=database_url))() as session:
+        service = CandidateService(session)
+        row = session.get(Candidate, candidate["id"])
+        with pytest.raises(RuntimeError, match="simulated merge observation failure"):
+            service.accept_candidate(row)
+        session.rollback()
+        persisted_candidate = session.get(Candidate, candidate["id"])
+        assert persisted_candidate.status == "pending"
+        assert persisted_candidate.canonical_record_ref is None
+        assert session.get(Observation, observation["id"]).subject_entity_id == source["id"]
+        related_entity_ids = {
+            row.entity_id
+            for row in session.query(ObservationEntity)
+            .filter(ObservationEntity.observation_id == observation["id"])
+            .all()
+        }
+        assert related_entity_ids == {source["id"]}
+        assert client.get(f"/api/entities/{source['id']}").json()["status"] == "active"
+        assert (
+            session.execute(
+                text("select count(*) from entity_merges where candidate_id = :candidate_id"),
+                {"candidate_id": candidate["id"]},
+            ).scalar_one()
+            == 0
+        )
+        assert client.get(f"/api/entities/{target['id']}/aliases").json()["items"] == []

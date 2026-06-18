@@ -1,10 +1,18 @@
 import {useEffect, useState} from "react";
 
-import {editAcceptCandidate, formatApiError, getOntology, listCandidates, listPeople, runCandidateAction} from "../api/client";
+import {
+  editAcceptCandidate,
+  formatApiError,
+  getContextCard,
+  getOntology,
+  listCandidates,
+  listPeople,
+  runCandidateAction,
+} from "../api/client";
 import {FieldHelp} from "../components/FieldHelp";
 import {includeAllOption, registryOptions, type SelectOption} from "../ontologyOptions";
 import type {Candidate, CandidateFilters} from "../types/candidates";
-import type {Entity} from "../types/entities";
+import type {ContextCard, Entity, EntityFact, Observation} from "../types/entities";
 
 const statuses = [
   "pending",
@@ -17,7 +25,14 @@ const statuses = [
   "superseded",
 ];
 const terminalStatuses = new Set(["accepted", "edited_accepted", "rejected", "archived", "superseded"]);
-const reviewOnlyTypes = new Set(["merge", "conflict", "supersede"]);
+const reviewOnlyTypes = new Set(["conflict", "supersede"]);
+
+type MergeCards = {
+  source?: ContextCard;
+  target?: ContextCard;
+  loading: boolean;
+  error: string | null;
+};
 
 function summarizeCandidate(candidate: Candidate) {
   const payload = candidate.payload;
@@ -66,6 +81,69 @@ function formatTimestamp(value: string | null) {
   return new Date(value).toLocaleString();
 }
 
+function payloadString(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function payloadStringList(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+    : [];
+}
+
+function contextName(card: ContextCard | undefined, fallback: string) {
+  return card?.entity.display_name || fallback;
+}
+
+function aliasSummary(card: ContextCard | undefined) {
+  const aliases = card?.aliases.map((alias) => alias.alias).filter(Boolean) ?? [];
+  return aliases.length > 0 ? aliases.join(", ") : "No aliases";
+}
+
+function factSummary(facts: EntityFact[]) {
+  return facts.length > 0
+    ? facts.slice(0, 4).map((fact) => `${fact.fact_type}: ${fact.content}`)
+    : ["No profile facts"];
+}
+
+function observationSummary(card: ContextCard | undefined) {
+  const observations: Observation[] = [
+    ...(card?.stable_context ?? []),
+    ...(card?.recent_context ?? []),
+    ...(card?.communication_context ?? []),
+  ];
+  return observations.length > 0
+    ? observations.slice(0, 4).map((observation) => observation.content)
+    : ["No observations"];
+}
+
+function mergeWarnings(
+  payload: Record<string, unknown>,
+  source: ContextCard | undefined,
+  target: ContextCard | undefined,
+) {
+  const warnings = payloadStringList(payload, "risk_notes");
+  if (source?.entity.system_role === "self" || target?.entity.system_role === "self") {
+    warnings.push("Protected self records cannot be merged from the Web review flow.");
+  }
+  if (source && target) {
+    const targetFactsByType = new Map(
+      target.profile_facts.map((fact) => [fact.fact_type, fact.content]),
+    );
+    const conflictingFact = source.profile_facts.find((fact) => {
+      const targetContent = targetFactsByType.get(fact.fact_type);
+      return targetContent && targetContent !== fact.content;
+    });
+    if (conflictingFact) {
+      warnings.push(`Conflicting ${conflictingFact.fact_type} facts require review.`);
+    }
+  }
+  warnings.push("Accepted merges are audited and cannot be undone from this screen.");
+  return Array.from(new Set(warnings));
+}
+
 export function Candidates() {
   const [filters, setFilters] = useState<CandidateFilters>({
     status: "pending",
@@ -80,6 +158,9 @@ export function Candidates() {
   const [editedPayload, setEditedPayload] = useState("");
   const [showRawPayload, setShowRawPayload] = useState(false);
   const [supersedesCandidateId, setSupersedesCandidateId] = useState("");
+  const [mergeCards, setMergeCards] = useState<MergeCards>({loading: false, error: null});
+  const [confirmMergeTarget, setConfirmMergeTarget] = useState(false);
+  const [acknowledgeMergeRisk, setAcknowledgeMergeRisk] = useState(false);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,6 +198,8 @@ export function Candidates() {
     setEditedPayload(JSON.stringify(candidate.payload, null, 2));
     setShowRawPayload(false);
     setSupersedesCandidateId("");
+    setConfirmMergeTarget(false);
+    setAcknowledgeMergeRisk(false);
   }
 
   function mergeCandidate(candidate: Candidate) {
@@ -124,8 +207,41 @@ export function Candidates() {
     setCandidates((current) => current.map((item) => (item.id === candidate.id ? candidate : item)));
     setEditedPayload(JSON.stringify(candidate.payload, null, 2));
     setSupersedesCandidateId("");
+    setConfirmMergeTarget(false);
+    setAcknowledgeMergeRisk(false);
     setError(null);
   }
+
+  useEffect(() => {
+    setConfirmMergeTarget(false);
+    setAcknowledgeMergeRisk(false);
+    if (!selected || selected.candidate_type !== "merge") {
+      setMergeCards({loading: false, error: null});
+      return undefined;
+    }
+    const sourceId = payloadString(selected.payload, "source_entity_id");
+    const targetId = payloadString(selected.payload, "target_entity_id") || selected.target_entity_id;
+    if (!sourceId || !targetId) {
+      setMergeCards({loading: false, error: "Merge candidate is missing source or target."});
+      return undefined;
+    }
+    let active = true;
+    setMergeCards({loading: true, error: null});
+    Promise.all([getContextCard(sourceId), getContextCard(targetId)])
+      .then(([source, target]) => {
+        if (active) {
+          setMergeCards({source, target, loading: false, error: null});
+        }
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setMergeCards({loading: false, error: formatApiError(err)});
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [selected?.id, selected?.status]);
 
   function action(endpoint: string, payload: Record<string, unknown> = {}) {
     if (!selected) {
@@ -166,7 +282,10 @@ export function Candidates() {
 
   const selectedIsResolved = selected ? terminalStatuses.has(selected.status) : true;
   const selectedIsReviewOnly = selected ? reviewOnlyTypes.has(selected.candidate_type) : false;
-  const canCanonicalize = Boolean(selected && !selectedIsResolved && !selectedIsReviewOnly);
+  const selectedIsMerge = selected?.candidate_type === "merge";
+  const mergeReady = !selectedIsMerge || (confirmMergeTarget && acknowledgeMergeRisk);
+  const canCanonicalize = Boolean(selected && !selectedIsResolved && !selectedIsReviewOnly && mergeReady);
+  const canEditAccept = canCanonicalize && !selectedIsMerge;
   const canResolve = Boolean(selected && !selectedIsResolved);
 
   return (
@@ -309,6 +428,16 @@ export function Candidates() {
                   <dd>{rawRefSummary(selected.supersedes_record_ref)}</dd>
                 </div>
               </dl>
+              {selectedIsMerge ? (
+                <MergeReview
+                  candidate={selected}
+                  mergeCards={mergeCards}
+                  confirmMergeTarget={confirmMergeTarget}
+                  acknowledgeMergeRisk={acknowledgeMergeRisk}
+                  onConfirmMergeTarget={setConfirmMergeTarget}
+                  onAcknowledgeMergeRisk={setAcknowledgeMergeRisk}
+                />
+              ) : null}
               <div className="action-row">
                 <button type="button" disabled={!canCanonicalize} onClick={() => action("accept")}>
                   Accept
@@ -369,9 +498,11 @@ export function Candidates() {
                       onChange={(event) => setEditedPayload(event.target.value)}
                     />
                   </label>
-                  <button type="button" disabled={!canCanonicalize} onClick={editAccept}>
-                    {canCanonicalize ? "Edit accept" : "Edit accept unavailable"}
-                  </button>
+                  {selectedIsMerge ? null : (
+                    <button type="button" disabled={!canEditAccept} onClick={editAccept}>
+                      {canEditAccept ? "Edit accept" : "Edit accept unavailable"}
+                    </button>
+                  )}
                   <pre>{JSON.stringify(selected.payload, null, 2)}</pre>
                 </section>
               ) : null}
@@ -424,5 +555,108 @@ export function Candidates() {
         </section>
       </div>
     </section>
+  );
+}
+
+function MergeReview({
+  candidate,
+  mergeCards,
+  confirmMergeTarget,
+  acknowledgeMergeRisk,
+  onConfirmMergeTarget,
+  onAcknowledgeMergeRisk,
+}: {
+  candidate: Candidate;
+  mergeCards: MergeCards;
+  confirmMergeTarget: boolean;
+  acknowledgeMergeRisk: boolean;
+  onConfirmMergeTarget: (value: boolean) => void;
+  onAcknowledgeMergeRisk: (value: boolean) => void;
+}) {
+  const payload = candidate.payload;
+  const sourceId = payloadString(payload, "source_entity_id");
+  const targetId = payloadString(payload, "target_entity_id") || candidate.target_entity_id || "";
+  const sourceName = contextName(mergeCards.source, sourceId || "Source");
+  const targetName = contextName(mergeCards.target, targetId || "Target");
+  const fields = payloadStringList(payload, "fields_to_merge");
+  const warnings = mergeWarnings(payload, mergeCards.source, mergeCards.target);
+
+  return (
+    <section className="merge-review" aria-labelledby="merge-review-title">
+      <div className="merge-review-header">
+        <h3 id="merge-review-title">Merge review</h3>
+        <span className="status-chip">
+          {sourceName} {"->"} {targetName}
+        </span>
+      </div>
+      {mergeCards.loading ? <p className="muted">Loading merge comparison...</p> : null}
+      {mergeCards.error ? <p className="error">{mergeCards.error}</p> : null}
+      <div className="merge-review-grid">
+        <MergeCard title="Source" card={mergeCards.source} fallbackName={sourceName} />
+        <MergeCard title="Target" card={mergeCards.target} fallbackName={targetName} />
+      </div>
+      {fields.length > 0 ? (
+        <p className="muted">Merge fields: {fields.join(", ")}</p>
+      ) : null}
+      <ul className="warning-list">
+        {warnings.map((warning) => (
+          <li key={warning}>{warning}</li>
+        ))}
+      </ul>
+      <div className="confirm-list">
+        <label>
+          <input
+            type="checkbox"
+            checked={confirmMergeTarget}
+            onChange={(event) => onConfirmMergeTarget(event.target.checked)}
+          />
+          <span>Confirm target {targetName}</span>
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={acknowledgeMergeRisk}
+            onChange={(event) => onAcknowledgeMergeRisk(event.target.checked)}
+          />
+          <span>Acknowledge merge audit and risk notes</span>
+        </label>
+      </div>
+    </section>
+  );
+}
+
+function MergeCard({
+  title,
+  card,
+  fallbackName,
+}: {
+  title: "Source" | "Target";
+  card: ContextCard | undefined;
+  fallbackName: string;
+}) {
+  const edgeTypes = card?.relationship_edges.map((edge) => edge.relation_type) ?? [];
+  return (
+    <article className="merge-card">
+      <h4>{title}</h4>
+      <strong>{contextName(card, fallbackName)}</strong>
+      <dl className="definition-list compact">
+        <div>
+          <dt>Aliases</dt>
+          <dd>{aliasSummary(card)}</dd>
+        </div>
+        <div>
+          <dt>Facts</dt>
+          <dd>{factSummary(card?.profile_facts ?? []).join("; ")}</dd>
+        </div>
+        <div>
+          <dt>Edges</dt>
+          <dd>{edgeTypes.length > 0 ? edgeTypes.join(", ") : "No relationships"}</dd>
+        </div>
+        <div>
+          <dt>Notes</dt>
+          <dd>{observationSummary(card).join("; ")}</dd>
+        </div>
+      </dl>
+    </article>
   );
 }

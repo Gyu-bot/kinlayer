@@ -437,13 +437,16 @@ Notes:
 - `payload` is JSONB in DB.
 - API/Pydantic validates `payload` by `candidate_type`.
 - Accepting a candidate immediately writes canonical records.
-- `merge` candidates are review-only until the person merge execution API is implemented.
+- `merge` candidates execute only through candidate accept after review or explicit current-turn
+  user confirmation.
 - Batch changesets are not MVP.
 
 ### Person merge contract
 
-Person merge is a reviewed canonical maintenance operation. AI agents may propose
-`merge` candidates, but they must not directly merge people.
+Person merge is a reviewed canonical maintenance operation. AI agents may propose `merge`
+candidates and may execute the merge candidate only when the current turn contains explicit user
+confirmation for the exact source-target merge. Unconfirmed or weak identity evidence must remain a
+candidate or clarification flow.
 
 Merge payload fields:
 

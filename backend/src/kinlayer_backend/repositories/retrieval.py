@@ -9,7 +9,7 @@ class RetrievalRepository:
         self.session = session
 
     def entities(self) -> list[Entity]:
-        statement = select(Entity).where(Entity.status != "deleted").order_by(Entity.display_name)
+        statement = select(Entity).where(Entity.status == "active").order_by(Entity.display_name)
         return self.session.execute(statement).scalars().all()
 
     def aliases(self) -> list[EntityAlias]:

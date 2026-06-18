@@ -352,6 +352,65 @@ def test_context_card_returns_entity_relationship_context_and_provenance(client)
     assert "AK" in card["retrieval_hints"]["aliases"]
 
 
+def test_merge_accept_preserves_context_retrieval_card_and_graph_continuity(client) -> None:
+    target = create_person(client, "Alex Kim")
+    source = create_person(client, "Alex K.")
+    colleague = create_person(client, "Jordan Lee")
+    create_alias(client, source["id"], "AK")
+    edge = create_edge(client, source["id"], colleague["id"])
+    observation = create_observation(
+        client,
+        source["id"],
+        "Alex prefers concise updates before planning meetings.",
+        observation_type="communication_preference",
+    )
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "merge",
+            "target_entity_id": target["id"],
+            "payload": {
+                "source_entity_id": source["id"],
+                "target_entity_id": target["id"],
+                "reason": "Alias and context indicate a duplicate.",
+                "fields_to_merge": ["aliases", "profile_facts", "edges", "observations"],
+            },
+            "confidence": 0.9,
+            "created_by": "user",
+        },
+    ).json()
+    accepted = client.post(f"/api/candidates/{candidate['id']}/accept")
+    assert accepted.status_code == 200
+
+    retrieve = client.post("/api/context/retrieve", json={"query": "AK concise updates"})
+    assert retrieve.status_code == 200
+    matched_ids = {item["entity_id"] for item in retrieve.json()["matched_entities"]}
+    assert target["id"] in matched_ids
+    assert source["id"] not in matched_ids
+    assert observation["content"] in retrieve.text
+
+    pack = client.post("/api/context/pack", json={"query": "AK concise updates"})
+    assert pack.status_code == 200
+    packed_ids = {item["entity_id"] for item in pack.json()["context_pack"]["matched_entities"]}
+    assert target["id"] in packed_ids
+    assert source["id"] not in packed_ids
+
+    source_card = client.get(f"/api/entities/{source['id']}/context-card")
+    assert source_card.status_code == 200
+    card = source_card.json()
+    assert card["entity"]["id"] == target["id"]
+    assert [item["id"] for item in card["communication_context"]] == [observation["id"]]
+
+    graph = client.get(f"/api/graph/ego/{source['id']}")
+    assert graph.status_code == 200
+    body = graph.json()
+    assert body["focal_entity_id"] == target["id"]
+    node_ids = {node["entity_id"] for node in body["nodes"]}
+    assert node_ids == {target["id"], colleague["id"]}
+    assert body["edges"][0]["edge_id"] == edge["id"]
+    assert body["edges"][0]["from_entity_id"] == target["id"]
+
+
 def test_context_card_excludes_invalid_legacy_edge_types(client) -> None:
     user = create_person(client, "User", system_role="self", is_system=True)
     alex = create_person(client, "Alex Kim")

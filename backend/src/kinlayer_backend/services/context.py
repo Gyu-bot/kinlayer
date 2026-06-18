@@ -96,6 +96,8 @@ class ContextService:
         entity = self.session.get(Entity, entity_id)
         if not entity:
             raise api_error(404, "not_found", "Entity not found.")
+        entity = self._redirect_merged_entity(entity)
+        entity_id = entity.id
         aliases = self._aliases(entity_id)
         facts = self._facts(entity_id)
         edges = self._edges(entity_id)
@@ -139,6 +141,15 @@ class ContextService:
                 "entity_type": entity.entity_type,
             },
         }
+
+    def _redirect_merged_entity(self, entity: Entity) -> Entity:
+        if entity.status != "merged":
+            return entity
+        merged_ref = (entity.properties or {}).get("merged_entity_ref")
+        if not merged_ref or not merged_ref.startswith("entities:"):
+            return entity
+        target = self.session.get(Entity, merged_ref.split(":", 1)[1])
+        return target or entity
 
     def _retrieve(self, payload: dict[str, Any]) -> RetrievalResult:
         return self.retrieval.retrieve(

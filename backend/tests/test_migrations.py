@@ -106,3 +106,21 @@ def test_agent_write_operation_audit_migration_defines_required_table() -> None:
         "bounded_excerpt",
     ]:
         assert f'"{column}"' in content
+
+
+def test_person_merge_migration_defines_required_table() -> None:
+    migration = Path("backend/alembic/versions/20260612_0006_person_merge_records.py")
+    content = migration.read_text()
+
+    assert '"entity_merges"' in content
+    for column in [
+        "source_entity_id",
+        "target_entity_id",
+        "candidate_id",
+        "merge_plan",
+        "conflict_decisions",
+        "actor",
+        "canonical_record_ref",
+        "previous_refs",
+    ]:
+        assert f'"{column}"' in content

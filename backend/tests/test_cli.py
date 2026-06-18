@@ -141,6 +141,90 @@ def test_person_resolve_posts_agent_resolution_payload(monkeypatch) -> None:
     assert json.loads(result.stdout)["matches"][0]["entity_id"] == "entity-id"
 
 
+def test_person_duplicates_posts_duplicate_detection_payload(monkeypatch) -> None:
+    calls = []
+
+    def fake_post(url, headers, json, timeout):
+        calls.append((url, json))
+        return DummyResponse(
+            200,
+            {
+                "source_entity_id": "source-id",
+                "recommended_action": "create_merge_candidate",
+                "candidates": [
+                    {
+                        "source_entity_id": "source-id",
+                        "target_entity_id": "target-id",
+                        "display_name": "Alex Kim",
+                        "score": 1.0,
+                        "match_reasons": ["exact_alias_overlap"],
+                        "recommended_action": "create_merge_candidate",
+                        "reason": "Shared alias.",
+                        "fields_to_merge": ["aliases", "observations"],
+                        "risk_notes": ["Review first."],
+                    }
+                ],
+                "created_candidate": None,
+            },
+        )
+
+    monkeypatch.setattr(cli.httpx, "post", fake_post)
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["person", "duplicates", "source-id", "--limit", "3", "--json"],
+    )
+
+    assert result.exit_code == 0
+    assert calls[0][0].endswith("/api/entities/duplicate-candidates")
+    assert calls[0][1] == {"source_entity_id": "source-id", "limit": 3, "create_candidate": False}
+    assert json.loads(result.stdout)["recommended_action"] == "create_merge_candidate"
+
+
+def test_person_duplicates_can_create_merge_candidate_with_evidence(monkeypatch) -> None:
+    calls = []
+
+    def fake_post(url, headers, json, timeout):
+        calls.append((url, json))
+        return DummyResponse(
+            201,
+            {
+                "source_entity_id": "source-id",
+                "recommended_action": "create_merge_candidate",
+                "candidates": [],
+                "created_candidate": {"id": "merge-candidate-id", "candidate_type": "merge"},
+            },
+        )
+
+    monkeypatch.setattr(cli.httpx, "post", fake_post)
+
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "person",
+            "duplicates",
+            "source-id",
+            "--create-candidate",
+            "--evidence-episode-id",
+            "episode-id",
+            "--evidence-excerpt",
+            "Alex and AK are the same person.",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert calls[0][1]["create_candidate"] is True
+    assert calls[0][1]["evidence"] == [
+        {
+            "episode_id": "episode-id",
+            "excerpt": "Alex and AK are the same person.",
+            "confidence": 0.9,
+        }
+    ]
+    assert json.loads(result.stdout)["created_candidate"]["id"] == "merge-candidate-id"
+
+
 def test_embedding_status_cli_reads_api(monkeypatch) -> None:
     def fake_get(url, headers, timeout):
         return DummyResponse(200, {"provider": "disabled", "status": "disabled"})
@@ -217,6 +301,87 @@ def test_candidate_list_and_show_support_json_output(monkeypatch) -> None:
     assert json.loads(shown.stdout)["id"] == "candidate-id"
 
 
+def test_candidate_show_renders_merge_source_target_summary(monkeypatch) -> None:
+    calls = []
+
+    def fake_get(url, headers, timeout):
+        calls.append(url)
+        if url.endswith("/api/candidates/merge-candidate-id"):
+            return DummyResponse(
+                200,
+                {
+                    "id": "merge-candidate-id",
+                    "candidate_type": "merge",
+                    "status": "pending",
+                    "payload": {
+                        "source_entity_id": "source-id",
+                        "target_entity_id": "target-id",
+                        "reason": "Shared alias.",
+                        "fields_to_merge": ["aliases", "observations"],
+                        "risk_notes": ["Review first."],
+                    },
+                    "evidence": [],
+                    "confidence": 0.9,
+                    "sensitivity": "medium",
+                    "suggested_action": "review",
+                    "created_by": "user",
+                    "created_at": "2026-06-10T00:00:00Z",
+                    "updated_at": "2026-06-10T00:00:00Z",
+                    "resolved_at": None,
+                    "resolved_by": None,
+                    "resolution_note": None,
+                    "target_entity_id": "target-id",
+                    "canonical_record_ref": None,
+                    "supersedes_candidate_id": None,
+                    "supersedes_record_ref": None,
+                },
+            )
+        if url.endswith("/api/entities/source-id/context-card"):
+            return DummyResponse(
+                200,
+                {
+                    "entity": {"id": "source-id", "display_name": "Alex K.", "status": "active"},
+                    "aliases": [{"alias": "AK"}],
+                    "profile_facts": [{"fact_type": "organization", "content": "Example Corp"}],
+                    "relationship_edges": [{"relation_type": "former_coworker"}],
+                    "recent_context": [],
+                    "stable_context": [],
+                    "communication_context": [{"content": "Prefers concise updates."}],
+                    "provenance_summary": {"evidence_count": 1},
+                },
+            )
+        if url.endswith("/api/entities/target-id/context-card"):
+            return DummyResponse(
+                200,
+                {
+                    "entity": {"id": "target-id", "display_name": "Alex Kim", "status": "active"},
+                    "aliases": [{"alias": "알렉스"}],
+                    "profile_facts": [],
+                    "relationship_edges": [],
+                    "recent_context": [],
+                    "stable_context": [],
+                    "communication_context": [],
+                    "provenance_summary": {"evidence_count": 0},
+                },
+            )
+        raise AssertionError(url)
+
+    monkeypatch.setattr(cli.httpx, "get", fake_get)
+
+    result = CliRunner().invoke(cli.app, ["candidate", "show", "merge-candidate-id"])
+
+    assert result.exit_code == 0
+    assert "Merge review: Alex K. -> Alex Kim" in result.stdout
+    assert "Reason: Shared alias." in result.stdout
+    assert "Fields: aliases, observations" in result.stdout
+    assert "Risk: Review first." in result.stdout
+    assert calls == [
+        "http://127.0.0.1:8765/api/candidates/merge-candidate-id",
+        "http://127.0.0.1:8765/api/entities/source-id/context-card",
+        "http://127.0.0.1:8765/api/entities/target-id/context-card",
+    ]
+
+
 def test_candidate_actions_call_matching_endpoints_and_report_canonical_ref(monkeypatch) -> None:
     calls = []
 
@@ -233,7 +398,19 @@ def test_candidate_actions_call_matching_endpoints_and_report_canonical_ref(monk
 
     monkeypatch.setattr(cli.httpx, "post", fake_post)
 
-    accepted = CliRunner().invoke(cli.app, ["candidate", "accept", "candidate-id", "--json"])
+    accepted = CliRunner().invoke(
+        cli.app,
+        [
+            "candidate",
+            "accept",
+            "candidate-id",
+            "--resolved-by",
+            "ai_agent",
+            "--note",
+            "User confirmed the merge.",
+            "--json",
+        ],
+    )
     rejected = CliRunner().invoke(
         cli.app,
         ["candidate", "reject", "candidate-id", "--resolution-note", "Nope", "--json"],
@@ -246,7 +423,10 @@ def test_candidate_actions_call_matching_endpoints_and_report_canonical_ref(monk
     assert archived.exit_code == 0
     assert clarified.exit_code == 0
     assert calls[0][0].endswith("/api/candidates/candidate-id/accept")
+    assert calls[0][1]["resolved_by"] == "ai_agent"
+    assert calls[0][1]["resolution_note"] == "User confirmed the merge."
     assert calls[1][0].endswith("/api/candidates/candidate-id/reject")
+    assert calls[1][1]["resolved_by"] == "user"
     assert calls[1][1]["resolution_note"] == "Nope"
     assert calls[2][0].endswith("/api/candidates/candidate-id/archive")
     assert calls[3][0].endswith("/api/candidates/candidate-id/needs-clarification")

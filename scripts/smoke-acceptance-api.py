@@ -192,6 +192,8 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
     self_id = fixtures["self_id"]
     alex_id = fixtures["people"]["alex"]
     minji_id = fixtures["people"]["minji"]
+    merge_source_id = fixtures["people"]["merge_source"]
+    merge_target_id = fixtures["people"]["merge_target"]
     stamp = str(int(time.time()))
 
     assert_true(client.get("/api/system/health")["status"] == "ok", "system health failed")
@@ -346,6 +348,94 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
     )
     assert_true(unresolved_pronoun["ambiguity"] == "no_match", "pronoun-only resolve should not match")
     assert_true(unresolved_pronoun["matches"] == [], "pronoun-only resolve returned matches")
+
+    duplicate_detection = client.post(
+        "/api/entities/duplicate-candidates",
+        {
+            "source_entity_id": merge_source_id,
+            "limit": 5,
+            "create_candidate": False,
+        },
+    )
+    assert_true(
+        duplicate_detection["recommended_action"] == "create_merge_candidate",
+        "duplicate detection did not recommend merge candidate",
+    )
+    assert_true(
+        any(
+            item["target_entity_id"] == merge_target_id
+            and "exact_alias_overlap" in item["match_reasons"]
+            for item in duplicate_detection["candidates"]
+        ),
+        "duplicate detection missed fixture target alias overlap",
+    )
+    merge_episode = episode(
+        client,
+        f"merge-candidate-{stamp}",
+        "Acceptance Jordan Lee and Acceptance J. Lee are the same person.",
+    )
+    merge_create = client.post(
+        "/api/entities/duplicate-candidates",
+        {
+            "source_entity_id": merge_source_id,
+            "limit": 5,
+            "create_candidate": True,
+            "evidence": [
+                {
+                    "episode_id": merge_episode["id"],
+                    "excerpt": merge_episode["body_excerpt"],
+                    "confidence": 0.95,
+                }
+            ],
+        },
+    )
+    merge_candidate = merge_create["created_candidate"]
+    assert_true(merge_candidate["candidate_type"] == "merge", "duplicate create did not return merge candidate")
+    merge_detail = client.get(f"/api/candidates/{merge_candidate['id']}")
+    assert_true(merge_detail["evidence"][0]["episode_id"] == merge_episode["id"], "merge evidence missing")
+    accepted_merge = client.post(
+        f"/api/candidates/{merge_candidate['id']}/accept",
+        {
+            "resolved_by": "ai_agent",
+            "resolution_note": "Acceptance smoke user confirmation for exact duplicate merge.",
+        },
+    )
+    assert_true(
+        accepted_merge["canonical_record_ref"] == f"entities:{merge_target_id}",
+        "merge accept canonical ref did not point to target entity",
+    )
+    assert_true(accepted_merge["resolved_by"] == "ai_agent", "merge accept actor not preserved")
+    merged_source = client.get(f"/api/entities/{merge_source_id}")
+    assert_true(merged_source["status"] == "merged", "merge source status not merged")
+    assert_true(merged_source["confirmation_status"] == "merged", "merge source confirmation not merged")
+    assert_true(
+        merged_source["properties"]["merged_entity_ref"] == f"entities:{merge_target_id}",
+        "merge source missing target reference",
+    )
+    merge_target_card = client.get(f"/api/entities/{merge_target_id}/context-card")
+    merge_target_text = json.dumps(merge_target_card, ensure_ascii=False)
+    assert_true("Acceptance J Lee" in merge_target_text, "merge source alias did not move to target")
+    assert_true(
+        "concise source-target summaries" in merge_target_text,
+        "merge source observation did not move to target",
+    )
+    merge_retrieved = client.post(
+        "/api/context/retrieve",
+        {
+            "query": "Acceptance J Lee concise source target summaries",
+            "entity_hints": [merge_source_id, merge_target_id],
+            "focal_entity_id": self_id,
+            "include_debug": True,
+            "limit": 5,
+        },
+    )
+    merge_matches = {item["entity_id"] for item in merge_retrieved["matched_entities"]}
+    assert_true(merge_target_id in merge_matches, "merged target missing from retrieval")
+    assert_true(merge_source_id not in merge_matches, "merged source surfaced as active retrieval match")
+    merge_graph = client.get(f"/api/graph/ego/{self_id}?depth=1")
+    merge_graph_nodes = {node["entity_id"] for node in merge_graph["nodes"]}
+    assert_true(merge_target_id in merge_graph_nodes, "merge target missing from graph")
+    assert_true(merge_source_id not in merge_graph_nodes, "merge source remained active graph node")
 
     reject_candidate = observation_candidate(client, minji_id, self_id, f"Reject candidate smoke {stamp}", f"reject-{stamp}")
     archive_candidate = observation_candidate(client, minji_id, self_id, f"Archive candidate smoke {stamp}", f"archive-{stamp}")
@@ -570,6 +660,7 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
         "alex_id": alex_id,
         "minji_id": minji_id,
         "accepted_canonical_record_ref": fixtures["accepted_canonical_record_ref"],
+        "accepted_merge_ref": accepted_merge["canonical_record_ref"],
         "api_smoke": "ok",
     }
 

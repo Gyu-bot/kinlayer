@@ -274,6 +274,62 @@ Semantics:
 - Protected `self` is excluded unless the request explicitly sets `source.include_self = true` or
   uses `source.system_role = self`.
 
+### `POST /api/entities/duplicate-candidates`
+
+Purpose: explicit duplicate-person check that can optionally create a pending `merge` candidate. It
+does not mutate canonical entity references or perform an automatic merge.
+
+Request:
+
+```json
+{
+  "source_entity_id": "uuid",
+  "limit": 5,
+  "create_candidate": true,
+  "evidence": [
+    {
+      "episode_id": "uuid",
+      "excerpt": "Alex K. and 알렉스 refer to the same person.",
+      "confidence": 0.85
+    }
+  ],
+  "created_by": "ai_agent"
+}
+```
+
+Response:
+
+```json
+{
+  "source_entity_id": "uuid",
+  "recommended_action": "create_merge_candidate",
+  "candidates": [
+    {
+      "source_entity_id": "uuid",
+      "target_entity_id": "uuid",
+      "display_name": "Alex Kim",
+      "score": 1.0,
+      "match_reasons": ["exact_alias_overlap"],
+      "recommended_action": "create_merge_candidate",
+      "reason": "Alex K. and Alex Kim share duplicate signals: exact_alias_overlap.",
+      "fields_to_merge": ["aliases", "profile_facts", "edges", "observations"],
+      "risk_notes": ["Review before merging; Kinlayer never auto-merges duplicate people."]
+    }
+  ],
+  "created_candidate": null
+}
+```
+
+Semantics:
+
+- Recommended actions are `no_match`, `create_merge_candidate`, and `needs_clarification`.
+- Exact alias/name overlap is strong; fuzzy name similarity can rank possible duplicates but still
+  requires review.
+- `create_candidate = true` requires traceable evidence and persists a pending `merge` candidate.
+- Agents may accept the resulting merge candidate only after explicit current-turn user confirmation
+  for the exact source-target pair.
+- Protected `self` cannot be source or target for normal person duplicate/merge flow.
+
 ### `PATCH /api/entities/{id}`
 
 Purpose: update entity lightweight metadata/policies.
@@ -589,8 +645,8 @@ Validation:
   confidence in `[0, 1]`, source ref, body hash, and actor.
 - Candidate responses include evidence source metadata when available: `source_type`, `source_ref`,
   `source_description`, `body_hash`, and `actor`.
-- `merge`, `conflict`, and `supersede` candidates are review-only until their specific execution
-  workflows exist; normal candidate accept must not silently merge people.
+- `merge` candidate accept executes the person merge workflow. `conflict` and `supersede` remain
+  review-only until their specific execution workflows exist.
 
 ### `POST /api/agent-writes/validate`
 
@@ -669,6 +725,18 @@ Semantics: archive candidate.
 
 Purpose: accept candidate and immediately write canonical record.
 
+Request:
+
+```json
+{
+  "resolved_by": "ai_agent",
+  "resolution_note": "User explicitly confirmed merging Alex K. into Alex Kim in the current turn."
+}
+```
+
+Both fields are optional; clients should send them when an agent accepts a candidate after explicit
+user confirmation.
+
 Response:
 
 ```json
@@ -681,6 +749,19 @@ Response:
   "evidence": []
 }
 ```
+
+Merge candidate accept:
+
+- Executes in one service transaction.
+- Repoints selected source aliases, non-conflicting facts, active relationship edges, observation
+  subjects, and related observation entity refs to the target.
+- Marks the source entity `status = merged`, `confirmation_status = merged`, and stores
+  `properties.merged_entity_ref = entities:<target_id>`.
+- Creates an `entity_merges` audit row linked to the candidate, source, target, merge plan,
+  conflict decisions, actor, canonical record ref, and previous refs.
+- Rejects source equals target and any normal merge involving protected `self`.
+- Default active entity lists, retrieval, context pack/retrieve, context card, and graph treat the
+  target as canonical after merge.
 
 ### `POST /api/candidates/{id}/edit-accept`
 

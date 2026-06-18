@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
@@ -11,6 +11,8 @@ from kinlayer_backend.schemas.entities import (
     AliasList,
     AliasPatch,
     AliasRead,
+    DuplicateCandidateRequest,
+    DuplicateCandidateResponse,
     EntityCreate,
     EntityFactCreate,
     EntityFactList,
@@ -59,6 +61,18 @@ def list_entities(
 @router.post("/api/entities/resolve", response_model=EntityResolveResponse)
 def resolve_entity(payload: EntityResolveRequest, session: SessionDep):
     return EntityService(session).resolve_entity(payload.model_dump())
+
+
+@router.post("/api/entities/duplicate-candidates", response_model=DuplicateCandidateResponse)
+def duplicate_candidates(
+    payload: DuplicateCandidateRequest,
+    session: SessionDep,
+    response: Response,
+):
+    result = EntityService(session).duplicate_candidates(payload.model_dump())
+    if result["created_candidate"] is not None:
+        response.status_code = 201
+    return result
 
 
 @router.get("/api/entities/{entity_id}", response_model=EntityRead)

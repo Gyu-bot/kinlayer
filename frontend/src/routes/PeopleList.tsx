@@ -112,6 +112,7 @@ export function PeopleList({onNavigate}: Props) {
             <option value="all">all</option>
             <option value="active">active</option>
             <option value="deprecated">deprecated</option>
+            <option value="merged">merged</option>
             <option value="deleted">deleted</option>
           </select>
         </label>

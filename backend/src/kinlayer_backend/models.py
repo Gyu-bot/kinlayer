@@ -391,6 +391,25 @@ class CandidateEvidence(Base):
         return self.episode.actor if self.episode else None
 
 
+class EntityMerge(Base, TimestampMixin):
+    __tablename__ = "entity_merges"
+    __table_args__ = (
+        Index("ix_entity_merges_source_entity_id", "source_entity_id"),
+        Index("ix_entity_merges_target_entity_id", "target_entity_id"),
+        Index("ix_entity_merges_candidate_id", "candidate_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    source_entity_id: Mapped[str] = mapped_column(ForeignKey("entities.id"), nullable=False)
+    target_entity_id: Mapped[str] = mapped_column(ForeignKey("entities.id"), nullable=False)
+    candidate_id: Mapped[str | None] = mapped_column(ForeignKey("candidates.id"))
+    merge_plan: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    conflict_decisions: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    actor: Mapped[str] = mapped_column(String(80), nullable=False)
+    canonical_record_ref: Mapped[str] = mapped_column(String(120), nullable=False)
+    previous_refs: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+
+
 class AgentWriteOperationAudit(Base, TimestampMixin):
     __tablename__ = "agent_write_operation_audits"
     __table_args__ = (

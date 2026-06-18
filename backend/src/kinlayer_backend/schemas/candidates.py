@@ -70,7 +70,10 @@ class MergePayload(APIModel):
     target_entity_id: str
     reason: str
     fields_to_merge: list[str] = Field(default_factory=list)
+    merge_plan: dict[str, Any] = Field(default_factory=dict)
+    field_conflict_policy: dict[str, Any] = Field(default_factory=dict)
     risk_notes: list[str] = Field(default_factory=list)
+    merged_entity_ref: str | None = None
 
 
 class ConflictPayload(APIModel):
