@@ -254,10 +254,53 @@ Good: "During the week of 2026-06-08 to 2026-06-14 (Asia/Seoul), the agent sugge
 Do not include internal UUIDs in human-facing `content` unless the UI/tool specifically asks for a
 debug payload.
 
-### 8.2 Temporal recording rules
+### 8.2 Prefer typed records over observation prose
 
-Use temporal fields only when the time matters. Do not stamp every observation with a date just because
-the record is being created.
+Do not use observations as a dumping ground for facts that Kinlayer can store as typed records.
+
+Use typed records for structurally queryable or correctable facts:
+
+| Source wording | Better target |
+| --- | --- |
+| "혜영은 전 연인이다." | `relationship_edge` with `relation_type: "former_partner"` |
+| "8년 만났다." | relationship edge `properties` or a relationship-scoped fact, if supported |
+| "중학교 영어교사." | `profile_field` / `entity_facts` with an active `fact_type` |
+| "다솜은 치아바타를 좋아함." | a typed preference/profile fact when the fact model supports it |
+
+Observation should hold relationship judgment, coaching context, conversation strategy, and reusable
+context notes that are not cleanly typed:
+
+```text
+"최근 대화에서 민규는 혜영의 정서적 의존 때문에 관계 단절을 어렵게 느낀다고 설명했다."
+"혜영 관련 조언에서는 단순히 '연락 끊어'보다 안전한 경계 설정과 책임 분리를 다뤄야 한다."
+"다솜과의 초반 대화에서는 미래지향적/관계 프레이밍 표현이 부담이 될 수 있어 낮은 압박이 좋다."
+```
+
+Agent-write validation may return a non-blocking warning when observation content looks like it may
+belong in relationship edges, relationship properties, or entity facts. The API must not invent a
+replacement typed record; the agent or reviewer should submit the better typed candidate explicitly.
+
+### 8.3 Observation content contract
+
+Observation `content` remains natural language, but it must be compact and reviewable:
+
+```text
+- one observation = one claim, pattern, caution, or reusable context point;
+- usually 1-2 sentences;
+- roughly 300 characters unless the context truly requires more;
+- name the subject explicitly; avoid "그 사람", "저런 식", "that person", or other dangling references;
+- include temporal scope in `occurred_at`, `valid_from`/`valid_to`, or readable content such as "As of 2026-06-18".
+```
+
+The deterministic agent-write filter can warn about blank content, overlong content, dangling
+references, missing temporal scope, and typed-record boundary review. Warnings do not mean the API has
+semantically rewritten the payload; they are review diagnostics.
+
+### 8.4 Temporal recording rules
+
+For agent-submitted observations, prefer explicit temporal fields when the source gives event or
+applicability time. Do not stamp every observation with a date just because the record is being
+created, but do not drop known time information.
 
 Default granularity is date-level, not clock-time-level. Use exact times only when the source provides
 them or the distinction matters. If the storage/API field is a timestamp, the adapter may encode a
@@ -282,7 +325,7 @@ Examples:
 
 | Source wording | Better record |
 | --- | --- |
-| "이번주에 민지한테 짧게 답장하라고 제안했어." | Source-recorded date is 2026-06-12. Event/applicability range is 2026-06-08 to 2026-06-14 (Asia/Seoul). Use `valid_from`/`valid_to` for that date range if the candidate tool supports it. |
+| "이번주에 민지한테 짧게 답장하라고 제안했어." | Source-recorded date is 2026-06-12. Event/applicability range is 2026-06-08 to 2026-06-14 (Asia/Seoul). Use `valid_from`/`valid_to` for that date range. |
 | "어제 Alex가 다시 연락했어." | If the source-recorded date is 2026-06-12, the event date is 2026-06-11. Use `observation.occurred_at` or equivalent event-date field for 2026-06-11 if supported; content should say the absolute date. |
 | "요즘 Dana는 일정 변경에 예민해." | Use a readable anchor such as "as of 2026-06-12" in content; use `valid_from` only if the source implies a start date or current validity matters. The event date is not necessarily 2026-06-12. |
 | "Minji prefers concise replies." | No temporal field is needed unless the source says this is temporary or recent. |
@@ -301,11 +344,11 @@ The readable content may display the inclusive human range:
 2026-06-08 to 2026-06-14 (Asia/Seoul)
 ```
 
-If the current candidate tool cannot preserve event-date fields such as `occurred_at`, the adapter
-must still preserve the resolved absolute date or date range in `content`. Do not silently drop the
-temporal anchor.
+Candidate observation payloads support `occurred_at`, `valid_from`, and `valid_to`; adapters must
+preserve those fields through submit, accept/edit-accept, and canonical observation creation. Also keep
+a readable temporal anchor in `content` when it helps future reviewers understand the note.
 
-### 8.3 Record suggestions and advice with enough context
+### 8.5 Record suggestions and advice with enough context
 
 When recording an observation that a suggestion or advice was given, include:
 
@@ -332,7 +375,7 @@ Good:
 If storing the fact that the agent suggested something is not useful for future relationship context,
 prefer no write. Kinlayer is not a transcript archive.
 
-### 8.4 Preserve uncertainty and scope
+### 8.6 Preserve uncertainty and scope
 
 Do not upgrade weak statements into strong facts.
 
@@ -517,6 +560,7 @@ If the user says "Minji is important to me" or "I should be careful with Minji",
     "claim_type": "preference",
     "ai_use_policy": "cautious_use",
     "sensitivity": "medium",
+    "occurred_at": null,
     "valid_from": null,
     "valid_to": null
   },
@@ -727,6 +771,7 @@ Safer alternative when `communication_preference` is an active observation type:
     "claim_type": "preference",
     "ai_use_policy": "cautious_use",
     "sensitivity": "medium",
+    "occurred_at": null,
     "valid_from": null,
     "valid_to": null
   },
@@ -849,7 +894,7 @@ Treat 2026-06-12 as the source-recorded date, not necessarily the event date.
 Resolve "이번주" to the event/applicability range: 2026-06-08 through 2026-06-14 in Asia/Seoul.
 If storing this is useful, submit an `observation` candidate with self-contained content:
 "During the week of 2026-06-08 to 2026-06-14 (Asia/Seoul), the agent suggested that the user send Minji a concise reply rather than a long one."
-Use `valid_from`/`valid_to` for the week range if the candidate tool preserves those fields.
+Use `valid_from`/`valid_to` for the week range.
 ```
 
 ---

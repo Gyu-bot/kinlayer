@@ -55,6 +55,50 @@ def relationship_candidate(user_id: str, alex_id: str, episode_id: str, relation
     }
 
 
+def observation_candidate(person_id: str, episode_id: str, content: str) -> dict:
+    return {
+        "candidate_type": "observation",
+        "target_entity_id": person_id,
+        "payload": {
+            "subject_entity_id": person_id,
+            "observation_type": "relationship_pattern",
+            "content": content,
+            "claim_type": "pattern",
+            "sensitivity": "medium",
+            "ai_use_policy": "cautious_use",
+        },
+        "evidence": [{"episode_id": episode_id, "excerpt": content, "confidence": 0.9}],
+        "confidence": 0.72,
+        "sensitivity": "medium",
+        "suggested_action": "review",
+        "created_by": "ai_agent",
+    }
+
+
+def test_agent_write_validate_warns_about_observation_content_quality(client) -> None:
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+    content = "그 사람은 전 연인이고 8년 만났고 중학교 영어교사이며 치아바타를 좋아함. 그러니 연락 끊어."
+
+    response = client.post(
+        "/api/agent-writes/validate",
+        json={"write_type": "candidate", "payload": observation_candidate(alex["id"], episode["id"], content)},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accepted"] is True
+    warning_codes = {warning["code"] for warning in body["warnings"]}
+    assert "observation_content_dangling_reference" in warning_codes
+    assert "observation_content_missing_temporal_scope" in warning_codes
+    assert "observation_typed_record_boundary_review" in warning_codes
+    assert body["diagnostics"]["observation_content_contract"]["typed_record_boundary"] == [
+        "relationship edges",
+        "entity facts",
+        "relationship properties",
+    ]
+
+
 def test_agent_write_validate_normalizes_candidate_without_persisting(client, database_url) -> None:
     user = create_person(client, "Dana")
     alex = create_person(client, "Alex")

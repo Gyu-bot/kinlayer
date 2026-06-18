@@ -364,6 +364,11 @@ Notes:
 - One table covers both stable and recent context.
 - Retrieval buckets observations into `stable_context` vs `recent_context` at query time.
 - Repeated recent interactions can produce pattern observations via candidate flow.
+- Observation prose is for relationship judgment, coaching context, conversation strategy, and
+  reusable contextual notes. Structurable facts and durable relationships should use `entity_facts`,
+  `entity_edges`, or typed edge properties instead.
+- Candidate observation payloads preserve `occurred_at`, `valid_from`, and `valid_to` through
+  canonical observation creation.
 
 ---
 

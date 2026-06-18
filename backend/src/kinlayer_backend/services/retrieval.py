@@ -33,6 +33,10 @@ class RetrievedObservation:
     sensitivity: str
     ai_use_policy: str
     status: str
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    occurred_at: datetime | None = None
+    created_at: datetime | None = None
     surface_eligible: bool = True
 
 
@@ -228,6 +232,10 @@ class RetrievalService:
                         sensitivity=observation.sensitivity,
                         ai_use_policy=observation.ai_use_policy,
                         status=observation.status,
+                        valid_from=observation.valid_from,
+                        valid_to=observation.valid_to,
+                        occurred_at=observation.occurred_at,
+                        created_at=observation.created_at,
                         surface_eligible=observation.ai_use_policy != "never_surface",
                     )
                 )

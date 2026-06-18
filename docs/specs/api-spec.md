@@ -638,6 +638,8 @@ Response: candidate object.
 Validation:
 
 - `payload` validated by `candidate_type` using typed schemas.
+- `observation` candidate payload supports `occurred_at`, `valid_from`, and `valid_to`; accept
+  and edit-accept preserve those fields into canonical `observations`.
 - Evidence writes to `candidate_evidence` join table.
 - `created_by = ai_agent` candidates require at least one evidence item.
 - `created_by = ai_agent` candidates pass the deterministic agent write filter before persistence.
@@ -697,6 +699,9 @@ Filter rules:
 - unknown edge types return `relation_type_not_allowed` with the allowed edge-type list;
 - the filter validates evidence, entity refs, endpoint entity-type compatibility, and explicit
   user correction requirements for agent-submitted writes.
+- observation candidates may return non-blocking warnings for content quality issues such as
+  overlong content, dangling references, missing temporal scope, or typed-record boundary review;
+  the filter does not rewrite observation prose into facts or edges.
 
 ### `GET /api/candidates`
 

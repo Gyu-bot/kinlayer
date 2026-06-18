@@ -70,6 +70,9 @@ def test_candidate_payload_schemas_cover_supported_types() -> None:
             "observation_type": "communication_preference",
             "content": "Alex prefers concise follow-ups.",
             "claim_type": "pattern",
+            "occurred_at": "2026-06-16T00:00:00Z",
+            "valid_from": "2026-06-16T00:00:00Z",
+            "valid_to": "2026-06-30T00:00:00Z",
         },
         "merge": {
             "source_entity_id": "entity-1",
@@ -553,6 +556,94 @@ def test_accept_observation_candidate_writes_canonical_record_and_evidence(
         )
         assert len(evidence_rows) == 1
         assert evidence_rows[0].episode_id == episode["id"]
+
+
+def test_accept_observation_candidate_preserves_temporal_payload_fields(client) -> None:
+    person = create_person(client, "Alex")
+    content = (
+        "During the week of 2026-06-17 to 2026-06-23 (Asia/Seoul), Alex reports "
+        "that abrupt schedule changes feel stressful."
+    )
+    episode_response = client.post(
+        "/api/episodes",
+        json={
+            "source_type": "agent_conversation",
+            "source_ref": "thread-temporal-candidate",
+            "source_description": "Temporal candidate evidence",
+            "body_excerpt": content,
+            "body_hash": "sha256:temporal-candidate",
+            "actor": "ai_agent",
+            "occurred_at": "2026-06-18T00:00:00+09:00",
+            "sensitivity": "medium",
+            "retention_policy": "excerpt_only",
+        },
+    )
+    assert episode_response.status_code == 201
+    episode = episode_response.json()
+    created = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "observation",
+            "target_entity_id": person["id"],
+            "payload": {
+                "subject_entity_id": person["id"],
+                "observation_type": "recent_interaction",
+                "content": content,
+                "claim_type": "pattern",
+                "occurred_at": "2026-06-17T00:00:00+09:00",
+                "valid_from": "2026-06-17T00:00:00+09:00",
+                "valid_to": "2026-06-24T00:00:00+09:00",
+            },
+            "evidence": [{"episode_id": episode["id"], "excerpt": content, "confidence": 0.8}],
+            "confidence": 0.72,
+            "sensitivity": "medium",
+            "suggested_action": "review",
+            "created_by": "ai_agent",
+        },
+    )
+    assert created.status_code == 201
+    assert created.json()["payload"]["occurred_at"] == "2026-06-17T00:00:00+09:00"
+
+    accepted = client.post(f"/api/candidates/{created.json()['id']}/accept")
+
+    assert accepted.status_code == 200
+    observation_id = accepted.json()["canonical_record_ref"].split(":", 1)[1]
+    observation = client.get(f"/api/observations/{observation_id}").json()
+    assert observation["occurred_at"].startswith("2026-06-17T00:00:00")
+    assert observation["valid_from"].startswith("2026-06-17T00:00:00")
+    assert observation["valid_to"].startswith("2026-06-24T00:00:00")
+
+
+def test_accept_observation_candidate_rejects_invalid_legacy_temporal_payload(
+    client,
+    database_url,
+) -> None:
+    person = create_person(client, "Alex")
+    with create_session_maker(Settings(database_url=database_url))() as session:
+        candidate = Candidate(
+            candidate_type="observation",
+            target_entity_id=person["id"],
+            payload={
+                "subject_entity_id": person["id"],
+                "observation_type": "recent_interaction",
+                "content": "Alex followed up recently.",
+                "claim_type": "pattern",
+                "occurred_at": "not-a-date",
+            },
+            confidence=0.72,
+            sensitivity="medium",
+            suggested_action="review",
+            created_by="ai_agent",
+        )
+        session.add(candidate)
+        session.commit()
+        candidate_id = candidate.id
+
+    accepted = client.post(f"/api/candidates/{candidate_id}/accept")
+
+    assert accepted.status_code == 422
+    assert accepted.json()["error"]["code"] == "validation_error"
+    assert accepted.json()["error"]["message"] == "Invalid occurred_at."
 
 
 def test_edit_accept_validates_edited_payload_and_writes_edited_record(client) -> None:

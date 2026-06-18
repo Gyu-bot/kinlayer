@@ -63,6 +63,7 @@ class ObservationPayload(APIModel):
     sensitivity: str = "medium"
     valid_from: datetime | None = None
     valid_to: datetime | None = None
+    occurred_at: datetime | None = None
 
 
 class MergePayload(APIModel):

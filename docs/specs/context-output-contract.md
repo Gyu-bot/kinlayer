@@ -223,6 +223,10 @@ source_episode_ids or evidence refs
       "score": 0.77,
       "semantic_score": 0.83,
       "recency_score": 0.62,
+      "occurred_at": "2026-06-17T00:00:00Z",
+      "valid_from": "2026-06-18T00:00:00Z",
+      "valid_to": null,
+      "created_at": "2026-06-18T09:00:00Z",
       "status": "active"
     }
   ],
@@ -233,6 +237,10 @@ source_episode_ids or evidence refs
   }
 }
 ```
+
+Observation temporal fields must be carried through retrieval/context outputs when present. Treat
+`occurred_at` as the described event time, `valid_from`/`valid_to` as the applicability range, and
+`created_at` only as the canonical storage time.
 
 ---
 
