@@ -78,6 +78,43 @@ There is no generic `kinlayer api` passthrough command in the current MVP CLI.
 Advanced API-only operations are exercised through documented HTTP endpoints and smoke scripts.
 This keeps the CLI focused on stable agent/debug workflows while preserving the rule that Web UI does not own unique state-changing capabilities.
 
+### Repo-Owned Agent Helper
+
+Kinlayer also provides a deterministic read/debug helper at `scripts/kinlayer_client.py`.
+This script is meant for Hermes and other local agents that need a stable command surface instead of
+ad-hoc `curl`, inline Python, or pasted LAN URLs.
+
+Configuration order:
+
+```text
+KINLAYER_API_BASE_URL
+KINLAYER_API_URL
+runtime_context_router.kinlayer.base_url from Hermes JSON config/env, when available
+http://127.0.0.1:8765 fallback
+```
+
+Supported read/debug commands:
+
+```bash
+python3 scripts/kinlayer_client.py health
+python3 scripts/kinlayer_client.py version
+python3 scripts/kinlayer_client.py schema-summary
+python3 scripts/kinlayer_client.py ontology
+python3 scripts/kinlayer_client.py entities --query "Jordan" --entity-type person --limit 10
+python3 scripts/kinlayer_client.py context-card --entity-id person_jordan
+python3 scripts/kinlayer_client.py observations --subject-entity-id person_jordan --status active
+python3 scripts/kinlayer_client.py observations --related-entity-id person_jordan --status active
+python3 scripts/kinlayer_client.py candidates --target-entity-id person_jordan --status pending
+python3 scripts/kinlayer_client.py candidate --id cand_123
+python3 scripts/kinlayer_client.py retrieve --query "relationship context" --hint Jordan
+python3 scripts/kinlayer_client.py pack --query "briefing before drafting a reply" --hint Jordan --situation "message reply"
+```
+
+Default output is compact JSON and intentionally avoids printing the resolved base URL, bearer
+tokens, or full candidate payloads. Use `--raw` only when a full API payload is explicitly needed.
+The helper is read/debug only: it must not accept candidates, apply corrections, or create canonical
+records.
+
 ---
 
 ## 5. People / Bootstrap Commands

@@ -947,6 +947,21 @@ If the entity, record, or ontology value is ambiguous or missing, do not write; 
 ## 14. Adapter Implementation Notes
 
 Tool adapters should expose narrow helpers rather than asking agents to handcraft every HTTP call.
+For local read/debug access, prefer the repo-owned helper before ad-hoc shell snippets:
+
+```bash
+python3 scripts/kinlayer_client.py health
+python3 scripts/kinlayer_client.py entities --query "Jordan" --entity-type person
+python3 scripts/kinlayer_client.py context-card --entity-id person_jordan
+python3 scripts/kinlayer_client.py observations --subject-entity-id person_jordan --status active
+python3 scripts/kinlayer_client.py candidates --status pending
+python3 scripts/kinlayer_client.py retrieve --query "relationship context for Jordan" --hint Jordan
+python3 scripts/kinlayer_client.py pack --query "briefing before drafting a reply" --hint Jordan
+```
+
+The helper resolves the base URL from config/env, emits compact JSON by default, and requires
+`--raw` for full payload dumps. It is read/debug only. Do not use it as a substitute for candidate
+review, candidate acceptance, correction apply, or any canonical write path.
 
 Recommended helper sequence:
 
