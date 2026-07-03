@@ -41,14 +41,15 @@ kinlayer status
 
 ### `kinlayer init`
 
-Initializes local config and ensures default local settings.
+Prepares the protected self entity through the canonical API.
 
-Expected behavior:
+Current behavior:
 
-- create config file if missing;
-- prepare default API URL;
-- optionally create `.env` sample;
-- do not overwrite existing config without confirmation/flag.
+- POST `person` self entity to `/api/entities` with `system_role = self`;
+- when self already exists, read it back with `GET /api/entities?system_role=self&limit=1`;
+- support `--self-name` and `--json`;
+- do not create or overwrite local config files;
+- report that config defaults are documented in `.env.example`.
 
 ### `kinlayer serve`
 
@@ -68,7 +69,8 @@ Runs Alembic migrations.
 
 ### `kinlayer status`
 
-Checks backend status, DB connectivity, migration status, and configured API URL.
+Checks backend health via the API and reports configured API URL, database health,
+and embedding status.
 
 ---
 
