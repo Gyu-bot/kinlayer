@@ -778,7 +778,10 @@ Minimum verification artifacts:
 
 ## 18. Implementation Plan
 
-Implementation is vertical-slice based, specified in `../../implementation-plan.md`.
+Implementation planning now lives in `../../.omo/plans/index.md`. The archived
+vertical-slice baseline is preserved at
+`../archive/planning/implementation-plan-2026-06-27.md` for historical context
+only.
 
 Slices:
 
@@ -807,7 +810,9 @@ Each slice must leave the product runnable and verify at least one real workflow
 - `cli-spec.md` — MVP CLI command set and raw API escape hatch.
 - `web-ui-spec.md` — minimal Web UI screens and behavior.
 - `acceptance-scenarios.md` — journey-level MVP acceptance scenarios and exit bar.
-- `../../implementation-plan.md` — vertical implementation slices and execution baseline.
+- `../../.omo/plans/index.md` — active execution-plan index.
+- `../../.omo/plans/kinlayer-next-work.md` — next structured profile fact work package.
+- `../archive/planning/implementation-plan-2026-06-27.md` — historical vertical implementation baseline.
 - `../agents/agent-integration-notes.md` — future skill/plugin/tool/MCP/runtime-hook integration notes; non-blocking for MVP.
 
 ---
@@ -819,7 +824,7 @@ For implementation work, use this PRD together with:
 ```text
 api-spec.md
 data-model.md
-../../implementation-plan.md
+../../.omo/plans/index.md
 acceptance-scenarios.md
 ```
 

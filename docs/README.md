@@ -13,6 +13,7 @@ This directory keeps project documentation that should not live at the repositor
 - `specs/context-output-contract.md`: retrieval output and Context Pack contract.
 - `specs/candidate-lifecycle-and-payload.md`: candidate lifecycle and payload rules.
 - `specs/ontology-design.md`: ontology registry and relationship boundary design.
+- `kinlayer-roadmap.md`: Korean user-facing roadmap for directing implementation.
 - `agents/agent-integration-notes.md`: agent integration and post-turn boundary notes.
 - `agents/agent-write-instruction-pack.md`: copy/paste-ready write guidance for agents, skills, plugins, MCP adapters, and runtime hooks.
 
@@ -25,11 +26,17 @@ canonicalizes relationship context. Kinlayer core does not run an LLM for post-t
 - `archive/planning/handoff.md`: superseded implementation handoff prompt.
 - `archive/planning/initial-implementation-plan.md`: superseded initial implementation plan.
 - `archive/planning/interview-ledger.md`: historical interview and decision ledger.
+- `archive/planning/implementation-plan-2026-06-27.md`: archived root task plan.
+
+Archived docs are excluded from current SSOT even when their own headers claim an
+active status.
 
 ## Root Docs
 
 The repository root intentionally keeps only the high-signal entry points:
 
 - `README.md`: product overview, setup, and local operation.
-- `implementation-plan.md`: active task-indexed execution plan.
 - `AGENTS.md`: local agent operating instructions.
+
+Execution planning now lives under `.omo/plans/`, with `.omo/plans/index.md` as
+the active plan index.

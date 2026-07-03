@@ -144,17 +144,21 @@ Response:
 ```json
 {
   "bind_host": "0.0.0.0",
-  "auth_token_configured": true,
+  "auth_token_configured": false,
   "embedding": {
-    "provider": "local_sentence_transformers",
-    "model": "dragonkue/multilingual-e5-small-ko-v2",
-    "dim": 384,
-    "status": "ready",
+    "provider": "disabled",
+    "model": null,
+    "dim": null,
+    "status": "disabled",
     "api_url_configured": false,
     "api_key_configured": false
   }
 }
 ```
+
+When `KINLAYER_EMBEDDING_API_KEY` is configured without an explicit provider, the
+effective provider becomes `openai_compatible`, with the default OpenAI-compatible
+API URL, model, and dimension from `Settings`.
 
 ---
 

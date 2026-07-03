@@ -416,11 +416,14 @@ Merge rules:
 }
 ```
 
-Accept result:
+Current accept result:
 
 ```text
-records marked disputed or conflict record created, depending on final data model
+422 validation_error
 ```
+
+`conflict` is a review payload today. It validates referenced records, but direct
+candidate accept does not yet execute a conflict-resolution workflow.
 
 ### 7.8 `supersede`
 
@@ -436,13 +439,14 @@ records marked disputed or conflict record created, depending on final data mode
 }
 ```
 
-Accept result:
+Current accept result:
 
 ```text
-old record deprecated/superseded
-new canonical record created
-candidate.canonical_record_ref = <new_record_ref>
+422 validation_error
 ```
+
+`supersede` is a review payload today. Use explicit correction apply for a trusted
+user correction when the old record is unambiguous.
 
 ---
 
@@ -466,6 +470,9 @@ Action requirements:
 
 - `accept` performs immediate canonical write.
 - `edit-accept` validates edited payload before canonical write.
+- `conflict` and `supersede` candidates are exceptions: they validate as review
+  payloads, but direct accept returns a validation error until specific execution
+  workflows exist.
 - `reject/archive/needs_clarification` do not create canonical records.
 - All terminal or review actions should set `resolved_at` and `resolved_by` where applicable.
 
