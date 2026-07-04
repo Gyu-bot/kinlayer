@@ -1141,6 +1141,304 @@ describe("App route shell", () => {
     expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument();
   });
 
+  it("promotes a general profile fact into a structured fact and refreshes person detail data", async () => {
+    window.history.pushState({}, "", "/people/person-1");
+    const person = entityFixture({id: "person-1", display_name: "김민지"});
+    let facts = [
+      {
+        id: "fact-general",
+        entity_id: "person-1",
+        fact_type: "favorite_coffee",
+        content: "Pour-over organizer",
+        value: null,
+        claim_type: "fact",
+        confidence: 1,
+        sensitivity: "medium",
+        ai_use_policy: "cautious_use",
+        status: "active",
+        valid_from: null,
+        valid_to: null,
+        source_candidate_id: null,
+        created_by: "user",
+        created_at: "2026-06-10T00:00:00Z",
+        updated_at: "2026-06-10T00:00:00Z",
+      },
+      {
+        id: "fact-structured",
+        entity_id: "person-1",
+        fact_type: "email",
+        content: "old@example.com",
+        value: {field_path: "profile.email", value: "old@example.com"},
+        claim_type: "fact",
+        confidence: 1,
+        sensitivity: "medium",
+        ai_use_policy: "cautious_use",
+        status: "active",
+        valid_from: null,
+        valid_to: null,
+        source_candidate_id: null,
+        created_by: "user",
+        created_at: "2026-06-10T00:00:00Z",
+        updated_at: "2026-06-10T00:00:00Z",
+      },
+    ];
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/entities/person-1") && !init?.method) {
+        return jsonResponse(person);
+      }
+      if (url.endsWith("/api/entities/person-1/aliases")) {
+        return jsonResponse({items: [], limit: 200, offset: 0, total: 0});
+      }
+      if (url.endsWith("/api/entities?entity_type=person&limit=50")) {
+        return jsonResponse({
+          items: [person, entityFixture({id: "person-2", display_name: "박서연"})],
+          limit: 50,
+          offset: 0,
+          total: 2,
+        });
+      }
+      if (url.endsWith("/api/ontology")) {
+        return jsonResponse(
+          ontologyFixture({
+            fact_types: [
+              {value: "email", label: "Email", support_level: "supported"},
+              {value: "role", label: "Role", support_level: "supported"},
+            ],
+            policies: {
+              sensitivity_levels: [
+                {value: "medium", label: "Medium", support_level: "supported"},
+                {value: "high", label: "High", support_level: "supported"},
+              ],
+              ai_use_policies: [
+                {value: "cautious_use", label: "Cautious use", support_level: "supported"},
+                {value: "ask_before_use", label: "Ask before use", support_level: "supported"},
+              ],
+              claim_types: [],
+              candidate_types: [],
+            },
+          }),
+        );
+      }
+      if (url.includes("/api/entity-facts?")) {
+        return jsonResponse({items: facts, limit: 100, offset: 0, total: facts.length});
+      }
+      if (url.endsWith("/api/entity-facts/fact-general/promote") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        const replacement = {
+          id: "fact-promoted",
+          entity_id: "person-1",
+          fact_type: body.fact_type,
+          content: body.content,
+          value: {
+            field_path: body.field_path,
+            value: body.value,
+            supersedes_record_ref: "entity_facts:fact-general",
+          },
+          claim_type: "fact",
+          confidence: 1,
+          sensitivity: body.sensitivity,
+          ai_use_policy: body.ai_use_policy,
+          status: "active",
+          valid_from: null,
+          valid_to: null,
+          source_candidate_id: null,
+          created_by: "user",
+          created_at: "2026-06-10T00:00:00Z",
+          updated_at: "2026-06-10T00:00:00Z",
+        };
+        facts = [replacement, facts[1]];
+        return jsonResponse({
+          source_record_ref: "entity_facts:fact-general",
+          replacement_record_ref: "entity_facts:fact-promoted",
+          source: {...facts[0], id: "fact-general", fact_type: "favorite_coffee", status: "superseded"},
+          replacement,
+        });
+      }
+      if (url.endsWith("/api/entities/person-1/context-card")) {
+        return jsonResponse(
+          contextCardFixture({
+            entity: person,
+            profile_facts: facts,
+          }),
+        );
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", {name: "Promote fact"}));
+    fireEvent.change(screen.getByLabelText("Structured fact type"), {
+      target: {value: "role"},
+    });
+    fireEvent.change(screen.getByLabelText("Structured fact content"), {
+      target: {value: "Coffee tasting organizer"},
+    });
+    fireEvent.change(screen.getByLabelText("Structured fact sensitivity"), {
+      target: {value: "high"},
+    });
+    fireEvent.change(screen.getByLabelText("Structured fact AI use policy"), {
+      target: {value: "ask_before_use"},
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Confirm promotion"}));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Fact content role")).toHaveValue("Coffee tasting organizer"),
+    );
+    expect(screen.queryByRole("button", {name: "Confirm promotion"})).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([url, init]) => {
+        if (!String(url).endsWith("/api/entity-facts/fact-general/promote") || init?.method !== "POST") {
+          return false;
+        }
+        const body = JSON.parse(String(init.body));
+        return (
+          body.fact_type === "role" &&
+          body.content === "Coffee tasting organizer" &&
+          body.sensitivity === "high" &&
+          body.ai_use_policy === "ask_before_use"
+        );
+      }),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/api/entities/person-1/context-card"))
+        .length,
+    ).toBeGreaterThan(1);
+  });
+
+  it("shows promotion validation errors while keeping the general fact promotion form open", async () => {
+    window.history.pushState({}, "", "/people/person-1");
+    const person = entityFixture({id: "person-1", display_name: "김민지"});
+    const facts = [
+      {
+        id: "fact-general",
+        entity_id: "person-1",
+        fact_type: "contact_note",
+        content: "Reach out by email",
+        value: null,
+        claim_type: "fact",
+        confidence: 1,
+        sensitivity: "medium",
+        ai_use_policy: "cautious_use",
+        status: "active",
+        valid_from: null,
+        valid_to: null,
+        source_candidate_id: null,
+        created_by: "user",
+        created_at: "2026-06-10T00:00:00Z",
+        updated_at: "2026-06-10T00:00:00Z",
+      },
+    ];
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/entities/person-1") && !init?.method) {
+        return jsonResponse(person);
+      }
+      if (url.endsWith("/api/entities/person-1/aliases")) {
+        return jsonResponse({items: [], limit: 200, offset: 0, total: 0});
+      }
+      if (url.endsWith("/api/entities?entity_type=person&limit=50")) {
+        return jsonResponse({items: [person], limit: 50, offset: 0, total: 1});
+      }
+      if (url.endsWith("/api/ontology")) {
+        return jsonResponse(
+          ontologyFixture({
+            fact_types: [{value: "email", label: "Email", support_level: "supported"}],
+            policies: {
+              sensitivity_levels: [
+                {value: "medium", label: "Medium", support_level: "supported"},
+              ],
+              ai_use_policies: [
+                {value: "cautious_use", label: "Cautious use", support_level: "supported"},
+              ],
+              claim_types: [],
+              candidate_types: [],
+            },
+          }),
+        );
+      }
+      if (url.includes("/api/entity-facts?")) {
+        return jsonResponse({items: facts, limit: 100, offset: 0, total: facts.length});
+      }
+      if (url.endsWith("/api/entity-facts/fact-general/promote") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        if (body.fact_type === "email" && body.content === "not-an-email") {
+          return Promise.resolve({
+            ok: false,
+            status: 422,
+            json: () =>
+              Promise.resolve({
+                error: {
+                  code: "validation_error",
+                  message: "Email facts require a single @ address.",
+                  details: {},
+                },
+              }),
+          } as Response);
+        }
+        return Promise.resolve({
+          ok: false,
+          status: 400,
+          json: () =>
+            Promise.resolve({
+              error: {
+                code: "validation_error",
+                message: `Unexpected payload for promotion: ${JSON.stringify(body)}`,
+                details: {},
+              },
+            }),
+        } as Response);
+      }
+      if (url.endsWith("/api/entities/person-1/context-card")) {
+        return jsonResponse(
+          contextCardFixture({
+            entity: person,
+            profile_facts: facts,
+          }),
+        );
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", {name: "Promote fact"}));
+    fireEvent.change(screen.getByLabelText("Structured fact type"), {
+      target: {value: "email"},
+    });
+    fireEvent.change(screen.getByLabelText("Structured fact content"), {
+      target: {value: "not-an-email"},
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Confirm promotion"}));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("validation_error: Email facts require a single @ address."),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", {name: "Confirm promotion"})).toBeInTheDocument();
+    expect(screen.getByLabelText("Structured fact content")).toHaveValue("not-an-email");
+    expect(
+      fetchMock.mock.calls.some(([url, init]) => {
+        if (!String(url).endsWith("/api/entity-facts/fact-general/promote") || init?.method !== "POST") {
+          return false;
+        }
+        const body = JSON.parse(String(init.body));
+        return (
+          body.fact_type === "email" &&
+          body.content === "not-an-email"
+        );
+      }),
+    ).toBe(true);
+  });
+
   it("renders candidate inbox filters, detail, actions, and edit-accept", async () => {
     window.history.pushState({}, "", "/candidates");
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {

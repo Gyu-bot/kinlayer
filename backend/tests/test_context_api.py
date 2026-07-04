@@ -265,6 +265,44 @@ def test_context_retrieve_and_pack_include_active_structured_profile_facts(clien
     assert "old@example.com" not in pack.text
 
 
+def test_context_retrieve_and_pack_include_promoted_fact_not_deprecated_source(client) -> None:
+    alex = create_person(client, "Alex Kim")
+    source = create_fact(
+        client,
+        alex["id"],
+        "important_context",
+        "Alex's work email is alex.promote@example.com.",
+    )
+
+    promoted = client.post(
+        f"/api/entity-facts/{source['id']}/promote",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "email",
+            "content": "alex.promote@example.com",
+            "field_path": "profile.email",
+        },
+    )
+    assert promoted.status_code == 200
+    replacement = promoted.json()["replacement"]
+
+    retrieve = client.post(
+        "/api/context/retrieve",
+        json={"query": "Alex email", "entity_hints": [alex["id"]]},
+    )
+    pack = client.post(
+        "/api/context/pack",
+        json={"query": "Alex email", "entity_hints": [alex["id"]]},
+    )
+
+    assert retrieve.status_code == 200
+    facts = retrieve.json()["matched_entities"][0]["profile_facts"]
+    assert [fact["id"] for fact in facts] == [replacement["id"]]
+    assert source["content"] not in retrieve.text
+    assert replacement["content"] in pack.text
+    assert source["content"] not in pack.text
+
+
 def test_context_pack_low_confidence_or_ambiguity_asks_clarifying_question(client) -> None:
     alex = create_person(client, "Alex Kim")
     alexander = create_person(client, "Alexander Kim")

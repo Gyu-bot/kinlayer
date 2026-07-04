@@ -7,6 +7,7 @@ import {
   getOntology,
   packContext,
   isLocalApiTokenConfigured,
+  promoteFact,
   request,
   resolveApiUrl,
   retrieveContext,
@@ -213,5 +214,46 @@ describe("API client", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toMatchObject({
       relation_type: "vendor_contact",
     });
+  });
+
+  it("posts fact promotion payloads to the canonical entity fact promotion endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          source_record_ref: "entity_facts:fact-1",
+          replacement_record_ref: "entity_facts:fact-2",
+          source: {id: "fact-1"},
+          replacement: {id: "fact-2"},
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await promoteFact("fact-1", {
+      entity_id: "person-1",
+      fact_type: "email",
+      content: "new@example.com",
+      field_path: "profile.email",
+      value: "new@example.com",
+      sensitivity: "high",
+      ai_use_policy: "ask_before_use",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8765/api/entity-facts/fact-1/promote",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          entity_id: "person-1",
+          fact_type: "email",
+          content: "new@example.com",
+          field_path: "profile.email",
+          value: "new@example.com",
+          sensitivity: "high",
+          ai_use_policy: "ask_before_use",
+        }),
+      }),
+    );
   });
 });

@@ -53,7 +53,7 @@ Your next move: approve this slug with or after implementation. Full execution d
 ## Todos
 > Implementation + Test = ONE todo. Never separate.
 <!-- APPEND TASK BATCHES BELOW THIS LINE WITH edit/apply_patch - never rewrite the headers above. -->
-- [ ] 1. Update active specs and agent guidance.
+- [x] 1. Update active specs and agent guidance.
   What to do / Must NOT do: Update active docs with supported structured types, validation rules, promotion API/CLI/Web behavior, candidate `supersedes_record_ref`, provenance semantics, and deferred LLM curation boundary. Do not rely on archived task numbers as live contract.
   Parallelization: Wave 1 | Blocked by: behavior implementation | Blocks: 2
   References (executor has NO interview context - be exhaustive): `docs/specs/api-spec.md`, `docs/specs/cli-spec.md`, `docs/specs/candidate-lifecycle-and-payload.md`, `docs/specs/web-ui-spec.md`, `docs/specs/data-model.md`, `docs/agents/agent-write-instruction-pack.md`
@@ -61,7 +61,7 @@ Your next move: approve this slug with or after implementation. Full execution d
   QA scenarios (name the exact tool + invocation): markdown fence and trailing-whitespace checks for touched docs; evidence `.omo/evidence/task-1-profile-fact-docs-smoke.md`.
   Commit: Y | `docs(profile-facts): document validation and promotion`
 
-- [ ] 2. Extend smoke scripts and plan status.
+- [x] 2. Extend smoke scripts and plan status.
   What to do / Must NOT do: Add API/CLI smoke coverage for one successful promotion and one validation failure. Update `.omo/plans/index.md` and `docs/kinlayer-roadmap.md` status only after implementation evidence exists.
   Parallelization: Wave 2 | Blocked by: 1 | Blocks: final verification
   References (executor has NO interview context - be exhaustive): `scripts/smoke-acceptance-api.py`, `scripts/smoke-acceptance-cli.sh`, `.omo/plans/index.md`, `docs/kinlayer-roadmap.md`
@@ -71,10 +71,10 @@ Your next move: approve this slug with or after implementation. Full execution d
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit
-- [ ] F2. Code quality review
-- [ ] F3. Real manual QA
-- [ ] F4. Scope fidelity
+- [x] F1. Plan compliance audit
+- [x] F2. Code quality review
+- [x] F3. Real manual QA
+- [x] F4. Scope fidelity
 
 ## Commit strategy
 - Run this after behavior slugs, or in the same implementation branch as final docs/smoke cleanup.

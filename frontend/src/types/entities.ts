@@ -48,6 +48,13 @@ export type EntityFact = {
   updated_at: string;
 };
 
+export type EntityFactPromotionResponse = {
+  source_record_ref: string;
+  replacement_record_ref: string;
+  source: EntityFact;
+  replacement: EntityFact;
+};
+
 export type EntityEdge = {
   id: string;
   from_entity_id: string;

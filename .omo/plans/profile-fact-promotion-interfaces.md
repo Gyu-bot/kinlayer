@@ -56,7 +56,7 @@ Your next move: approve this slug after the core API exists. Full execution deta
 ## Todos
 > Implementation + Test = ONE todo. Never separate.
 <!-- APPEND TASK BATCHES BELOW THIS LINE WITH edit/apply_patch - never rewrite the headers above. -->
-- [ ] 1. Add CLI promotion command.
+- [x] 1. Add CLI promotion command.
   What to do / Must NOT do: Add `kinlayer fact promote <fact_id> --fact-type ... --content ... --field-path ... --sensitivity ... --ai-use-policy ... --json`. Reuse existing API URL/token request helpers. Do not require raw JSON files for the direct user promotion path.
   Parallelization: Wave 1 | Blocked by: `profile-fact-promotion-core.md` | Blocks: 3
   References (executor has NO interview context - be exhaustive): `backend/src/kinlayer_backend/cli.py:519`, `docs/specs/cli-spec.md:181`, `docs/archive/planning/implementation-plan-2026-06-27.md:1366`
@@ -64,7 +64,7 @@ Your next move: approve this slug after the core API exists. Full execution deta
   QA scenarios (name the exact tool + invocation): `KINLAYER_API_URL=http://127.0.0.1:8765 scripts/smoke-acceptance-cli.sh` after binding inspection; evidence `.omo/evidence/task-1-profile-fact-promotion-interfaces.md`.
   Commit: Y | `feat(cli): add fact promotion command`
 
-- [ ] 2. Add Web promotion workflow.
+- [x] 2. Add Web promotion workflow.
   What to do / Must NOT do: Add API client method and `/people/:id` UI flow to promote only general facts. Show a small review form with structured fact type, content, sensitivity, and AI use policy. Refresh data after success and show API validation errors after failure.
   Parallelization: Wave 2 | Blocked by: `profile-fact-promotion-core.md` | Blocks: 3
   References (executor has NO interview context - be exhaustive): `frontend/src/routes/PersonDetail.tsx:38`, `frontend/src/routes/PersonDetail.tsx:421`, `frontend/src/api/client.ts`
@@ -72,7 +72,7 @@ Your next move: approve this slug after the core API exists. Full execution deta
   QA scenarios (name the exact tool + invocation): browser happy and invalid promotion on `http://127.0.0.1:5173/people/<id>` after port inspection; evidence `.omo/evidence/task-2-profile-fact-promotion-interfaces.md`.
   Commit: Y | `feat(web): promote general profile facts`
 
-- [ ] 3. Run interface regression checks.
+- [x] 3. Run interface regression checks.
   What to do / Must NOT do: Verify CLI, Web tests, frontend build, and one browser/manual QA path. Do not skip browser QA if Web changed and a local app can be started safely.
   Parallelization: Wave 3 | Blocked by: 1, 2 | Blocks: final verification
   References (executor has NO interview context - be exhaustive): `AGENTS.md`, `frontend/package.json`, `scripts/smoke-acceptance-cli.sh`
@@ -82,10 +82,10 @@ Your next move: approve this slug after the core API exists. Full execution deta
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit
-- [ ] F2. Code quality review
-- [ ] F3. Real manual QA
-- [ ] F4. Scope fidelity
+- [x] F1. Plan compliance audit
+- [x] F2. Code quality review
+- [x] F3. Real manual QA
+- [x] F4. Scope fidelity
 
 ## Commit strategy
 - Implement after `profile-fact-promotion-core.md`.

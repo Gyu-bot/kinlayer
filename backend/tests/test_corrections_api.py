@@ -397,6 +397,248 @@ def test_explicit_fact_correction_replaces_visible_fact_and_links_evidence(
         )
 
 
+def test_correction_structured_profile_fact_validation_rejects_invalid_new_fact(
+    client,
+) -> None:
+    alex = create_person(client, "Alex")
+    old = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "organization",
+            "content": "Old Corp",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+
+    response = client.post(
+        "/api/corrections/apply",
+        json={
+            "old_record_ref": f"entity_facts:{old['id']}",
+            "new_record": {
+                "record_type": "entity_facts",
+                "payload": {
+                    "entity_id": alex["id"],
+                    "fact_type": "email",
+                    "content": "alex.example.com",
+                    "claim_type": "fact",
+                },
+            },
+            "correction_source": {
+                "source_type": "agent_conversation",
+                "user_explicit": True,
+                "excerpt": "No, Alex's email is alex.example.com.",
+            },
+            "created_by": "ai_agent",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+    assert client.get(f"/api/entity-facts/{old['id']}").json()["status"] == "active"
+
+
+def test_agent_correction_apply_rejects_non_string_structured_fact_content(client) -> None:
+    alex = create_person(client, "Alex")
+    old = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "organization",
+            "content": "Old Corp",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+
+    response = client.post(
+        "/api/corrections/apply",
+        json={
+            "old_record_ref": f"entity_facts:{old['id']}",
+            "new_record": {
+                "record_type": "entity_facts",
+                "payload": {
+                    "entity_id": alex["id"],
+                    "fact_type": "email",
+                    "content": {"email": "alex@example.com"},
+                    "claim_type": "fact",
+                },
+            },
+            "correction_source": {
+                "source_type": "agent_conversation",
+                "user_explicit": True,
+                "excerpt": "Alex email is alex@example.com.",
+            },
+            "created_by": "ai_agent",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+    assert client.get(f"/api/entity-facts/{old['id']}").json()["status"] == "active"
+
+
+def test_fact_correction_rejects_entity_mismatch_or_stale_old_record(client) -> None:
+    alex = create_person(client, "Alex")
+    jordan = create_person(client, "Jordan")
+    old = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "organization",
+            "content": "Old Corp",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+
+    mismatch = client.post(
+        "/api/corrections/apply",
+        json={
+            "old_record_ref": f"entity_facts:{old['id']}",
+            "new_record": {
+                "record_type": "entity_facts",
+                "payload": {
+                    "entity_id": jordan["id"],
+                    "fact_type": "organization",
+                    "content": "New Corp",
+                    "claim_type": "fact",
+                },
+            },
+            "correction_source": {
+                "source_type": "agent_conversation",
+                "user_explicit": True,
+                "excerpt": "Alex works with New Corp.",
+            },
+            "created_by": "ai_agent",
+        },
+    )
+    assert mismatch.status_code == 422
+    assert mismatch.json()["error"]["code"] == "validation_error"
+
+    assert client.delete(f"/api/entity-facts/{old['id']}").status_code == 200
+    stale = client.post(
+        "/api/corrections/apply",
+        json={
+            "old_record_ref": f"entity_facts:{old['id']}",
+            "new_record": {
+                "record_type": "entity_facts",
+                "payload": {
+                    "entity_id": alex["id"],
+                    "fact_type": "organization",
+                    "content": "New Corp",
+                    "claim_type": "fact",
+                },
+            },
+            "correction_source": {
+                "source_type": "agent_conversation",
+                "user_explicit": True,
+                "excerpt": "Alex works with New Corp.",
+            },
+            "created_by": "ai_agent",
+        },
+    )
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "conflict"
+    stale_error_codes = {
+        error["code"] for error in stale.json()["error"]["details"]["errors"]
+    }
+    assert stale_error_codes == {"stale_record_ref"}
+
+
+def test_fact_correction_rejects_wrong_entity_replacement(client) -> None:
+    alex = create_person(client, "Alex")
+    jordan = create_person(client, "Jordan")
+    old = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "organization",
+            "content": "Old Corp",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+
+    response = client.post(
+        "/api/corrections/apply",
+        json={
+            "old_record_ref": f"entity_facts:{old['id']}",
+            "new_record": {
+                "record_type": "entity_facts",
+                "payload": {
+                    "entity_id": jordan["id"],
+                    "fact_type": "organization",
+                    "content": "New Corp",
+                    "claim_type": "fact",
+                },
+            },
+            "correction_source": {
+                "source_type": "agent_conversation",
+                "user_explicit": True,
+                "excerpt": "No, Alex works with New Corp.",
+            },
+            "created_by": "ai_agent",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+    assert client.get(f"/api/entity-facts/{old['id']}").json()["status"] == "active"
+    visible = client.get(
+        "/api/entity-facts",
+        params={"entity_id": jordan["id"], "status": "active"},
+    ).json()
+    assert visible["total"] == 0
+
+
+def test_fact_correction_rejects_deleted_old_fact(client) -> None:
+    alex = create_person(client, "Alex")
+    old = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "organization",
+            "content": "Old Corp",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    deleted = client.delete(f"/api/entity-facts/{old['id']}")
+    assert deleted.status_code == 200
+
+    response = client.post(
+        "/api/corrections/apply",
+        json={
+            "old_record_ref": f"entity_facts:{old['id']}",
+            "new_record": {
+                "record_type": "entity_facts",
+                "payload": {
+                    "entity_id": alex["id"],
+                    "fact_type": "organization",
+                    "content": "New Corp",
+                    "claim_type": "fact",
+                },
+            },
+            "correction_source": {
+                "source_type": "agent_conversation",
+                "user_explicit": True,
+                "excerpt": "No, Alex works with New Corp.",
+            },
+            "created_by": "ai_agent",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "conflict"
+    response_error_codes = {
+        error["code"] for error in response.json()["error"]["details"]["errors"]
+    }
+    assert response_error_codes == {"stale_record_ref"}
+    assert client.get(f"/api/entity-facts/{old['id']}").json()["status"] == "deleted"
+
+
 def test_correction_apply_rejects_records_without_canonical_evidence_table(client) -> None:
     alex = create_person(client, "Alex")
     alias = client.post(

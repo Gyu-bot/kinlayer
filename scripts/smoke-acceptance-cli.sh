@@ -20,6 +20,9 @@ correction_result_json="$TMP_DIR/correction-result.json"
 duplicate_detection_json="$TMP_DIR/duplicate-detection.json"
 merge_candidate_json="$TMP_DIR/merge-candidate.json"
 merge_accept_json="$TMP_DIR/merge-accept.json"
+fact_promote_source_json="$TMP_DIR/fact-promote-source.json"
+fact_promote_invalid_source_json="$TMP_DIR/fact-promote-invalid-source.json"
+fact_promote_json="$TMP_DIR/fact-promote.json"
 
 echo "== Load acceptance fixtures =="
 python3 scripts/load-acceptance-fixtures.py --api-url "$API_URL" > "$fixture_json"
@@ -99,6 +102,66 @@ uv run kinlayer candidate list --status pending --json > "$TMP_DIR/candidate-lis
 uv run kinlayer candidate show "$candidate_id" --json > "$TMP_DIR/candidate-show.json"
 uv run kinlayer candidate accept "$candidate_id" --json > "$TMP_DIR/candidate-accept.json"
 accepted_ref="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['canonical_record_ref'])" "$TMP_DIR/candidate-accept.json")"
+
+echo "== CLI fact promotion =="
+python3 - "$fact_promote_source_json" "$fact_promote_invalid_source_json" "$cli_person_id" <<'PY'
+import json
+import os
+import sys
+import urllib.request
+
+promote_path, invalid_path, person_id = sys.argv[1:4]
+api_url = os.environ.get("KINLAYER_API_URL", "http://127.0.0.1:8765").rstrip("/")
+token = os.environ.get("KINLAYER_API_TOKEN", "")
+headers = {"Content-Type": "application/json"}
+if token:
+    headers["Authorization"] = f"Bearer {token}"
+
+
+def create_fact(content: str) -> dict:
+    payload = {
+        "entity_id": person_id,
+        "fact_type": "contact_note",
+        "content": content,
+        "claim_type": "fact",
+        "confidence": 0.9,
+        "sensitivity": "medium",
+        "ai_use_policy": "cautious_use",
+        "created_by": "user",
+    }
+    request = urllib.request.Request(
+        f"{api_url}/api/entity-facts",
+        data=json.dumps(payload).encode(),
+        headers=headers,
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        return json.loads(response.read().decode())
+
+
+open(promote_path, "w").write(json.dumps(create_fact("CLI smoke promotion source.")))
+open(invalid_path, "w").write(json.dumps(create_fact("CLI smoke invalid promotion source.")))
+PY
+fact_promote_source_id="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['id'])" "$fact_promote_source_json")"
+fact_promote_invalid_source_id="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['id'])" "$fact_promote_invalid_source_json")"
+uv run kinlayer fact promote "$fact_promote_source_id" \
+  --fact-type email \
+  --content "cli-smoke@example.com" \
+  --field-path profile.email \
+  --sensitivity high \
+  --ai-use-policy ask_before_use \
+  --json > "$fact_promote_json"
+if uv run kinlayer fact promote "$fact_promote_invalid_source_id" \
+  --fact-type email \
+  --content not-an-email \
+  --json > "$TMP_DIR/fact-promote-invalid.out" 2> "$TMP_DIR/fact-promote-invalid.err"; then
+  echo "Invalid fact promote unexpectedly succeeded." >&2
+  exit 1
+fi
+if ! grep -R --fixed-strings "validation_error" "$TMP_DIR/fact-promote-invalid.out" "$TMP_DIR/fact-promote-invalid.err"; then
+  echo "Invalid fact promote did not surface validation_error." >&2
+  exit 1
+fi
 
 python3 - "$invalid_candidate_json" "$invalid_agent_write_json" "$minji_id" "$self_id" <<'PY'
 import json
@@ -315,6 +378,13 @@ merge_target_card = json.dumps(json.load(open(root / "merge-target-card.json")),
 assert "Acceptance J Lee" in merge_target_card
 assert "concise source-target summaries" in merge_target_card
 assert json.load(open(root / "candidate-accept.json"))["canonical_record_ref"].startswith("observations:")
+promoted_fact = json.load(open(root / "fact-promote.json"))
+assert promoted_fact["source_record_ref"].startswith("entity_facts:")
+assert promoted_fact["replacement_record_ref"].startswith("entity_facts:")
+assert promoted_fact["source"]["status"] == "superseded"
+assert promoted_fact["replacement"]["fact_type"] == "email"
+assert promoted_fact["replacement"]["content"] == "cli-smoke@example.com"
+assert promoted_fact["replacement"]["value"]["supersedes_record_ref"] == promoted_fact["source_record_ref"]
 assert json.load(open(root / "candidate-edit-accept.json"))["status"] == "edited_accepted"
 agent_write_validation = json.load(open(root / "agent-write-invalid-validate.json"))
 assert agent_write_validation["accepted"] is False

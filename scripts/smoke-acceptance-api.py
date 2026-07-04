@@ -59,6 +59,24 @@ class SmokeClient:
         except urllib.error.HTTPError as exc:
             return exc.code
 
+    def error(self, method: str, path: str, payload: dict[str, Any]) -> tuple[int, Any]:
+        headers = {"Content-Type": "application/json"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        request = urllib.request.Request(
+            f"{self.api_url}{path}",
+            data=json.dumps(payload).encode(),
+            headers=headers,
+            method=method,
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                data = response.read().decode()
+        except urllib.error.HTTPError as exc:
+            data = exc.read().decode()
+            return exc.code, json.loads(data) if data else {}
+        raise AssertionError(f"{method} {path} unexpectedly succeeded: HTTP {response.status} {data}")
+
     def text(self, path: str) -> str:
         headers = {}
         if self.token:
@@ -235,6 +253,70 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
     client.patch(f"/api/entity-facts/{fact['id']}", {"content": f"Disposable fact patched {stamp}"})
     assert_true(client.get(f"/api/entity-facts/{fact['id']}")["content"].endswith(stamp), "fact get/patch failed")
     client.delete(f"/api/entity-facts/{fact['id']}")
+
+    promotion_source = client.post(
+        "/api/entity-facts",
+        {
+            "entity_id": entity["id"],
+            "fact_type": "contact_note",
+            "content": f"Promote disposable profile fact {stamp}",
+            "claim_type": "fact",
+            "confidence": 0.8,
+            "sensitivity": "medium",
+            "ai_use_policy": "cautious_use",
+            "created_by": "user",
+        },
+    )
+    promoted_email = f"promotion-{stamp}@example.com"
+    promoted = client.post(
+        f"/api/entity-facts/{promotion_source['id']}/promote",
+        {
+            "entity_id": entity["id"],
+            "fact_type": "email",
+            "content": promoted_email,
+            "field_path": "profile.email",
+            "sensitivity": "high",
+            "ai_use_policy": "ask_before_use",
+        },
+    )
+    assert_true(
+        promoted["source_record_ref"] == f"entity_facts:{promotion_source['id']}",
+        "fact promote source ref failed",
+    )
+    assert_true(
+        promoted["replacement_record_ref"].startswith("entity_facts:"),
+        "fact promote replacement ref failed",
+    )
+    assert_true(promoted["source"]["status"] == "superseded", "fact promote source not superseded")
+    assert_true(promoted["replacement"]["fact_type"] == "email", "fact promote replacement type failed")
+    assert_true(promoted["replacement"]["content"] == promoted_email, "fact promote replacement content failed")
+    assert_true(
+        promoted["replacement"]["value"]["supersedes_record_ref"] == f"entity_facts:{promotion_source['id']}",
+        "fact promote replacement did not preserve supersedes_record_ref",
+    )
+    replacement_id = promoted["replacement_record_ref"].split(":", 1)[1]
+    assert_true(client.get(f"/api/entity-facts/{promotion_source['id']}")["status"] == "superseded", "promoted source get failed")
+    assert_true(client.get(f"/api/entity-facts/{replacement_id}")["content"] == promoted_email, "promoted replacement get failed")
+
+    invalid_fact_status, invalid_fact_body = client.error(
+        "POST",
+        "/api/entity-facts",
+        {
+            "entity_id": entity["id"],
+            "fact_type": "email",
+            "content": "not-an-email",
+            "claim_type": "fact",
+            "confidence": 1,
+            "sensitivity": "high",
+            "ai_use_policy": "ask_before_use",
+            "created_by": "user",
+        },
+    )
+    assert_true(invalid_fact_status == 422, "invalid structured fact did not return 422")
+    assert_true(
+        invalid_fact_body["error"]["code"] == "validation_error",
+        "invalid structured fact did not surface validation_error",
+    )
 
     edge = client.post(
         "/api/edges",

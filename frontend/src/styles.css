@@ -195,6 +195,31 @@ table {
   border-collapse: collapse;
 }
 
+.fact-table {
+  min-width: 860px;
+}
+
+.fact-type-column {
+  width: 140px;
+}
+
+.fact-content-column {
+  min-width: 280px;
+}
+
+.fact-policy-column {
+  width: 210px;
+}
+
+.fact-actions-column {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.fact-content-input {
+  min-width: 260px;
+}
+
 caption {
   padding: 12px 14px;
   text-align: left;

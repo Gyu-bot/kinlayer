@@ -108,6 +108,10 @@ MVP options:
 
 Advanced edge/observation/fact creation can use the canonical HTTP API in MVP.
 
+Structured profile fact writes are supported when the selected `fact_type` is registry-backed.
+The current structured validation set is `legal_name`, `birth_date`, `phone`, `email`, `address`,
+`organization`, and `role`. These values use the same content validation rules as the HTTP API.
+
 ### `person list`
 
 Lists person entities with optional search/filter.
@@ -207,7 +211,8 @@ Structured profile fact candidate example:
   "confidence": 0.8,
   "sensitivity": "high",
   "suggested_action": "review",
-  "created_by": "ai_agent"
+  "created_by": "ai_agent",
+  "supersedes_record_ref": "entity_facts:general-fact-id"
 }
 ```
 
@@ -215,6 +220,11 @@ Structured profile fact candidate example:
 kinlayer candidate submit profile-email-candidate.json --json
 kinlayer candidate accept <candidate_id> --json
 ```
+
+When `supersedes_record_ref` is present on a `profile_field` candidate, it must reference an active
+`entity_facts:<id>` on the same entity. Accept/edit-accept promotes that source fact into the
+structured replacement, copies provenance, marks the source fact `superseded`, and sets the
+candidate `canonical_record_ref` to the replacement fact.
 
 ### `candidate list`
 
@@ -298,7 +308,37 @@ Options:
 --note TEXT
 ```
 
-## 6.1 Explicit Correction Examples
+## 6.1 Fact Promotion Command
+
+```bash
+kinlayer fact promote <fact_id> --fact-type email --content alex@example.com --field-path profile.email --json
+```
+
+Purpose: promote an active general profile fact into a structured profile fact through the canonical
+`POST /api/entity-facts/{id}/promote` endpoint.
+
+Options:
+
+```bash
+--fact-type legal_name|birth_date|phone|email|address|organization|role
+--content TEXT
+--field-path TEXT
+--sensitivity low|medium|high
+--ai-use-policy freely_use|cautious_use|ask_before_use|never_surface
+--json
+```
+
+Expected behavior:
+
+- fetch the source fact to derive `entity_id`;
+- submit the promotion request to the API;
+- emit full JSON when `--json` is set;
+- otherwise print `entity_facts:<source> -> entity_facts:<replacement>`.
+
+Validation and errors are owned by the API. Invalid structured content returns `validation_error`.
+Inactive/stale source facts return `conflict`.
+
+## 6.2 Explicit Correction Examples
 
 Explicit user corrections may bypass candidate review only when
 `correction_source.user_explicit` is `true`.

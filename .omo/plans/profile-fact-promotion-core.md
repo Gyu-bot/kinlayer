@@ -57,7 +57,7 @@ Your next move: approve this slug after or alongside validation. Full execution 
 ## Todos
 > Implementation + Test = ONE todo. Never separate.
 <!-- APPEND TASK BATCHES BELOW THIS LINE WITH edit/apply_patch - never rewrite the headers above. -->
-- [ ] 1. Add API/service promotion from general fact to structured fact.
+- [x] 1. Add API/service promotion from general fact to structured fact.
   What to do / Must NOT do: Implement a service method and route that accepts source fact id, structured `fact_type`, content/value, field path, sensitivity, and AI use policy. It must write a new active structured fact and mark the source fact deprecated/superseded in one transaction. Do not mutate the source content or type in place.
   Parallelization: Wave 1 | Blocked by: `structured-profile-fact-validation.md` | Blocks: 2, 3
   References (executor has NO interview context - be exhaustive): `backend/src/kinlayer_backend/services/entities.py:119`, `backend/src/kinlayer_backend/api/entities.py`, `backend/src/kinlayer_backend/models.py`, `docs/archive/planning/implementation-plan-2026-06-27.md:1323`
@@ -65,7 +65,7 @@ Your next move: approve this slug after or alongside validation. Full execution 
   QA scenarios (name the exact tool + invocation): API happy promotion and stale source failure; evidence `.omo/evidence/task-1-profile-fact-promotion-core.md`.
   Commit: Y | `feat(profile-facts): add promotion service`
 
-- [ ] 2. Support candidate review promotion with `supersedes_record_ref`.
+- [x] 2. Support candidate review promotion with `supersedes_record_ref`.
   What to do / Must NOT do: When a `profile_field` candidate has `supersedes_record_ref=entity_facts:<id>`, accept/edit-accept should call the same promotion service and set `canonical_record_ref` to the new fact. Normal `profile_field` candidates without a source ref must continue to create profile facts as before.
   Parallelization: Wave 2 | Blocked by: 1 | Blocks: 3
   References (executor has NO interview context - be exhaustive): `backend/src/kinlayer_backend/services/candidates.py:180`, `backend/src/kinlayer_backend/services/candidates.py:274`, `backend/src/kinlayer_backend/schemas/candidates.py:130`
@@ -73,7 +73,7 @@ Your next move: approve this slug after or alongside validation. Full execution 
   QA scenarios (name the exact tool + invocation): candidate happy promotion and candidate invalid source failure; evidence `.omo/evidence/task-2-profile-fact-promotion-core.md`.
   Commit: Y | `feat(candidates): promote profile facts from review`
 
-- [ ] 3. Protect lifecycle and provenance regressions.
+- [x] 3. Protect lifecycle and provenance regressions.
   What to do / Must NOT do: Add assertions for evidence copying/linking, policy/sensitivity preservation, deprecated source exclusion from active views, and context-card consistency. Do not loosen existing deletion or correction semantics.
   Parallelization: Wave 3 | Blocked by: 1, 2 | Blocks: final verification
   References (executor has NO interview context - be exhaustive): `backend/src/kinlayer_backend/services/context.py`, `backend/src/kinlayer_backend/repositories/entities.py`, `backend/src/kinlayer_backend/services/candidates.py:294`
@@ -83,10 +83,10 @@ Your next move: approve this slug after or alongside validation. Full execution 
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit
-- [ ] F2. Code quality review
-- [ ] F3. Real manual QA
-- [ ] F4. Scope fidelity
+- [x] F1. Plan compliance audit
+- [x] F2. Code quality review
+- [x] F3. Real manual QA
+- [x] F4. Scope fidelity
 
 ## Commit strategy
 - Implement after `structured-profile-fact-validation.md`, or in the same branch after validation tests are green.

@@ -1,5 +1,7 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from typing import assert_never
 
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -25,13 +27,32 @@ from kinlayer_backend.models import (
 from kinlayer_backend.repositories.candidates import CandidateRepository
 from kinlayer_backend.repositories.entities import EntityRepository
 from kinlayer_backend.schemas.candidates import PAYLOAD_MODELS
-from kinlayer_backend.services.entities import EntityService, validate_common
+from kinlayer_backend.services.entities import (
+    EntityService,
+    FactPromotionPayload,
+    JsonValue,
+    validate_common,
+)
 from kinlayer_backend.services.ontology import is_allowed_registry_value
 from kinlayer_backend.services.relationships import RelationshipService
+from kinlayer_backend.services.structured_facts import (
+    InvalidStructuredFactContent,
+    ValidStructuredFactContent,
+    is_structured_fact_type,
+    validate_structured_fact_content,
+)
 
 SUGGESTED_ACTIONS = {"review", "accept", "reject", "clarify"}
 TERMINAL_STATUSES = {"accepted", "edited_accepted", "rejected", "archived", "superseded"}
 DEFAULT_MERGE_FIELDS = ["aliases", "profile_facts", "edges", "observations"]
+
+
+@dataclass(frozen=True, slots=True)
+class CandidatePayloadValidation:
+    candidate_type: str
+    payload: dict[str, JsonValue]
+    target_entity_id: str | None = None
+    supersedes_record_ref: str | None = None
 
 
 class CandidateService:
@@ -61,7 +82,14 @@ class CandidateService:
                 raise api_error(404, "not_found", "Evidence episode not found.")
             if payload.get("created_by") == "ai_agent":
                 self._validate_agent_evidence(item, episode)
-        self._validate_payload(payload["candidate_type"], payload["payload"])
+        self._validate_payload(
+            CandidatePayloadValidation(
+                candidate_type=payload["candidate_type"],
+                payload=payload["payload"],
+                target_entity_id=payload.get("target_entity_id"),
+                supersedes_record_ref=payload.get("supersedes_record_ref"),
+            )
+        )
         payload.setdefault("status", "pending")
         return self.repository.add_candidate(payload, evidence)
 
@@ -146,7 +174,14 @@ class CandidateService:
             ).model_dump(mode="json", exclude_none=True)
         except (KeyError, ValidationError) as exc:
             raise api_error(422, "validation_error", "Invalid candidate payload.") from exc
-        self._validate_payload(candidate.candidate_type, candidate.payload)
+        self._validate_payload(
+            CandidatePayloadValidation(
+                candidate_type=candidate.candidate_type,
+                payload=candidate.payload,
+                target_entity_id=candidate.target_entity_id,
+                supersedes_record_ref=candidate.supersedes_record_ref,
+            )
+        )
         return self.accept_candidate(
             candidate,
             status="edited_accepted",
@@ -158,6 +193,8 @@ class CandidateService:
         entity = self.session.get(Entity, entity_id)
         if not entity:
             raise api_error(404, "not_found", "Entity not found.")
+        if entity.status != "active":
+            raise api_error(409, "conflict", "Entity is not active.")
         return entity
 
     def _validate_agent_evidence(self, item: dict[str, Any], episode: Episode) -> None:
@@ -170,7 +207,9 @@ class CandidateService:
         if not is_allowed_registry_value(self.session, "evidence_source_type", episode.source_type):
             raise api_error(422, "validation_error", "Unsupported evidence source_type.")
 
-    def _validate_payload(self, candidate_type: str, payload: dict[str, Any]) -> None:
+    def _validate_payload(self, request: CandidatePayloadValidation) -> None:
+        candidate_type = request.candidate_type
+        payload = request.payload
         if candidate_type == "new_entity":
             validate_common(payload, self.session)
             return
@@ -179,11 +218,39 @@ class CandidateService:
             return
         if candidate_type == "profile_field":
             self._entity(payload["entity_id"])
+            if request.target_entity_id and payload["entity_id"] != request.target_entity_id:
+                raise api_error(
+                    422,
+                    "validation_error",
+                    "Profile field target_entity_id must match payload entity_id.",
+                )
+            if request.supersedes_record_ref:
+                self._validate_profile_field_supersedes_ref(
+                    request.supersedes_record_ref,
+                    payload["entity_id"],
+                )
             validate_common(payload, self.session)
-            if payload.get("fact_type") and not is_allowed_registry_value(
-                self.session, "fact_type", payload["fact_type"]
-            ):
+            fact_type = payload.get("fact_type") or "important_context"
+            if payload.get("fact_type") and not is_allowed_registry_value(self.session, "fact_type", fact_type):
                 raise api_error(422, "validation_error", "Invalid fact_type.")
+            content = payload.get("content")
+            if content is None and is_structured_fact_type(fact_type):
+                content = payload.get("value")
+                if not isinstance(content, str):
+                    raise api_error(
+                        422,
+                        "validation_error",
+                        "Structured fact content must be a string.",
+                    )
+            if content is not None:
+                result = validate_structured_fact_content(fact_type, content)
+                match result:
+                    case ValidStructuredFactContent(content=normalized):
+                        payload["content"] = normalized
+                    case InvalidStructuredFactContent(message=message):
+                        raise api_error(422, "validation_error", message)
+                    case unreachable:
+                        assert_never(unreachable)
             return
         if candidate_type == "relationship_edge":
             self._validate_edge_payload(payload)
@@ -273,13 +340,23 @@ class CandidateService:
 
     def _write_profile_field(self, candidate: Candidate) -> str:
         payload = candidate.payload
+        fact_type = payload.get("fact_type") or "important_context"
         content = payload.get("content")
         if content is None:
-            content = str(payload.get("value", ""))
+            value = payload.get("value", "")
+            if is_structured_fact_type(fact_type) and not isinstance(value, str):
+                raise api_error(422, "validation_error", "Structured fact content must be a string.")
+            content = value if isinstance(value, str) else str(value)
+        if not isinstance(content, str):
+            if is_structured_fact_type(fact_type):
+                raise api_error(422, "validation_error", "Structured fact content must be a string.")
+            content = str(content)
+        if candidate.supersedes_record_ref:
+            return self._promote_profile_field(candidate, content)
         fact_payload = {
             "entity_id": payload["entity_id"],
-            "fact_type": payload.get("fact_type") or "important_context",
-            "content": str(content),
+            "fact_type": fact_type,
+            "content": content,
             "value": {
                 "field_path": payload.get("field_path"),
                 "value": payload.get("value"),
@@ -294,6 +371,27 @@ class CandidateService:
         fact = EntityService(self.session).create_fact(fact_payload, commit=False)
         self._copy_fact_evidence(candidate, fact.id)
         return f"entity_facts:{fact.id}"
+
+    def _promote_profile_field(self, candidate: Candidate, content: str) -> str:
+        payload = candidate.payload
+        source = self._source_fact_from_ref(candidate.supersedes_record_ref)
+        result = EntityService(self.session).promote_fact(
+            source,
+            FactPromotionPayload(
+                entity_id=payload["entity_id"],
+                fact_type=payload.get("fact_type") or "important_context",
+                content=content,
+                field_path=payload.get("field_path"),
+                value=payload.get("value"),
+                sensitivity=payload.get("sensitivity"),
+                ai_use_policy=payload.get("ai_use_policy"),
+                created_by=candidate.created_by,
+                source_candidate_id=candidate.id,
+            ),
+            commit=False,
+        )
+        self._copy_fact_evidence(candidate, result.replacement.id)
+        return f"entity_facts:{result.replacement.id}"
 
     def _write_edge(self, candidate: Candidate) -> str:
         payload = {
@@ -600,3 +698,34 @@ class CandidateService:
         prefix, separator, record_id = record_ref.partition(":")
         if not separator or not record_id or prefix not in allowed_prefixes:
             raise api_error(422, "validation_error", "Invalid record reference.")
+
+    def _validate_profile_field_supersedes_ref(
+        self,
+        record_ref: str,
+        entity_id: str,
+    ) -> None:
+        source = self._source_fact_from_ref(record_ref)
+        if source.entity_id != entity_id:
+            raise api_error(
+                422,
+                "validation_error",
+                "Profile field supersedes_record_ref must belong to the same entity.",
+            )
+
+    def _source_fact_from_ref(self, record_ref: str | None) -> EntityFact:
+        if record_ref is None:
+            raise api_error(422, "validation_error", "supersedes_record_ref is required.")
+        prefix, separator, record_id = record_ref.partition(":")
+        if not separator or not record_id or prefix != "entity_facts":
+            raise api_error(
+                422,
+                "validation_error",
+                "Profile field supersedes_record_ref must use entity_facts:<id>.",
+            )
+        source = self.session.get(EntityFact, record_id)
+        if source is None:
+            raise api_error(404, "not_found", "Superseded source fact not found.")
+        if source.status != "active":
+            raise api_error(409, "conflict", "Superseded source fact is not active.")
+        self._entity(source.entity_id)
+        return source

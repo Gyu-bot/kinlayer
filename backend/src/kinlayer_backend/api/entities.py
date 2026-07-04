@@ -17,6 +17,8 @@ from kinlayer_backend.schemas.entities import (
     EntityFactCreate,
     EntityFactList,
     EntityFactPatch,
+    EntityFactPromoteRequest,
+    EntityFactPromoteResponse,
     EntityFactRead,
     EntityList,
     EntityPatch,
@@ -24,7 +26,7 @@ from kinlayer_backend.schemas.entities import (
     EntityResolveRequest,
     EntityResolveResponse,
 )
-from kinlayer_backend.services.entities import EntityService
+from kinlayer_backend.services.entities import EntityService, FactPromotionPayload
 
 router = APIRouter(tags=["entities"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -169,6 +171,23 @@ def patch_fact(fact_id: str, payload: EntityFactPatch, session: SessionDep):
     if not fact:
         raise api_error(404, "not_found", "Entity fact not found.")
     return EntityService(session).patch_fact(fact, payload.model_dump(exclude_unset=True))
+
+
+@router.post("/api/entity-facts/{fact_id}/promote", response_model=EntityFactPromoteResponse)
+def promote_fact(fact_id: str, payload: EntityFactPromoteRequest, session: SessionDep):
+    fact = EntityRepository(session).get_fact(fact_id)
+    if not fact:
+        raise api_error(404, "not_found", "Entity fact not found.")
+    result = EntityService(session).promote_fact(
+        fact,
+        FactPromotionPayload(**payload.model_dump(mode="json")),
+    )
+    return {
+        "source_record_ref": f"entity_facts:{result.source.id}",
+        "replacement_record_ref": f"entity_facts:{result.replacement.id}",
+        "source": result.source,
+        "replacement": result.replacement,
+    }
 
 
 @router.delete("/api/entity-facts/{fact_id}", response_model=EntityFactRead)

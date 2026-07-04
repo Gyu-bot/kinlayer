@@ -1,6 +1,35 @@
+from typing import Literal, NotRequired, TypedDict
+
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_session_maker
 from kinlayer_backend.models import Candidate, EntityEdge, OntologyRegistryValue
+
+
+class ProfileFieldCandidatePayload(TypedDict):
+    entity_id: str
+    field_path: str
+    value: str
+    fact_type: str
+    content: str
+    claim_type: Literal["fact"]
+
+
+class CandidateEvidencePayload(TypedDict):
+    episode_id: str
+    excerpt: str
+    confidence: float
+
+
+class ProfileFieldCandidate(TypedDict):
+    candidate_type: Literal["profile_field"]
+    target_entity_id: str
+    payload: ProfileFieldCandidatePayload
+    evidence: list[CandidateEvidencePayload]
+    confidence: float
+    sensitivity: Literal["medium"]
+    suggested_action: Literal["review"]
+    created_by: Literal["ai_agent"]
+    supersedes_record_ref: NotRequired[str]
 
 
 def create_person(client, name: str) -> dict:
@@ -75,6 +104,31 @@ def observation_candidate(person_id: str, episode_id: str, content: str) -> dict
     }
 
 
+def profile_field_candidate(
+    person_id: str,
+    episode_id: str,
+    fact_type: str,
+    content: str,
+) -> ProfileFieldCandidate:
+    return {
+        "candidate_type": "profile_field",
+        "target_entity_id": person_id,
+        "payload": {
+            "entity_id": person_id,
+            "field_path": f"profile.{fact_type}",
+            "value": content,
+            "fact_type": fact_type,
+            "content": content,
+            "claim_type": "fact",
+        },
+        "evidence": [{"episode_id": episode_id, "excerpt": content, "confidence": 0.9}],
+        "confidence": 0.72,
+        "sensitivity": "medium",
+        "suggested_action": "review",
+        "created_by": "ai_agent",
+    }
+
+
 def test_agent_write_validate_warns_about_observation_content_quality(client) -> None:
     alex = create_person(client, "Alex")
     episode = create_episode(client)
@@ -97,6 +151,375 @@ def test_agent_write_validate_warns_about_observation_content_quality(client) ->
         "entity facts",
         "relationship properties",
     ]
+
+
+def test_agent_write_structured_profile_fact_validation_rejects_invalid_candidate(
+    client,
+) -> None:
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+
+    response = client.post(
+        "/api/agent-writes/validate",
+        json={
+            "write_type": "candidate",
+            "payload": profile_field_candidate(alex["id"], episode["id"], "phone", "123-45"),
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accepted"] is False
+    assert body["errors"][0]["code"] == "structured_fact_content_invalid"
+    assert body["errors"][0]["field"] == "payload.content"
+
+
+def test_agent_write_structured_profile_fact_validation_accepts_general_candidate(
+    client,
+) -> None:
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+
+    response = client.post(
+        "/api/agent-writes/validate",
+        json={
+            "write_type": "candidate",
+            "payload": profile_field_candidate(
+                alex["id"],
+                episode["id"],
+                "important_context",
+                "not an email and still valid",
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+
+
+def test_agent_write_structured_profile_fact_validation_rejects_invalid_correction(
+    client,
+) -> None:
+    alex = create_person(client, "Alex")
+    old_fact = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "organization",
+            "content": "Old Corp",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+
+    response = client.post(
+        "/api/agent-writes/validate",
+        json={
+            "write_type": "correction",
+            "payload": {
+                "old_record_ref": f"entity_facts:{old_fact['id']}",
+                "new_record": {
+                    "record_type": "entity_facts",
+                    "payload": {
+                        "entity_id": alex["id"],
+                        "fact_type": "birth_date",
+                        "content": "06/01/1990",
+                        "claim_type": "fact",
+                    },
+                },
+                "correction_source": {
+                    "source_type": "agent_conversation",
+                    "source_actor": "user",
+                    "user_explicit": True,
+                    "excerpt": "Alex was born on 06/01/1990.",
+                    "source_ref": "thread-correction-filter",
+                },
+                "created_by": "ai_agent",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accepted"] is False
+    assert body["errors"][0]["code"] == "structured_fact_content_invalid"
+    assert body["errors"][0]["field"] == "new_record.payload.content"
+
+
+def test_agent_write_validate_rejects_unsupported_fact_type_correction(client) -> None:
+    alex = create_person(client, "Alex")
+    old_fact = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "organization",
+            "content": "Old Corp",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+
+    response = client.post(
+        "/api/agent-writes/validate",
+        json={
+            "write_type": "correction",
+            "payload": {
+                "old_record_ref": f"entity_facts:{old_fact['id']}",
+                "new_record": {
+                    "record_type": "entity_facts",
+                    "payload": {
+                        "entity_id": alex["id"],
+                        "fact_type": "unsupported_contact",
+                        "content": "Nope",
+                        "claim_type": "fact",
+                    },
+                },
+                "correction_source": {
+                    "source_type": "agent_conversation",
+                    "source_actor": "user",
+                    "user_explicit": True,
+                    "excerpt": "Unsupported contact fact.",
+                    "source_ref": "thread-correction-filter",
+                },
+                "created_by": "ai_agent",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accepted"] is False
+    assert body["errors"][0]["code"] == "controlled_value_mismatch"
+    assert body["errors"][0]["field"] == "new_record.payload.fact_type"
+
+
+def test_agent_write_validate_rejects_fact_correction_mismatch_or_stale_old_record(
+    client,
+) -> None:
+    alex = create_person(client, "Alex")
+    jordan = create_person(client, "Jordan")
+    old_fact = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "organization",
+            "content": "Old Corp",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+
+    mismatch_payload = {
+        "old_record_ref": f"entity_facts:{old_fact['id']}",
+        "new_record": {
+            "record_type": "entity_facts",
+            "payload": {
+                "entity_id": jordan["id"],
+                "fact_type": "organization",
+                "content": "New Corp",
+                "claim_type": "fact",
+            },
+        },
+        "correction_source": {
+            "source_type": "agent_conversation",
+            "source_actor": "user",
+            "user_explicit": True,
+            "excerpt": "Alex works with New Corp.",
+            "source_ref": "thread-correction-filter",
+        },
+        "created_by": "ai_agent",
+    }
+    mismatch = client.post(
+        "/api/agent-writes/validate",
+        json={"write_type": "correction", "payload": mismatch_payload},
+    )
+    assert mismatch.status_code == 200
+    assert mismatch.json()["accepted"] is False
+    assert mismatch.json()["errors"][0]["code"] == "old_fact_entity_mismatch"
+
+    assert client.delete(f"/api/entity-facts/{old_fact['id']}").status_code == 200
+    stale_payload = {
+        **mismatch_payload,
+        "new_record": {
+            "record_type": "entity_facts",
+            "payload": {
+                "entity_id": alex["id"],
+                "fact_type": "organization",
+                "content": "New Corp",
+                "claim_type": "fact",
+            },
+        },
+    }
+    stale = client.post(
+        "/api/agent-writes/validate",
+        json={"write_type": "correction", "payload": stale_payload},
+    )
+    assert stale.status_code == 200
+    assert stale.json()["accepted"] is False
+    assert stale.json()["errors"][0]["code"] == "stale_record_ref"
+
+
+def test_agent_write_validate_rejects_cross_entity_profile_field_supersedes_ref(
+    client,
+) -> None:
+    alex = create_person(client, "Alex")
+    jordan = create_person(client, "Jordan")
+    episode = create_episode(client)
+    source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": jordan["id"],
+            "fact_type": "important_context",
+            "content": "Jordan's email is jordan@example.com.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    payload = profile_field_candidate(alex["id"], episode["id"], "email", "alex@example.com")
+    payload["supersedes_record_ref"] = f"entity_facts:{source['id']}"
+
+    response = client.post(
+        "/api/agent-writes/validate",
+        json={"write_type": "candidate", "payload": payload},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accepted"] is False
+    assert any(
+        error["code"] == "supersedes_record_ref_entity_mismatch"
+        for error in body["errors"]
+    )
+
+
+def test_agent_write_validate_rejects_deleted_profile_field_supersedes_source(
+    client,
+) -> None:
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+    source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "important_context",
+            "content": "Alex's email is alex@example.com.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    deleted = client.delete(f"/api/entity-facts/{source['id']}")
+    assert deleted.status_code == 200
+    payload = profile_field_candidate(alex["id"], episode["id"], "email", "alex@example.com")
+    payload["supersedes_record_ref"] = f"entity_facts:{source['id']}"
+
+    response = client.post(
+        "/api/agent-writes/validate",
+        json={"write_type": "candidate", "payload": payload},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accepted"] is False
+    assert any(error["code"] == "stale_supersedes_record_ref" for error in body["errors"])
+
+
+def test_agent_write_validate_rejects_wrong_entity_fact_correction(
+    client,
+) -> None:
+    alex = create_person(client, "Alex")
+    jordan = create_person(client, "Jordan")
+    old_fact = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "organization",
+            "content": "Old Corp",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+
+    response = client.post(
+        "/api/agent-writes/validate",
+        json={
+            "write_type": "correction",
+            "payload": {
+                "old_record_ref": f"entity_facts:{old_fact['id']}",
+                "new_record": {
+                    "record_type": "entity_facts",
+                    "payload": {
+                        "entity_id": jordan["id"],
+                        "fact_type": "organization",
+                        "content": "New Corp",
+                        "claim_type": "fact",
+                    },
+                },
+                "correction_source": {
+                    "source_type": "agent_conversation",
+                    "source_actor": "user",
+                    "user_explicit": True,
+                    "excerpt": "Alex works with New Corp.",
+                    "source_ref": "thread-correction-filter",
+                },
+                "created_by": "ai_agent",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accepted"] is False
+    assert any(error["code"] == "old_fact_entity_mismatch" for error in body["errors"])
+
+
+def test_agent_write_validate_rejects_deleted_old_fact_correction(
+    client,
+) -> None:
+    alex = create_person(client, "Alex")
+    old_fact = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "organization",
+            "content": "Old Corp",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    deleted = client.delete(f"/api/entity-facts/{old_fact['id']}")
+    assert deleted.status_code == 200
+
+    response = client.post(
+        "/api/agent-writes/validate",
+        json={
+            "write_type": "correction",
+            "payload": {
+                "old_record_ref": f"entity_facts:{old_fact['id']}",
+                "new_record": {
+                    "record_type": "entity_facts",
+                    "payload": {
+                        "entity_id": alex["id"],
+                        "fact_type": "organization",
+                        "content": "New Corp",
+                        "claim_type": "fact",
+                    },
+                },
+                "correction_source": {
+                    "source_type": "agent_conversation",
+                    "source_actor": "user",
+                    "user_explicit": True,
+                    "excerpt": "Alex works with New Corp.",
+                    "source_ref": "thread-correction-filter",
+                },
+                "created_by": "ai_agent",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accepted"] is False
+    assert any(error["code"] == "stale_record_ref" for error in body["errors"])
 
 
 def test_agent_write_validate_normalizes_candidate_without_persisting(client, database_url) -> None:

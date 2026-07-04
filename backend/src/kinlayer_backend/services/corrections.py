@@ -1,7 +1,10 @@
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
+from typing import TypeAlias
 
+from fastapi import HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
@@ -15,14 +18,11 @@ from kinlayer_backend.models import (
     ObservationEvidence,
 )
 from kinlayer_backend.repositories.relationships import RelationshipRepository
+from kinlayer_backend.schemas.corrections import CorrectionNewRecord
 from kinlayer_backend.services.entities import EntityService
 from kinlayer_backend.services.relationships import RelationshipService
 
-RECORD_MODELS = {
-    "entity_edges": EntityEdge,
-    "entity_facts": EntityFact,
-    "observations": Observation,
-}
+OldCanonicalRecord: TypeAlias = EntityEdge | EntityFact | Observation
 
 
 class CorrectionService:
@@ -37,10 +37,15 @@ class CorrectionService:
                     422,
                     "validation_error",
                     "Direct correction apply requires explicit user correction.",
-                )
+            )
             old_prefix, old_id = self._parse_record_ref(payload["old_record_ref"])
             old_record = self._get_record(old_prefix, old_id)
-            new_record_ref = self._write_new_record(payload["new_record"], payload["created_by"])
+            new_record = CorrectionNewRecord.model_validate(payload["new_record"])
+            self._validate_fact_replacement(old_record, new_record)
+            new_record_ref = self._write_new_record(
+                new_record.model_dump(mode="json"),
+                payload["created_by"],
+            )
             episode = self._create_correction_episode(source, payload["created_by"])
             self._link_evidence(new_record_ref, episode.id, source["excerpt"])
             self._supersede_old_record(old_record, new_record_ref)
@@ -52,7 +57,7 @@ class CorrectionService:
                 "source_actor": source.get("source_actor", "user"),
                 "submitted_by": payload["created_by"],
             }
-        except Exception:
+        except (HTTPException, SQLAlchemyError, RuntimeError):
             self.session.rollback()
             raise
 
@@ -62,14 +67,36 @@ class CorrectionService:
             raise api_error(422, "validation_error", "Invalid record reference.")
         return prefix, record_id
 
-    def _get_record(self, prefix: str, record_id: str):
-        model = RECORD_MODELS.get(prefix)
-        if not model:
+    def _get_record(self, prefix: str, record_id: str) -> OldCanonicalRecord:
+        if prefix == "entity_edges":
+            record = self.session.get(EntityEdge, record_id)
+        elif prefix == "entity_facts":
+            record = self.session.get(EntityFact, record_id)
+        elif prefix == "observations":
+            record = self.session.get(Observation, record_id)
+        else:
             raise api_error(422, "validation_error", "Unsupported record reference.")
-        record = self.session.get(model, record_id)
         if not record:
             raise api_error(404, "not_found", "Old canonical record not found.")
         return record
+
+    def _validate_fact_replacement(
+        self,
+        old_record: OldCanonicalRecord,
+        new_record: CorrectionNewRecord,
+    ) -> None:
+        if not isinstance(old_record, EntityFact):
+            return
+        if old_record.status != "active":
+            raise api_error(409, "conflict", "Old source fact is not active.")
+        if new_record.record_type != "entity_facts":
+            return
+        if new_record.payload["entity_id"] != old_record.entity_id:
+            raise api_error(
+                422,
+                "validation_error",
+                "Fact correction replacement must target the old fact entity.",
+            )
 
     def _write_new_record(self, new_record: dict[str, Any], created_by: str) -> str:
         record_type = new_record["record_type"]

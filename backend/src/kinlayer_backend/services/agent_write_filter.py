@@ -2,18 +2,32 @@ from __future__ import annotations
 
 from copy import deepcopy
 from typing import Any
+from typing import assert_never
 
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
-from kinlayer_backend.models import AllowedEdgeType, Entity, Episode, OntologyRegistryValue
+from kinlayer_backend.models import (
+    AllowedEdgeType,
+    Entity,
+    EntityEdge,
+    EntityFact,
+    Episode,
+    Observation,
+    OntologyRegistryValue,
+)
 from kinlayer_backend.schemas.candidates import CandidateCreate
 from kinlayer_backend.schemas.corrections import CorrectionApplyRequest
-from kinlayer_backend.services.corrections import CorrectionService
-from kinlayer_backend.services.entities import validate_common
+from kinlayer_backend.services.entities import JsonValue, validate_common
 from kinlayer_backend.services.ontology import is_allowed_registry_value
+from kinlayer_backend.services.structured_facts import (
+    InvalidStructuredFactContent,
+    ValidStructuredFactContent,
+    is_structured_fact_type,
+    validate_structured_fact_content,
+)
 
 SUGGESTED_ACTIONS = {"review", "accept", "reject", "clarify"}
 CORRECTION_RECORD_TYPES = {"entity_edges", "entity_facts", "observations"}
@@ -158,11 +172,46 @@ class AgentWriteFilter:
             self._validate_observation_content_contract(payload)
         elif candidate_type == "profile_field":
             self._entity(payload["entity_id"], "payload.entity_id")
+            target_entity_id = candidate.get("target_entity_id")
+            if target_entity_id and target_entity_id != payload["entity_id"]:
+                self._add_error(
+                    "target_entity_mismatch",
+                    "Profile field target_entity_id must match payload entity_id.",
+                    "target_entity_id",
+                )
+            supersedes_record_ref = candidate.get("supersedes_record_ref")
+            if supersedes_record_ref:
+                self._validate_profile_field_supersedes_ref(
+                    supersedes_record_ref,
+                    payload["entity_id"],
+                    "supersedes_record_ref",
+                )
             fact_type = payload.get("fact_type")
             if fact_type:
                 normalized = self._normalize_controlled_value("fact_type", fact_type, "payload.fact_type")
                 if normalized:
                     payload["fact_type"] = normalized
+                    fact_type = normalized
+                else:
+                    self._add_error(
+                        "controlled_value_mismatch",
+                        "Invalid fact_type.",
+                        "payload.fact_type",
+                        {"category": "fact_type", "value": fact_type},
+                    )
+            else:
+                fact_type = "important_context"
+            content = payload.get("content")
+            if content is None and is_structured_fact_type(fact_type):
+                content = payload.get("value", "")
+            if content is not None:
+                normalized_content = self._validate_structured_fact_content(
+                    fact_type,
+                    content,
+                    "payload.content",
+                )
+                if normalized_content is not None:
+                    payload["content"] = normalized_content
             self._check_registry("claim_type", payload["claim_type"], "payload.claim_type")
         elif candidate_type == "alias":
             self._entity(payload["entity_id"], "payload.entity_id")
@@ -214,8 +263,76 @@ class AgentWriteFilter:
         if new_record["record_type"] not in CORRECTION_RECORD_TYPES:
             self._add_error("unsupported_record_type", "Unsupported new record type.", "new_record.record_type")
             return
+        old_fact = self._entity_fact_from_ref(payload["old_record_ref"], "old_record_ref")
+        if old_fact and old_fact.status != "active":
+            self._add_error(
+                "stale_record_ref",
+                "Old source fact is not active.",
+                "old_record_ref",
+                {"status": old_fact.status},
+            )
         if new_record["record_type"] == "entity_edges":
             self._validate_edge_payload(new_record["payload"], "new_record.payload.relation_type")
+        elif new_record["record_type"] == "entity_facts":
+            fact_payload = new_record["payload"]
+            self._entity(fact_payload["entity_id"], "new_record.payload.entity_id")
+            if old_fact and old_fact.entity_id != fact_payload["entity_id"]:
+                self._add_error(
+                    "old_fact_entity_mismatch",
+                    "Fact correction replacement must target the old fact entity.",
+                    "new_record.payload.entity_id",
+                    {"old_entity_id": old_fact.entity_id, "new_entity_id": fact_payload["entity_id"]},
+                )
+            fact_type = self._normalize_controlled_value(
+                "fact_type",
+                fact_payload["fact_type"],
+                "new_record.payload.fact_type",
+            )
+            if not fact_type:
+                self._add_error(
+                    "controlled_value_mismatch",
+                    "Invalid fact_type.",
+                    "new_record.payload.fact_type",
+                    {"category": "fact_type", "value": fact_payload["fact_type"]},
+                )
+                return
+            fact_payload["fact_type"] = fact_type
+            normalized_content = self._validate_structured_fact_content(
+                fact_type,
+                fact_payload["content"],
+                "new_record.payload.content",
+            )
+            if normalized_content is not None:
+                fact_payload["content"] = normalized_content
+
+    def _validate_structured_fact_content(
+        self,
+        fact_type: str,
+        content: JsonValue,
+        field: str,
+    ) -> str | None:
+        if not isinstance(content, str):
+            self._add_error(
+                "structured_fact_content_invalid",
+                "Structured fact content must be a string.",
+                field,
+                {"fact_type": fact_type},
+            )
+            return None
+        result = validate_structured_fact_content(fact_type, content)
+        match result:
+            case ValidStructuredFactContent(content=normalized):
+                return normalized
+            case InvalidStructuredFactContent(message=message):
+                self._add_error(
+                    "structured_fact_content_invalid",
+                    message,
+                    field,
+                    {"fact_type": fact_type},
+                )
+                return None
+            case unreachable:
+                assert_never(unreachable)
 
     def _validate_observation_content_contract(self, payload: dict[str, Any]) -> None:
         content = payload.get("content") or ""
@@ -399,10 +516,20 @@ class AgentWriteFilter:
             self._check_registry("evidence_source_type", episode.source_type, f"evidence.{index}.source_type")
 
     def _validate_record_ref(self, record_ref: str, field: str) -> None:
-        try:
-            prefix, record_id = CorrectionService(self.session)._parse_record_ref(record_ref)
-            CorrectionService(self.session)._get_record(prefix, record_id)
-        except Exception:
+        prefix, separator, record_id = record_ref.partition(":")
+        if not separator or not record_id:
+            self._add_error("invalid_record_ref", "Record reference cannot be resolved.", field)
+            return
+        if prefix == "entity_edges":
+            record = self.session.get(EntityEdge, record_id)
+        elif prefix == "entity_facts":
+            record = self.session.get(EntityFact, record_id)
+        elif prefix == "observations":
+            record = self.session.get(Observation, record_id)
+        else:
+            self._add_error("invalid_record_ref", "Record reference cannot be resolved.", field)
+            return
+        if record is None:
             self._add_error("invalid_record_ref", "Record reference cannot be resolved.", field)
 
     def _entity(self, entity_id: str, field: str) -> Entity | None:
@@ -410,7 +537,49 @@ class AgentWriteFilter:
         if not entity:
             self._add_error("entity_not_found", "Entity not found.", field)
             return None
+        if entity.status != "active":
+            self._add_error(
+                "entity_not_active",
+                "Entity is not active.",
+                field,
+                {"status": entity.status},
+            )
+            return None
         return entity
+
+    def _entity_fact_from_ref(self, record_ref: str, field: str) -> EntityFact | None:
+        prefix, separator, record_id = record_ref.partition(":")
+        if not separator or not record_id or prefix != "entity_facts":
+            return None
+        fact = self.session.get(EntityFact, record_id)
+        if fact is None:
+            self._add_error("invalid_record_ref", "Record reference cannot be resolved.", field)
+        return fact
+
+    def _validate_profile_field_supersedes_ref(
+        self,
+        record_ref: str,
+        entity_id: str,
+        field: str,
+    ) -> None:
+        source = self._entity_fact_from_ref(record_ref, field)
+        if source is None:
+            return
+        if source.status != "active":
+            self._add_error(
+                "stale_supersedes_record_ref",
+                "Superseded source fact is not active.",
+                field,
+                {"status": source.status},
+            )
+        source_entity = self._entity(source.entity_id, field)
+        if source_entity and source.entity_id != entity_id:
+            self._add_error(
+                "supersedes_record_ref_entity_mismatch",
+                "Profile field supersedes_record_ref must belong to the same entity.",
+                field,
+                {"source_entity_id": source.entity_id, "target_entity_id": entity_id},
+            )
 
     def _add_relation_type_error(self, value: str, field: str) -> None:
         allowed = self._allowed_edge_types()

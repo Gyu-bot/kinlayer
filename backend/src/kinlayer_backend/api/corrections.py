@@ -14,6 +14,10 @@ router = APIRouter(tags=["corrections"])
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
+def _filter_has_error(filter_result: dict, code: str) -> bool:
+    return any(error.get("code") == code for error in filter_result["errors"])
+
+
 @router.post("/api/corrections/apply", response_model=CorrectionApplyResponse)
 def apply_correction(payload: CorrectionApplyRequest, session: SessionDep):
     body = payload.model_dump()
@@ -22,6 +26,27 @@ def apply_correction(payload: CorrectionApplyRequest, session: SessionDep):
         if body.get("created_by") == "ai_agent":
             filter_result = AgentWriteFilter(session).validate("correction", body)
             if not filter_result["accepted"]:
+                if _filter_has_error(filter_result, "stale_record_ref"):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "error": {
+                                "code": "conflict",
+                                "message": "Old source fact is not active.",
+                                "details": {
+                                    "errors": filter_result["errors"],
+                                    "warnings": filter_result["warnings"],
+                                    "diagnostics": filter_result["diagnostics"],
+                                    "normalizations_applied": filter_result[
+                                        "normalizations_applied"
+                                    ],
+                                    "controlled_values_checked": filter_result[
+                                        "controlled_values_checked"
+                                    ],
+                                },
+                            }
+                        },
+                    )
                 raise HTTPException(
                     status_code=422,
                     detail={
