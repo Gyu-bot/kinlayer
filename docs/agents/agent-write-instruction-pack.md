@@ -34,6 +34,9 @@ Ambiguous or unsupported memory -> no write, or ask for clarification
 8. If the target person or old record is ambiguous, do not write a canonical correction.
 9. If the correct ontology value is missing, stop instead of creating a new value.
 10. Verify the API response and surface validation failures as diagnostics, not as rewritten facts.
+11. Do not use optional LLM-assisted background curation unless the user has explicitly approved a
+    separate implementation plan; it remains deferred, disabled by default, review-only, and
+    candidate-producing only.
 
 Controlled fields include at least:
 
@@ -479,7 +482,23 @@ Use `suggested_action: "accept"` only when the user statement is explicit, the t
 
 ### 10.3 `profile_field`
 
-Use `profile_field` for stable profile facts. Structured person profile facts canonicalize into `entity_facts`. Supported structured fact types include values such as `legal_name`, `birth_date`, `phone`, `email`, `address`, `organization`, `role`, and `memo` when those values exist in the active registry.
+Use `profile_field` for stable profile facts. Structured person profile facts canonicalize into
+`entity_facts`. The current structured validation set is `legal_name`, `birth_date`, `phone`,
+`email`, `address`, `organization`, and `role`.
+
+Structured validation rules:
+
+- all structured fact content must be a string and cannot be blank after trimming;
+- `birth_date` must be `YYYY-MM-DD`;
+- `email` must be one syntactically valid address with one `@`, a dotted domain, no whitespace, and
+  a lowercased domain after validation;
+- `phone` must contain at least seven decimal digits;
+- `legal_name`, `address`, `organization`, and `role` are required text with surrounding whitespace
+  trimmed.
+
+Other active registry fact types, including `memo`, can still be valid general profile facts, but
+agents must not assume they use structured validation unless the active structured validator set
+includes them.
 
 ```json
 {
@@ -512,6 +531,14 @@ Use `profile_field` for stable profile facts. Structured person profile facts ca
 ```
 
 Do not promote a general note into a structured fact unless the active `fact_type` and `field_path` are clear.
+
+When replacing an existing general profile fact with a structured profile fact, submit a
+`profile_field` candidate with top-level `supersedes_record_ref = entity_facts:<source_id>`.
+The source fact must be active and belong to the same entity. Candidate accept/edit-accept will
+promote the source into a structured replacement, copy provenance, mark the source `superseded`,
+and set `canonical_record_ref` to the replacement fact. If the source fact is stale, the API returns
+`conflict`; if the ref crosses entities or the structured content is invalid, the API returns
+`validation_error`.
 
 ### 10.4 `relationship_edge`
 
@@ -870,6 +897,7 @@ Agent action:
 ```text
 If `organization` is an active fact type and Minji is unambiguous, submit a `profile_field` candidate.
 If the statement is a broad note rather than a structured profile field, keep it as an `observation` candidate.
+If the statement clarifies a previous general fact, include `supersedes_record_ref` only when the old `entity_facts:<id>` is unambiguous and belongs to Minji.
 ```
 
 ### Example F: Relative time in recent observations
@@ -956,10 +984,10 @@ kinlayer_resolve_entity()
 kinlayer_create_episode()
 kinlayer_submit_candidate()
 kinlayer_apply_correction()
-kinlayer_validate_write()       # future deterministic guard
+kinlayer_validate_write()       # deterministic preflight through /api/agent-writes/validate
 kinlayer_list_recent_write_audit() # future diagnostics
 ```
 
 The deterministic service guard should validate schema, registry membership, endpoint entity-type compatibility, evidence presence, and low-risk exact normalization. It should not use an LLM, fuzzy semantic matching, synonym lists, or keyword-based intent rewriting.
 
-LLM-assisted background curation may exist later as an optional review-only workflow. It must never directly write canonical records and must still pass deterministic validation before creating candidates.
+LLM-assisted background curation is deferred and disabled by default. If a later plan enables it, the workflow must stay review-only, must never directly write canonical records, and must still pass deterministic validation before creating candidates.

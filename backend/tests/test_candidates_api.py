@@ -733,6 +733,474 @@ def test_profile_field_candidate_accept_writes_structured_fact_and_context_card(
     assert [item["id"] for item in context_card["profile_facts"]] == [fact_id]
 
 
+def test_profile_field_candidate_accept_promotes_superseded_general_fact(
+    client,
+    database_url,
+) -> None:
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+    source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "important_context",
+            "content": "Alex's work email is alex@example.com.",
+            "claim_type": "fact",
+            "confidence": 0.6,
+            "sensitivity": "medium",
+            "ai_use_policy": "cautious_use",
+            "created_by": "ai_agent",
+        },
+    ).json()
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "profile_field",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.email",
+                "fact_type": "email",
+                "content": "alex@example.com",
+                "value": {"kind": "work", "email": "alex@example.com"},
+                "claim_type": "fact",
+                "sensitivity": "high",
+                "ai_use_policy": "ask_before_use",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex confirmed alex@example.com.",
+                    "confidence": 0.8,
+                }
+            ],
+            "confidence": 0.91,
+            "sensitivity": "high",
+            "created_by": "ai_agent",
+            "supersedes_record_ref": f"entity_facts:{source['id']}",
+        },
+    )
+    assert candidate.status_code == 201
+
+    accepted = client.post(f"/api/candidates/{candidate.json()['id']}/accept")
+
+    assert accepted.status_code == 200
+    replacement_ref = accepted.json()["canonical_record_ref"]
+    assert replacement_ref.startswith("entity_facts:")
+    replacement_id = replacement_ref.split(":", 1)[1]
+    replacement = client.get(f"/api/entity-facts/{replacement_id}").json()
+    assert replacement["id"] != source["id"]
+    assert replacement["fact_type"] == "email"
+    assert replacement["content"] == "alex@example.com"
+    assert replacement["source_candidate_id"] == candidate.json()["id"]
+    assert replacement["value"] == {
+        "field_path": "profile.email",
+        "value": {"kind": "work", "email": "alex@example.com"},
+        "supersedes_record_ref": f"entity_facts:{source['id']}",
+    }
+    assert client.get(f"/api/entity-facts/{source['id']}").json()["status"] == "superseded"
+
+    with create_session_maker(Settings(database_url=database_url))() as session:
+        evidence_count = (
+            session.query(EntityFactEvidence)
+            .filter(
+                EntityFactEvidence.entity_fact_id == replacement_id,
+                EntityFactEvidence.episode_id == episode["id"],
+            )
+            .count()
+        )
+        assert evidence_count == 1
+
+
+def test_profile_field_candidate_edit_accept_promotes_superseded_general_fact(client) -> None:
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+    source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "important_context",
+            "content": "Alex's phone is +1 555 123 4567.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "profile_field",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.note",
+                "value": "Alex's phone is +1 555 123 4567.",
+                "claim_type": "fact",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex's phone is +1 555 123 4567.",
+                    "confidence": 0.7,
+                }
+            ],
+            "confidence": 0.7,
+            "created_by": "ai_agent",
+            "supersedes_record_ref": f"entity_facts:{source['id']}",
+        },
+    ).json()
+
+    accepted = client.post(
+        f"/api/candidates/{candidate['id']}/edit-accept",
+        json={
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.phone",
+                "fact_type": "phone",
+                "content": "+1 555 123 4567",
+                "value": "+1 555 123 4567",
+                "claim_type": "fact",
+            }
+        },
+    )
+
+    assert accepted.status_code == 200
+    assert accepted.json()["status"] == "edited_accepted"
+    replacement_id = accepted.json()["canonical_record_ref"].split(":", 1)[1]
+    assert client.get(f"/api/entity-facts/{replacement_id}").json()["fact_type"] == "phone"
+    assert client.get(f"/api/entity-facts/{source['id']}").json()["status"] == "superseded"
+
+
+def test_profile_field_candidate_promotion_rejects_unrelated_or_malformed_source(
+    client,
+) -> None:
+    alex = create_person(client, "Alex")
+    jordan = create_person(client, "Jordan")
+    episode = create_episode(client)
+    source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": jordan["id"],
+            "fact_type": "important_context",
+            "content": "Jordan's email is jordan@example.com.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "profile_field",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.email",
+                "fact_type": "email",
+                "content": "alex@example.com",
+                "value": "alex@example.com",
+                "claim_type": "fact",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex email candidate.",
+                    "confidence": 0.8,
+                }
+            ],
+            "confidence": 0.8,
+            "created_by": "ai_agent",
+            "supersedes_record_ref": f"entity_facts:{source['id']}",
+        },
+    )
+
+    assert candidate.status_code == 422
+    assert candidate.json()["error"]["code"] == "validation_error"
+    assert client.get(f"/api/entity-facts/{source['id']}").json()["status"] == "active"
+
+    malformed = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "profile_field",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.email",
+                "fact_type": "email",
+                "content": "alex@example.com",
+                "value": "alex@example.com",
+                "claim_type": "fact",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex email candidate.",
+                    "confidence": 0.8,
+                }
+            ],
+            "confidence": 0.8,
+            "created_by": "ai_agent",
+            "supersedes_record_ref": "observations:not-a-fact",
+        },
+    )
+    assert malformed.status_code == 422
+    assert malformed.json()["error"]["code"] == "validation_error"
+
+
+def test_profile_field_candidate_promotion_rejects_deleted_entity(client) -> None:
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+    source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "important_context",
+            "content": "Alex's email is alex@example.com.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    assert client.delete(f"/api/entities/{alex['id']}").status_code == 200
+
+    response = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "profile_field",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.email",
+                "fact_type": "email",
+                "content": "alex@example.com",
+                "value": "alex@example.com",
+                "claim_type": "fact",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex email candidate.",
+                    "confidence": 0.8,
+                }
+            ],
+            "confidence": 0.8,
+            "created_by": "ai_agent",
+            "supersedes_record_ref": f"entity_facts:{source['id']}",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_profile_field_candidate_promotion_rejects_deleted_entity_at_create(client) -> None:
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+    source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "important_context",
+            "content": "Alex's email is alex@example.com.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    deleted = client.delete(f"/api/entities/{alex['id']}")
+    assert deleted.status_code == 200
+
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "profile_field",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.email",
+                "fact_type": "email",
+                "content": "alex@example.com",
+                "value": "alex@example.com",
+                "claim_type": "fact",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex email candidate.",
+                    "confidence": 0.8,
+                }
+            ],
+            "confidence": 0.8,
+            "created_by": "ai_agent",
+            "supersedes_record_ref": f"entity_facts:{source['id']}",
+        },
+    )
+
+    assert candidate.status_code == 422
+    assert candidate.json()["error"]["code"] == "validation_error"
+    assert client.get(f"/api/entity-facts/{source['id']}").json()["status"] == "active"
+
+
+def test_profile_field_candidate_promotion_rejects_deleted_entity_at_accept(client) -> None:
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+    source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "important_context",
+            "content": "Alex's phone is +1 555 123 4567.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "profile_field",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.phone",
+                "fact_type": "phone",
+                "content": "+1 555 123 4567",
+                "value": "+1 555 123 4567",
+                "claim_type": "fact",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex phone candidate.",
+                    "confidence": 0.8,
+                }
+            ],
+            "confidence": 0.8,
+            "created_by": "ai_agent",
+            "supersedes_record_ref": f"entity_facts:{source['id']}",
+        },
+    )
+    assert candidate.status_code == 201
+    deleted = client.delete(f"/api/entities/{alex['id']}")
+    assert deleted.status_code == 200
+
+    accepted = client.post(f"/api/candidates/{candidate.json()['id']}/accept")
+
+    assert accepted.status_code == 409
+    assert accepted.json()["error"]["code"] == "conflict"
+    assert client.get(f"/api/entity-facts/{source['id']}").json()["status"] == "active"
+
+
+def test_profile_field_structured_profile_fact_validation_rejects_invalid_candidate_create(
+    client,
+) -> None:
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+
+    response = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "profile_field",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.email",
+                "fact_type": "email",
+                "content": "alex.example.com",
+                "value": {"kind": "work", "email": "alex.example.com"},
+                "claim_type": "fact",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex said alex.example.com is the best work email.",
+                    "confidence": 0.8,
+                }
+            ],
+            "confidence": 0.8,
+            "created_by": "ai_agent",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_profile_field_structured_profile_fact_validation_rejects_object_value_without_content(
+    client,
+    database_url,
+) -> None:
+    alex = create_person(client, "Alex")
+
+    response = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "profile_field",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.phone",
+                "fact_type": "phone",
+                "value": {"number": "+1 555 123 4567"},
+                "claim_type": "fact",
+            },
+            "confidence": 0.8,
+            "created_by": "user",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+    with create_session_maker(Settings(database_url=database_url))() as session:
+        assert session.query(Candidate).count() == 0
+        assert session.query(EntityFact).count() == 0
+
+
+def test_profile_field_structured_profile_fact_validation_rejects_invalid_edit_accept(
+    client,
+) -> None:
+    alex = create_person(client, "Alex")
+    episode = create_episode(client)
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "profile_field",
+            "target_entity_id": alex["id"],
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.memo",
+                "fact_type": "important_context",
+                "content": "Has a general profile note.",
+                "value": "Has a general profile note.",
+                "claim_type": "fact",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex has a general profile note.",
+                    "confidence": 0.8,
+                }
+            ],
+            "confidence": 0.8,
+            "created_by": "ai_agent",
+        },
+    )
+    assert candidate.status_code == 201
+
+    response = client.post(
+        f"/api/candidates/{candidate.json()['id']}/edit-accept",
+        json={
+            "payload": {
+                "entity_id": alex["id"],
+                "field_path": "profile.birth_date",
+                "fact_type": "birth_date",
+                "content": "06/01/1990",
+                "value": "06/01/1990",
+                "claim_type": "fact",
+            },
+            "resolution_note": "Edited to a structured field.",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
 def test_accept_supported_candidate_types_write_matching_canonical_records(
     client,
     database_url,

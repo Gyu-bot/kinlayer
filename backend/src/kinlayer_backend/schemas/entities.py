@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, JsonValue
 
 from kinlayer_backend.schemas.candidates import CandidateEvidenceCreate, CandidateRead
 from kinlayer_backend.schemas.common import APIModel, ListResponse
@@ -149,10 +149,27 @@ class EntityFactPatch(APIModel):
     valid_to: datetime | None = None
 
 
+class EntityFactPromoteRequest(APIModel):
+    entity_id: str
+    fact_type: str
+    content: str
+    field_path: str | None = None
+    value: JsonValue = None
+    sensitivity: str | None = None
+    ai_use_policy: str | None = None
+
+
 class EntityFactRead(EntityFactCreate):
     id: str
     created_at: datetime
     updated_at: datetime
+
+
+class EntityFactPromoteResponse(APIModel):
+    source_record_ref: str
+    replacement_record_ref: str
+    source: EntityFactRead
+    replacement: EntityFactRead
 
 
 EntityList = ListResponse[EntityRead]

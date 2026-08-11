@@ -135,6 +135,13 @@ Required sections:
    - show claim_type/confidence/policy.
    - use ontology-backed fact type, sensitivity, and AI use policy controls for creation and edit
      flows.
+   - support adding structured profile facts for `legal_name`, `birth_date`, `phone`, `email`,
+     `address`, `organization`, and `role` through the canonical entity-facts API.
+   - validate empty structured content client-side where practical and surface API
+     `validation_error` responses without rewriting user-entered values.
+   - allow active general profile facts to be promoted into structured profile facts through
+     `POST /api/entity-facts/{id}/promote`; successful promotion refreshes person detail, shows the
+     replacement under structured facts, and removes the stale source from the active fact list.
 
 4. Relationship edges
    - list active edges to/from this person;
@@ -194,6 +201,8 @@ Required behavior:
 - show candidate detail drawer/panel with evidence excerpts and suggested action;
 - render `merge` candidates with a source/target comparison panel, merge fields, risk warnings,
   target confirmation, and audit acknowledgement;
+- show `supersedes_record_ref` for `profile_field` candidates in the candidate detail surface so a
+  reviewer can see when acceptance will promote and supersede an existing `entity_facts` row;
 - keep raw/edit payload JSON behind an explicit raw payload affordance so internal entity IDs are not
   visible by default;
 - actions:
@@ -206,6 +215,8 @@ Required behavior:
 Expected action semantics:
 
 - accept/edit-accept call explicit action endpoints and may create canonical records;
+- `profile_field` accept/edit-accept with `supersedes_record_ref` promotes the referenced general
+  fact into a structured replacement and marks the source fact superseded through the API.
 - merge accept calls the same candidate accept endpoint, returns a canonical `entities` record ref,
   and does not expose edit-accept for merge candidates;
 - reject/archive/needs-clarification update candidate workflow state;

@@ -15,6 +15,7 @@ import {
   getOntology,
   getPerson,
   listPeople,
+  promoteFact,
   updateAlias,
   updateEdge,
   updateFact,
@@ -46,6 +47,16 @@ const STRUCTURED_FACT_TYPES = [
   "memo",
 ];
 
+const PROMOTABLE_FACT_TYPES = [
+  "legal_name",
+  "birth_date",
+  "phone",
+  "email",
+  "address",
+  "organization",
+  "role",
+] as const;
+
 function formatTimestamp(value: string | null) {
   if (!value) {
     return "Unknown";
@@ -68,6 +79,30 @@ type EdgeDraft = {
   ai_use_policy: string;
 };
 
+type PromotionDraft = {
+  fact_type: string;
+  content: string;
+  sensitivity: string;
+  ai_use_policy: string;
+};
+
+type FactPromotionControls = {
+  activeFactId: string | null;
+  factTypes: SelectOption[];
+  getDraft: (fact: EntityFact) => PromotionDraft;
+  onOpen: (fact: EntityFact) => void;
+  onCancel: () => void;
+  onChange: (factId: string, draft: PromotionDraft) => void;
+  onSubmit: (event: FormEvent, fact: EntityFact) => void;
+};
+
+function formatFactTypeLabel(factType: string) {
+  return factType
+    .split("_")
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
 export function PersonDetail({id, onNavigate}: Props) {
   const [person, setPerson] = useState<Entity | null>(null);
   const [aliases, setAliases] = useState<EntityAlias[]>([]);
@@ -89,6 +124,8 @@ export function PersonDetail({id, onNavigate}: Props) {
   const [aliasDrafts, setAliasDrafts] = useState<Record<string, string>>({});
   const [newAlias, setNewAlias] = useState("");
   const [factDrafts, setFactDrafts] = useState<Record<string, FactDraft>>({});
+  const [promotionDrafts, setPromotionDrafts] = useState<Record<string, PromotionDraft>>({});
+  const [activePromotionFactId, setActivePromotionFactId] = useState<string | null>(null);
   const [newFact, setNewFact] = useState<FactDraft>({
     fact_type: "",
     content: "",
@@ -284,6 +321,61 @@ export function PersonDetail({id, onNavigate}: Props) {
     return <p className="muted">Loading person...</p>;
   }
 
+  const promotionFactTypes = PROMOTABLE_FACT_TYPES.map((factType) => {
+    const match = factTypes.find((option) => option.value === factType);
+    return {value: factType, label: match?.label ?? formatFactTypeLabel(factType)};
+  });
+
+  function defaultPromotionDraft(fact: EntityFact): PromotionDraft {
+    return {
+      fact_type: promotionFactTypes[0]?.value ?? "email",
+      content: fact.content,
+      sensitivity: fact.sensitivity,
+      ai_use_policy: fact.ai_use_policy,
+    };
+  }
+
+  function getPromotionDraft(fact: EntityFact) {
+    return promotionDrafts[fact.id] ?? defaultPromotionDraft(fact);
+  }
+
+  function openPromotion(fact: EntityFact) {
+    setActionError(null);
+    setPromotionDrafts((current) => ({...current, [fact.id]: current[fact.id] ?? defaultPromotionDraft(fact)}));
+    setActivePromotionFactId(fact.id);
+  }
+
+  async function submitPromotion(event: FormEvent, fact: EntityFact) {
+    event.preventDefault();
+    const draft = getPromotionDraft(fact);
+    const trimmedContent = draft.content.trim();
+    if (!trimmedContent) {
+      setActionError("validation_error: Structured fact content cannot be blank.");
+      return;
+    }
+    try {
+      setActionError(null);
+      await promoteFact(fact.id, {
+        entity_id: id,
+        fact_type: draft.fact_type,
+        content: trimmedContent,
+        field_path: `profile.${draft.fact_type}`,
+        value: trimmedContent,
+        sensitivity: draft.sensitivity,
+        ai_use_policy: draft.ai_use_policy,
+      });
+      setActivePromotionFactId(null);
+      setPromotionDrafts((current) => {
+        const nextDrafts = {...current};
+        delete nextDrafts[fact.id];
+        return nextDrafts;
+      });
+      await refresh();
+    } catch (err) {
+      setActionError(formatApiError(err));
+    }
+  }
+
   const relationshipEdges = contextCard?.relationship_edges ?? [];
   const structuredFacts = facts.filter((fact) => STRUCTURED_FACT_TYPES.includes(fact.fact_type));
   const generalFacts = facts.filter((fact) => !STRUCTURED_FACT_TYPES.includes(fact.fact_type));
@@ -451,6 +543,16 @@ export function PersonDetail({id, onNavigate}: Props) {
           policyOptions={policyOptions}
           setFactDrafts={setFactDrafts}
           runAction={runAction}
+          promotion={{
+            activeFactId: activePromotionFactId,
+            factTypes: promotionFactTypes,
+            getDraft: getPromotionDraft,
+            onOpen: openPromotion,
+            onCancel: () => setActivePromotionFactId(null),
+            onChange: (factId, draft) =>
+              setPromotionDrafts((current) => ({...current, [factId]: draft})),
+            onSubmit: submitPromotion,
+          }}
         />
       </section>
 
@@ -668,6 +770,7 @@ function FactTable({
   policyOptions,
   setFactDrafts,
   runAction,
+  promotion,
 }: {
   facts: EntityFact[];
   factDrafts: Record<string, FactDraft>;
@@ -676,17 +779,18 @@ function FactTable({
   policyOptions: SelectOption[];
   setFactDrafts: (drafts: Record<string, FactDraft>) => void;
   runAction: (action: () => Promise<unknown>) => Promise<void>;
+  promotion?: FactPromotionControls;
 }) {
   return (
     <div className="table-wrap">
-      <table>
+      <table className="fact-table">
         <thead>
           <tr>
-            <th>Type</th>
-            <th>Content</th>
+            <th className="fact-type-column">Type</th>
+            <th className="fact-content-column">Content</th>
             <th>{helpCopy.claim.label}</th>
-            <th>{helpCopy.policy.label}</th>
-            <th>Actions</th>
+            <th className="fact-policy-column">{helpCopy.policy.label}</th>
+            <th className="fact-actions-column">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -698,9 +802,9 @@ function FactTable({
               sensitivity: fact.sensitivity,
               ai_use_policy: fact.ai_use_policy,
             };
-            return (
+            return [
               <tr key={fact.id}>
-                <td>
+                <td className="fact-type-column">
                   <select
                     aria-label={`Fact type ${fact.fact_type}`}
                     value={draft.fact_type}
@@ -718,8 +822,9 @@ function FactTable({
                     ))}
                   </select>
                 </td>
-                <td>
+                <td className="fact-content-column">
                   <input
+                    className="fact-content-input"
                     aria-label={`Fact content ${fact.fact_type}`}
                     value={draft.content}
                     onChange={(event) =>
@@ -731,7 +836,7 @@ function FactTable({
                   />
                 </td>
                 <td>{draft.claim_type}</td>
-                <td>
+                <td className="fact-policy-column">
                   <div className="stacked-selects">
                     <select
                       aria-label={`Fact sensitivity ${fact.fact_type}`}
@@ -767,7 +872,7 @@ function FactTable({
                     </select>
                   </div>
                 </td>
-                <td>
+                <td className="fact-actions-column">
                   <div className="action-row">
                     <button
                       type="button"
@@ -793,10 +898,125 @@ function FactTable({
                     >
                       Delete fact
                     </button>
+                    {promotion ? (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => promotion.onOpen(fact)}
+                      >
+                        Promote fact
+                      </button>
+                    ) : null}
                   </div>
                 </td>
-              </tr>
-            );
+              </tr>,
+              promotion?.activeFactId === fact.id ? (
+                <tr key={`${fact.id}-promotion`}>
+                  <td colSpan={5}>
+                    <form className="edit-grid" onSubmit={(event) => promotion.onSubmit(event, fact)}>
+                      <label>
+                        <FieldHelp
+                          label="Structured fact type"
+                          help="어떤 정형 필드로 옮길지 선택합니다."
+                        />
+                        <select
+                          aria-label="Structured fact type"
+                          value={promotion.getDraft(fact).fact_type}
+                          onChange={(event) =>
+                            promotion.onChange(fact.id, {
+                              ...promotion.getDraft(fact),
+                              fact_type: event.target.value,
+                            })
+                          }
+                        >
+                          {promotion.factTypes.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="wide">
+                        <FieldHelp
+                          label="Structured fact content"
+                          help="프로모션할 값을 확인하거나 바로 수정합니다."
+                        />
+                        <input
+                          aria-label="Structured fact content"
+                          value={promotion.getDraft(fact).content}
+                          onChange={(event) =>
+                            promotion.onChange(fact.id, {
+                              ...promotion.getDraft(fact),
+                              content: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        <FieldHelp
+                          label="Structured fact sensitivity"
+                          help={helpCopy.sensitivity.help}
+                        />
+                        <select
+                          aria-label="Structured fact sensitivity"
+                          value={promotion.getDraft(fact).sensitivity}
+                          onChange={(event) =>
+                            promotion.onChange(fact.id, {
+                              ...promotion.getDraft(fact),
+                              sensitivity: event.target.value,
+                            })
+                          }
+                        >
+                          {optionsWithCurrent(
+                            sensitivityOptions,
+                            promotion.getDraft(fact).sensitivity,
+                          ).map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <FieldHelp
+                          label="Structured fact AI use policy"
+                          help={helpCopy.policy.help}
+                        />
+                        <select
+                          aria-label="Structured fact AI use policy"
+                          value={promotion.getDraft(fact).ai_use_policy}
+                          onChange={(event) =>
+                            promotion.onChange(fact.id, {
+                              ...promotion.getDraft(fact),
+                              ai_use_policy: event.target.value,
+                            })
+                          }
+                        >
+                          {optionsWithCurrent(
+                            policyOptions,
+                            promotion.getDraft(fact).ai_use_policy,
+                          ).map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="action-row">
+                        <button type="submit">Confirm promotion</button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={promotion.onCancel}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  </td>
+                </tr>
+              ) : null,
+            ];
           })}
           {facts.length === 0 ? (
             <tr>

@@ -4,6 +4,7 @@ import type {
   ContextCard,
   EntityEdge,
   EntityFact,
+  EntityFactPromotionResponse,
   EmbeddingStatus,
   ListResponse,
   Observation,
@@ -59,6 +60,16 @@ type CreatePersonInput = {
   initialRelationshipNote: string;
   initialObservationType: string;
   initialObservation: string;
+};
+
+export type PromoteFactInput = {
+  entity_id: string;
+  fact_type: string;
+  content: string;
+  field_path: string;
+  value: string;
+  sensitivity: string;
+  ai_use_policy: string;
 };
 
 export class ApiError extends Error {
@@ -226,6 +237,13 @@ export async function updateFact(factId: string, input: Record<string, unknown>)
 
 export async function deleteFact(factId: string) {
   return request<EntityFact>(`/api/entity-facts/${factId}`, {method: "DELETE"});
+}
+
+export async function promoteFact(factId: string, input: PromoteFactInput) {
+  return request<EntityFactPromotionResponse>(`/api/entity-facts/${factId}/promote`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function createPerson(input: CreatePersonInput) {

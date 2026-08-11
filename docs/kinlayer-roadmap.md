@@ -17,9 +17,19 @@
 
 `docs/archive/` 안의 문서는 참고용 기록일 뿐이며, 현재 계획이나 제품 동작의 SSOT로 쓰지 않는다.
 
-## 다음 구현 목표
+## 현재 상태
 
-다음 작업의 핵심은 일반 프로필 사실을 구조화된 프로필 사실로 안전하게 승격하는 것이다. 예를 들어 "민지는 회사 이메일이 minji@example.com" 같은 일반 메모를 검토한 뒤 `email` 타입의 구조화된 사실로 만들 수 있어야 한다.
+2026-07-04 기준으로 구조화 프로필 사실 패키지는 구현 브랜치에서 다음 상태다.
+
+- 구조화 프로필 사실 검증: 완료. 직접 API, 후보 accept/edit-accept, correction apply, agent write validate 경로에서 구조화 값 검증과 `validation_error` 처리가 반영됐다.
+- API/서비스 승격 코어: 완료. `POST /api/entity-facts/{id}/promote`와 `profile_field` 후보의 `supersedes_record_ref` 승격이 원본을 `superseded`로 내리고 새 구조화 사실을 만든다.
+- CLI/Web 승격 인터페이스: 완료. `kinlayer fact promote`와 사람 상세 화면의 승격 UX가 canonical API를 사용하며, 성공/실패 경로가 검증됐다.
+- 문서와 스모크: 문서와 스모크 스크립트 갱신은 완료. 활성 spec/agent pack이 갱신됐고, API/CLI acceptance smoke 스크립트가 승격 성공과 `validation_error` 실패를 검증하도록 확장됐다. 다만 서비스가 붙은 API/CLI smoke 실행은 현재 환경에서 blocked/not run 상태이며, 실행 통과로 주장하지 않는다.
+- 선택형 background curation: 보류. 구현이 아니라 계획-only 상태이며, 별도 승인 전까지 자동 큐레이션, 자동 승격, 직접 canonical write는 범위 밖이다.
+
+## 구현 목표 요약
+
+이 패키지의 핵심은 일반 프로필 사실을 구조화된 프로필 사실로 안전하게 승격하는 것이다. 예를 들어 "민지는 회사 이메일이 minji@example.com" 같은 일반 메모를 검토한 뒤 `email` 타입의 구조화된 사실로 만들 수 있어야 한다.
 
 이 작업은 두 가지를 함께 끝내야 한다.
 
@@ -124,7 +134,7 @@ kinlayer fact promote <fact_id> --fact-type email --content minji@example.com --
 완료 확인:
 
 - 활성 문서에서 승격, 검증, `supersedes_record_ref`, `validation_error`를 찾을 수 있다.
-- API/CLI smoke가 새 승격 경로를 검증한다.
+- API/CLI smoke 스크립트가 새 승격 경로를 검증하도록 갱신돼 있다. 다만 현재 증거상 서비스가 붙은 API/CLI smoke 실행은 환경 문제로 blocked/not run이다.
 
 ## 보류된 작업
 
@@ -137,36 +147,18 @@ kinlayer fact promote <fact_id> --fact-type email --content minji@example.com --
 - 별도 연락처/profile 테이블
 - Web에서만 상태가 바뀌는 기능
 
-## 구현을 지시하는 방법
+## 이후 구현을 지시하는 방법
 
-전체 패키지를 시작하려면 이렇게 지시하면 된다.
+현재 브랜치의 구조화 프로필 사실 패키지를 이어서 검토하거나 마무리하려면 이렇게 지시하면 된다.
 
 ```text
-.omo/plans/structured-profile-fact-validation.md 부터 승인할게. 구현 시작해줘.
+.omo/plans/profile-fact-docs-smoke.md 증거와 스모크 결과를 다시 검토해줘.
 ```
 
-부분적으로 시작하려면 이렇게 지시하면 된다.
+선택형 background curation을 새로 시작하려면 별도 계획 승인부터 지시한다.
 
 ```text
-구조화 프로필 사실 검증부터 시작해줘.
-```
-
-또는:
-
-```text
-Web 승격 UX는 나중에 하고, API/CLI 승격 경로까지만 먼저 구현해줘.
-```
-
-slug별로 지시하려면 이렇게 말하면 된다.
-
-```text
-.omo/plans/profile-fact-promotion-core.md 승인할게. API/service와 candidate 승격부터 구현해줘.
-```
-
-또는:
-
-```text
-.omo/plans/profile-fact-promotion-interfaces.md 승인할게. CLI/Web 승격 화면을 구현해줘.
+.omo/plans/optional-background-curation.md 별도 승인할게. 계획부터 다시 확인해줘.
 ```
 
 구현을 시작하기 전에는 최신 `origin/main`, 현재 브랜치 상태, 활성 코드와 spec을 다시 확인해야 한다. Docker, 브라우저, 로컬 서비스가 필요하면 honcho 포트와 Kinlayer 포트 충돌을 먼저 확인한다.

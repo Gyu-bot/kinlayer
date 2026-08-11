@@ -152,6 +152,286 @@ def test_structured_profile_fact_types_are_validated_and_visible_in_context_card
     assert [fact["id"] for fact in context_card.json()["profile_facts"]] == [body["id"]]
 
 
+def test_structured_profile_fact_validation_rejects_invalid_direct_writes(client) -> None:
+    person = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex Kim", "created_by": "user"},
+    ).json()
+
+    invalid_values = [
+        ("email", "alex.example.com"),
+        ("phone", "123-45"),
+        ("birth_date", "01/02/2020"),
+        ("legal_name", "   "),
+        ("address", "   "),
+        ("organization", "   "),
+        ("role", "   "),
+    ]
+    for fact_type, content in invalid_values:
+        response = client.post(
+            "/api/entity-facts",
+            json={
+                "entity_id": person["id"],
+                "fact_type": fact_type,
+                "content": content,
+                "claim_type": "fact",
+                "created_by": "user",
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_structured_profile_fact_validation_normalizes_safe_values_and_keeps_general_facts(
+    client,
+) -> None:
+    person = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex Kim", "created_by": "user"},
+    ).json()
+
+    email = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": person["id"],
+            "fact_type": "email",
+            "content": "  Alex@EXAMPLE.COM  ",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    )
+    phone = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": person["id"],
+            "fact_type": "phone",
+            "content": "  +1 (555) 123-4567  ",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    )
+    general = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": person["id"],
+            "fact_type": "important_context",
+            "content": "not an email and still valid",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    )
+
+    assert email.status_code == 201
+    assert email.json()["content"] == "Alex@example.com"
+    assert phone.status_code == 201
+    assert phone.json()["content"] == "+1 (555) 123-4567"
+    assert general.status_code == 201
+
+    invalid_patch = client.patch(
+        f"/api/entity-facts/{email.json()['id']}",
+        json={"content": "alex.example.com"},
+    )
+    assert invalid_patch.status_code == 422
+    assert invalid_patch.json()["error"]["code"] == "validation_error"
+
+    null_patch = client.patch(
+        f"/api/entity-facts/{email.json()['id']}",
+        json={"content": None},
+    )
+    assert null_patch.status_code == 422
+    assert null_patch.json()["error"]["code"] == "validation_error"
+
+
+def test_promote_general_fact_to_structured_fact_replaces_active_context(client) -> None:
+    alex = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex Kim", "created_by": "user"},
+    ).json()
+    source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "important_context",
+            "content": "Alex's work email is Alex@EXAMPLE.COM.",
+            "value": {"field_path": "profile.note", "value": "Alex@EXAMPLE.COM"},
+            "claim_type": "fact",
+            "confidence": 0.73,
+            "sensitivity": "high",
+            "ai_use_policy": "ask_before_use",
+            "created_by": "ai_agent",
+        },
+    ).json()
+
+    promoted = client.post(
+        f"/api/entity-facts/{source['id']}/promote",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "email",
+            "content": "Alex@EXAMPLE.COM",
+            "field_path": "profile.email",
+            "value": {"kind": "work", "email": "Alex@EXAMPLE.COM"},
+        },
+    )
+
+    assert promoted.status_code == 200
+    body = promoted.json()
+    assert body["source_record_ref"] == f"entity_facts:{source['id']}"
+    assert body["replacement_record_ref"].startswith("entity_facts:")
+    replacement = body["replacement"]
+    assert replacement["id"] != source["id"]
+    assert replacement["fact_type"] == "email"
+    assert replacement["content"] == "Alex@example.com"
+    assert replacement["value"] == {
+        "field_path": "profile.email",
+        "value": {"kind": "work", "email": "Alex@EXAMPLE.COM"},
+        "supersedes_record_ref": f"entity_facts:{source['id']}",
+    }
+    assert replacement["claim_type"] == "fact"
+    assert replacement["confidence"] == 0.73
+    assert replacement["sensitivity"] == "high"
+    assert replacement["ai_use_policy"] == "ask_before_use"
+    assert replacement["created_by"] == "user"
+
+    fetched_source = client.get(f"/api/entity-facts/{source['id']}").json()
+    assert fetched_source["status"] == "superseded"
+    assert fetched_source["content"] == source["content"]
+
+    active = client.get("/api/entity-facts", params={"entity_id": alex["id"], "status": "active"})
+    assert active.status_code == 200
+    assert [item["id"] for item in active.json()["items"]] == [replacement["id"]]
+
+    context_card = client.get(f"/api/entities/{alex['id']}/context-card")
+    assert context_card.status_code == 200
+    assert [fact["id"] for fact in context_card.json()["profile_facts"]] == [replacement["id"]]
+
+    repeated = client.post(
+        f"/api/entity-facts/{source['id']}/promote",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "email",
+            "content": "alex@example.com",
+            "field_path": "profile.email",
+        },
+    )
+    assert repeated.status_code == 409
+    assert repeated.json()["error"]["code"] == "conflict"
+
+
+def test_promote_general_fact_rejects_invalid_or_wrong_source_state(client) -> None:
+    alex = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex Kim", "created_by": "user"},
+    ).json()
+    jordan = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Jordan Lee", "created_by": "user"},
+    ).json()
+    source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "important_context",
+            "content": "Alex's work email is alex@example.com.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+
+    unsupported = client.post(
+        f"/api/entity-facts/{source['id']}/promote",
+        json={"entity_id": alex["id"], "fact_type": "memo", "content": "memo"},
+    )
+    assert unsupported.status_code == 422
+    assert unsupported.json()["error"]["code"] == "validation_error"
+
+    invalid = client.post(
+        f"/api/entity-facts/{source['id']}/promote",
+        json={"entity_id": alex["id"], "fact_type": "email", "content": "alex.example.com"},
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "validation_error"
+
+    wrong_entity = client.post(
+        f"/api/entity-facts/{source['id']}/promote",
+        json={"entity_id": jordan["id"], "fact_type": "email", "content": "alex@example.com"},
+    )
+    assert wrong_entity.status_code == 422
+    assert wrong_entity.json()["error"]["code"] == "validation_error"
+
+    deleted_source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "important_context",
+            "content": "Alex's old phone was +1 555 000 0000.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    assert client.delete(f"/api/entity-facts/{deleted_source['id']}").status_code == 200
+    stale = client.post(
+        f"/api/entity-facts/{deleted_source['id']}/promote",
+        json={"entity_id": alex["id"], "fact_type": "phone", "content": "+1 555 000 0000"},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "conflict"
+
+
+def test_promote_general_fact_rejects_deleted_entity(client) -> None:
+    alex = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex Kim", "created_by": "user"},
+    ).json()
+    source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "important_context",
+            "content": "Alex's work email is alex@example.com.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    assert client.delete(f"/api/entities/{alex['id']}").status_code == 200
+
+    response = client.post(
+        f"/api/entity-facts/{source['id']}/promote",
+        json={"entity_id": alex["id"], "fact_type": "email", "content": "alex@example.com"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "conflict"
+
+
+def test_promote_general_fact_rejects_deleted_owner_entity(client) -> None:
+    alex = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Alex Kim", "created_by": "user"},
+    ).json()
+    source = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": alex["id"],
+            "fact_type": "important_context",
+            "content": "Alex's email is alex@example.com.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    ).json()
+    deleted = client.delete(f"/api/entities/{alex['id']}")
+    assert deleted.status_code == 200
+
+    promoted = client.post(
+        f"/api/entity-facts/{source['id']}/promote",
+        json={"entity_id": alex["id"], "fact_type": "email", "content": "alex@example.com"},
+    )
+
+    assert promoted.status_code == 409
+    assert promoted.json()["error"]["code"] == "conflict"
+    assert client.get(f"/api/entity-facts/{source['id']}").json()["status"] == "active"
+
+
 def test_controlled_values_use_common_validation_error(client) -> None:
     response = client.post(
         "/api/entities",

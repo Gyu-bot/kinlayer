@@ -72,7 +72,7 @@ Your next move: choose and approve one of the child slug plans listed in the ind
 ## Todos
 > Implementation + Test = ONE todo. Never separate.
 <!-- APPEND TASK BATCHES BELOW THIS LINE WITH edit/apply_patch - never rewrite the headers above. -->
-- [ ] 1. Add structured profile fact validation at the canonical fact write boundary.
+- [x] 1. Add structured profile fact validation at the canonical fact write boundary.
   What to do / Must NOT do: Add tests first for valid and invalid `email`, `phone`, `birth_date`, `legal_name`, `address`, `organization`, and `role` facts. Implement one shared validator called by `EntityService.create_fact` and `EntityService.patch_fact` when a supported structured `fact_type` is present. Keep general facts valid without type-specific validation. Do not infer structured types from content or add a new table.
   Parallelization: Wave 1 | Blocked by: none | Blocks: 2, 3, 4, 5, 6
   References (executor has NO interview context - be exhaustive): `backend/src/kinlayer_backend/services/entities.py:26-45`, `backend/src/kinlayer_backend/services/entities.py:119-130`, `docs/archive/planning/implementation-plan-2026-06-27.md:1535-1576`, `frontend/src/routes/PersonDetail.tsx:38-47`
@@ -80,7 +80,7 @@ Your next move: choose and approve one of the child slug plans listed in the ind
   QA scenarios (name the exact tool + invocation): `uv run pytest backend/tests/test_entities_api.py -k structured_profile_fact_validation` covers accepted normalized values and rejected invalid values; evidence `.omo/evidence/task-1-kinlayer-next-work.md`.
   Commit: Y | `feat(profile-facts): validate structured fact content`
 
-- [ ] 2. Add explicit API/service promotion from general fact to structured fact.
+- [x] 2. Add explicit API/service promotion from general fact to structured fact.
   What to do / Must NOT do: Add a service method and API endpoint for promoting an existing general `entity_facts:<id>` record to a supported structured fact type. The operation must create a new structured fact, copy safe provenance/policy/confidence/evidence fields, set predictable `value.field_path`, and mark the original fact deprecated or superseded in the same transaction. Reject already deleted/deprecated sources, unsupported structured types, invalid content, wrong-entity requests, and repeated promotion attempts. Do not mutate the original fact in place.
   Parallelization: Wave 1 | Blocked by: 1 | Blocks: 3, 4, 5, 6
   References (executor has NO interview context - be exhaustive): `backend/src/kinlayer_backend/services/entities.py:119-135`, `backend/src/kinlayer_backend/models.py:347-348`, `docs/archive/planning/implementation-plan-2026-06-27.md:1323-1373`
@@ -88,7 +88,7 @@ Your next move: choose and approve one of the child slug plans listed in the ind
   QA scenarios (name the exact tool + invocation): `uv run pytest backend/tests/test_entities_api.py -k promote` covers happy path, invalid content, unsupported type, stale/deprecated source, and idempotency; evidence `.omo/evidence/task-2-kinlayer-next-work.md`.
   Commit: Y | `feat(profile-facts): add explicit promotion API`
 
-- [ ] 3. Make candidate accept/edit-accept support referenced structured promotion.
+- [x] 3. Make candidate accept/edit-accept support referenced structured promotion.
   What to do / Must NOT do: Require candidate-originated promotion to use `candidate_type=profile_field` with `supersedes_record_ref="entity_facts:<source_id>"`. On accept/edit-accept, validate content through the shared validator, create the structured replacement, deprecate the source general fact, copy candidate evidence, and set `canonical_record_ref` to the new fact. Preserve current normal `profile_field` creation when no source ref is supplied. Do not allow an agent-originated candidate to bypass review or promote an unrelated source fact.
   Parallelization: Wave 1 | Blocked by: 1, 2 | Blocks: 5, 6
   References (executor has NO interview context - be exhaustive): `backend/src/kinlayer_backend/services/candidates.py:180-187`, `backend/src/kinlayer_backend/services/candidates.py:233-296`, `backend/src/kinlayer_backend/services/agent_write_filter.py:159-166`, `backend/src/kinlayer_backend/schemas/candidates.py:130-179`, `docs/specs/candidate-lifecycle-and-payload.md:144-145`, `docs/specs/candidate-lifecycle-and-payload.md:266`
@@ -96,7 +96,7 @@ Your next move: choose and approve one of the child slug plans listed in the ind
   QA scenarios (name the exact tool + invocation): `uv run pytest backend/tests/test_candidates_api.py -k profile_field_promotion` covers accept and edit-accept; evidence `.omo/evidence/task-3-kinlayer-next-work.md`.
   Commit: Y | `feat(candidates): support profile fact promotion review`
 
-- [ ] 4. Add a named CLI promotion command.
+- [x] 4. Add a named CLI promotion command.
   What to do / Must NOT do: Add a `kinlayer fact promote <fact_id>` command with options for `--fact-type`, `--content`, `--field-path`, `--sensitivity`, `--ai-use-policy`, `--json`, and the active API URL/token behavior already used by existing commands. Default `field_path` to `profile.<fact_type>`. Emit old and new refs in text and JSON modes. Do not force users through raw JSON candidate files for a direct user promotion.
   Parallelization: Wave 2 | Blocked by: 2 | Blocks: 6
   References (executor has NO interview context - be exhaustive): `backend/src/kinlayer_backend/cli.py:519-573`, `docs/specs/cli-spec.md:181-190`, `docs/specs/cli-spec.md:306-315`, `docs/archive/planning/implementation-plan-2026-06-27.md:1366-1367`
@@ -104,7 +104,7 @@ Your next move: choose and approve one of the child slug plans listed in the ind
   QA scenarios (name the exact tool + invocation): `KINLAYER_API_URL=http://127.0.0.1:8765 scripts/smoke-acceptance-cli.sh` after binding inspection, plus targeted unit coverage where available; evidence `.omo/evidence/task-4-kinlayer-next-work.md`.
   Commit: Y | `feat(cli): add fact promotion command`
 
-- [ ] 5. Add Web promotion workflow on person detail.
+- [x] 5. Add Web promotion workflow on person detail.
   What to do / Must NOT do: Add a promotion action for general profile facts on `/people/:id`. The operator chooses a structured fact type, confirms content and policy fields, sees validation errors from the API, and after success sees the fact move from General Profile Facts to Structured Profile Facts. Replace the hardcoded structured type boundary with a shared frontend constant or ontology-derived helper that matches backend-supported structured types. Do not create Web-only state or silently promote on edit.
   Parallelization: Wave 2 | Blocked by: 2 | Blocks: 6
   References (executor has NO interview context - be exhaustive): `frontend/src/routes/PersonDetail.tsx:38-47`, `frontend/src/routes/PersonDetail.tsx:232-248`, `frontend/src/routes/PersonDetail.tsx:287-289`, `frontend/src/routes/PersonDetail.tsx:421-454`, `frontend/src/api/client.ts`
@@ -112,7 +112,7 @@ Your next move: choose and approve one of the child slug plans listed in the ind
   QA scenarios (name the exact tool + invocation): after inspecting bindings and starting only needed Kinlayer services, use the Codex in-app browser at `http://127.0.0.1:5173/people/<id>` to perform a happy-path promotion and one invalid promotion; evidence `.omo/evidence/task-5-kinlayer-next-work.md`.
   Commit: Y | `feat(web): promote general profile facts`
 
-- [ ] 6. Update active specs, agent pack, and acceptance smoke coverage.
+- [x] 6. Update active specs, agent pack, and acceptance smoke coverage.
   What to do / Must NOT do: Update `docs/specs/api-spec.md`, `docs/specs/cli-spec.md`, `docs/specs/candidate-lifecycle-and-payload.md`, `docs/specs/web-ui-spec.md`, `docs/specs/data-model.md`, and `docs/agents/agent-write-instruction-pack.md` to describe structured validation, promotion semantics, supported types, candidate `supersedes_record_ref`, and CLI/Web behavior. Extend `scripts/smoke-acceptance-api.py` and `scripts/smoke-acceptance-cli.sh` to cover one successful promotion and one validation failure. Do not update archived docs except for the already archived source snapshot.
   Parallelization: Wave 2 | Blocked by: 1, 2, 3, 4, 5 | Blocks: final verification
   References (executor has NO interview context - be exhaustive): `docs/specs/api-spec.md:817`, `docs/specs/candidate-lifecycle-and-payload.md:266`, `docs/specs/cli-spec.md:181-190`, `docs/specs/cli-spec.md:306-315`, `docs/agents/agent-write-instruction-pack.md:480-486`, `scripts/smoke-acceptance-api.py:512-523`
@@ -120,7 +120,7 @@ Your next move: choose and approve one of the child slug plans listed in the ind
   QA scenarios (name the exact tool + invocation): run `python3 scripts/smoke-acceptance-api.py --api-url http://127.0.0.1:8765` and `KINLAYER_API_URL=http://127.0.0.1:8765 scripts/smoke-acceptance-cli.sh` after binding inspection; evidence `.omo/evidence/task-6-kinlayer-next-work.md`.
   Commit: Y | `docs(profile-facts): document promotion and validation`
 
-- [ ] 7. Keep optional LLM-assisted background curation parked behind a later plan.
+- [x] 7. Keep optional LLM-assisted background curation parked behind a later plan.
   What to do / Must NOT do: Record T052 as deferred in the OMO index and Korean user roadmap. If the user later approves it, create a separate OMO plan that starts from active specs and code, not from archived task text. Do not implement curation queues, LLM calls, or new background jobs in this package.
   Parallelization: Wave 3 | Blocked by: none | Blocks: final verification
   References (executor has NO interview context - be exhaustive): `docs/archive/planning/implementation-plan-2026-06-27.md:1429-1479`, `.omo/plans/index.md`, `docs/kinlayer-roadmap.md`
@@ -130,10 +130,10 @@ Your next move: choose and approve one of the child slug plans listed in the ind
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit
-- [ ] F2. Code quality review
-- [ ] F3. Real manual QA
-- [ ] F4. Scope fidelity
+- [x] F1. Plan compliance audit
+- [x] F2. Code quality review
+- [x] F3. Real manual QA
+- [x] F4. Scope fidelity
 
 ## Commit strategy
 - Do not implement directly from this rollup unless the user explicitly asks to run the whole work set as one package.

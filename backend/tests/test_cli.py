@@ -477,6 +477,137 @@ def test_candidate_edit_accept_and_supersede_post_payloads(tmp_path, monkeypatch
     assert calls[1][1]["supersedes_candidate_id"] == "new-candidate-id"
 
 
+def test_fact_promote_posts_direct_payload_and_reports_refs(monkeypatch) -> None:
+    calls = []
+
+    def fake_get(url, headers, timeout):
+        calls.append(("GET", url, None))
+        return DummyResponse(200, {"id": "source-fact-id", "entity_id": "entity-id"})
+
+    def fake_post(url, headers, json, timeout):
+        calls.append(("POST", url, json))
+        return DummyResponse(
+            200,
+            {
+                "source_record_ref": "entity_facts:source-fact-id",
+                "replacement_record_ref": "entity_facts:replacement-fact-id",
+                "source": {"id": "source-fact-id"},
+                "replacement": {"id": "replacement-fact-id"},
+            },
+        )
+
+    monkeypatch.setattr(cli.httpx, "get", fake_get)
+    monkeypatch.setattr(cli.httpx, "post", fake_post)
+
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "fact",
+            "promote",
+            "source-fact-id",
+            "--fact-type",
+            "email",
+            "--content",
+            "alex@example.com",
+            "--field-path",
+            "profile.email",
+            "--sensitivity",
+            "high",
+            "--ai-use-policy",
+            "ask_before_use",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert calls[0] == (
+        "GET",
+        "http://127.0.0.1:8765/api/entity-facts/source-fact-id",
+        None,
+    )
+    assert calls[1] == (
+        "POST",
+        "http://127.0.0.1:8765/api/entity-facts/source-fact-id/promote",
+        {
+            "entity_id": "entity-id",
+            "fact_type": "email",
+            "content": "alex@example.com",
+            "field_path": "profile.email",
+            "sensitivity": "high",
+            "ai_use_policy": "ask_before_use",
+        },
+    )
+    assert "entity_facts:source-fact-id -> entity_facts:replacement-fact-id" in result.stdout
+
+
+def test_fact_promote_supports_json_output(monkeypatch) -> None:
+    def fake_get(url, headers, timeout):
+        return DummyResponse(200, {"id": "source-fact-id", "entity_id": "entity-id"})
+
+    def fake_post(url, headers, json, timeout):
+        return DummyResponse(
+            200,
+            {
+                "source_record_ref": "entity_facts:source-fact-id",
+                "replacement_record_ref": "entity_facts:replacement-fact-id",
+                "source": {"id": "source-fact-id"},
+                "replacement": {"id": "replacement-fact-id"},
+            },
+        )
+
+    monkeypatch.setattr(cli.httpx, "get", fake_get)
+    monkeypatch.setattr(cli.httpx, "post", fake_post)
+
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "fact",
+            "promote",
+            "source-fact-id",
+            "--fact-type",
+            "email",
+            "--content",
+            "alex@example.com",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["source_record_ref"] == "entity_facts:source-fact-id"
+    assert payload["replacement_record_ref"] == "entity_facts:replacement-fact-id"
+
+
+def test_fact_promote_surfaces_api_validation_error(monkeypatch) -> None:
+    def fake_get(url, headers, timeout):
+        return DummyResponse(200, {"id": "source-fact-id", "entity_id": "entity-id"})
+
+    def fake_post(url, headers, json, timeout):
+        return DummyResponse(
+            422,
+            {"error": {"code": "validation_error", "message": "email facts must contain one email address"}},
+        )
+
+    monkeypatch.setattr(cli.httpx, "get", fake_get)
+    monkeypatch.setattr(cli.httpx, "post", fake_post)
+
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "fact",
+            "promote",
+            "source-fact-id",
+            "--fact-type",
+            "email",
+            "--content",
+            "not-email",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "validation_error" in result.output
+    assert "email facts must contain one email address" in result.output
+
+
 def test_correction_apply_reads_json_file_and_cli_uses_api_token(tmp_path, monkeypatch) -> None:
     correction_path = tmp_path / "correction.json"
     correction_payload = {

@@ -259,6 +259,27 @@ entity_facts
 Notes:
 
 - `profile_field` candidates usually canonicalize into `entity_facts`.
+- Structured profile fact validators currently apply to `legal_name`, `birth_date`, `phone`,
+  `email`, `address`, `organization`, and `role`.
+- Structured facts require string content. Blank content is rejected; `birth_date` uses
+  `YYYY-MM-DD`; `email` validates one address and lowercases the domain; `phone` requires at least
+  seven digits.
+- General registry-backed fact types such as `memo`, `important_context`, `job`, and
+  `contact_note` remain valid `entity_facts` values but are not in the structured validator set
+  unless code adds them there.
+- Promotion from a general fact to a structured fact creates a replacement `entity_facts` row,
+  marks the source row `superseded`, copies evidence, preserves source claim/confidence/validity,
+  and stores promotion metadata in replacement `value`.
+- Promotion replacement `value` uses:
+
+```json
+{
+  "field_path": "profile.email",
+  "value": "alex@example.com",
+  "supersedes_record_ref": "entity_facts:<source_id>"
+}
+```
+
 - Lightweight presentation-only fields stay in `entities.properties`.
 
 ---
@@ -442,6 +463,12 @@ Notes:
 - `payload` is JSONB in DB.
 - API/Pydantic validates `payload` by `candidate_type`.
 - Accepting a candidate immediately writes canonical records.
+- For `profile_field` candidates, top-level `supersedes_record_ref` may reference
+  `entity_facts:<id>`. Accept/edit-accept then promotes that active same-entity source fact into the
+  structured replacement rather than writing an unrelated fact.
+- Source fact provenance and candidate evidence are copied to the replacement fact. The candidate's
+  `canonical_record_ref` points to the replacement row; the replacement `value.supersedes_record_ref`
+  points back to the source row.
 - `merge` candidates execute only through candidate accept after review or explicit current-turn
   user confirmation.
 - Batch changesets are not MVP.

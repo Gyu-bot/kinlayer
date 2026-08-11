@@ -220,6 +220,7 @@ evidence[]
 sensitivity
 suggested_action
 target_entity_id when candidate applies to existing entity
+supersedes_record_ref when a profile_field candidate replaces an existing entity_facts row
 ```
 
 ---
@@ -290,7 +291,61 @@ candidate.canonical_record_ref = entity_facts:<id>
 
 Structured person profile fields use `entity_facts` as canonical storage. Supported structured
 fact types include `legal_name`, `birth_date`, `phone`, `email`, `address`, `organization`,
-`role`, and `memo`. Profile candidates may still use `important_context` for general notes.
+and `role`. Profile candidates may still use registry-backed fact types such as
+`important_context` or `memo` for general notes, but those are not part of the structured validator
+set.
+
+Structured validation rules:
+
+- all structured content must be a string and cannot be blank after trimming;
+- `birth_date` requires ISO `YYYY-MM-DD`;
+- `email` requires exactly one `@`, a non-empty local part, a dotted non-empty domain, and no
+  whitespace; the domain is normalized to lowercase;
+- `phone` requires at least seven decimal digits;
+- `legal_name`, `address`, `organization`, and `role` are trimmed required text.
+
+Promotion candidate example:
+
+```json
+{
+  "candidate_type": "profile_field",
+  "target_entity_id": "person-123",
+  "payload": {
+    "entity_id": "person-123",
+    "field_path": "profile.email",
+    "fact_type": "email",
+    "content": "alex@example.com",
+    "value": "alex@example.com",
+    "claim_type": "fact",
+    "sensitivity": "high",
+    "ai_use_policy": "ask_before_use"
+  },
+  "evidence": [
+    {
+      "episode_id": "episode-123",
+      "excerpt": "Alex said alex@example.com is the best work email.",
+      "confidence": 0.8
+    }
+  ],
+  "confidence": 0.8,
+  "sensitivity": "high",
+  "suggested_action": "review",
+  "created_by": "ai_agent",
+  "supersedes_record_ref": "entity_facts:general-fact-id"
+}
+```
+
+`supersedes_record_ref` semantics for `profile_field`:
+
+- Must use `entity_facts:<id>`.
+- Must point to an active source fact on the same entity.
+- Accept/edit-accept calls the same promotion service as `POST /api/entity-facts/{id}/promote`.
+- The accepted candidate gets `canonical_record_ref = entity_facts:<replacement_id>`.
+- The source fact becomes `status = superseded`; the replacement fact stores
+  `value.supersedes_record_ref = entity_facts:<source_id>`.
+- Candidate evidence and source fact evidence are copied to the replacement where applicable.
+- Stale/inactive source facts fail with `conflict`; cross-entity refs and invalid target structured
+  content fail with `validation_error`.
 
 ### 7.4 `relationship_edge`
 

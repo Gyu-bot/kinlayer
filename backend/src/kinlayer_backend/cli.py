@@ -20,6 +20,7 @@ graph_app = typer.Typer(help="Inspect relationship graph views.")
 ontology_app = typer.Typer(help="Inspect ontology registries and diagnostics.")
 agent_operations_app = typer.Typer(help="Inspect and export agent write operations.")
 agent_write_app = typer.Typer(help="Validate agent write payloads.")
+fact_app = typer.Typer(help="Promote and inspect profile facts.")
 app.add_typer(person_app, name="person")
 app.add_typer(embedding_app, name="embedding")
 app.add_typer(candidate_app, name="candidate")
@@ -30,6 +31,7 @@ app.add_typer(graph_app, name="graph")
 app.add_typer(ontology_app, name="ontology")
 app.add_typer(agent_operations_app, name="agent-operations")
 app.add_typer(agent_write_app, name="agent-write")
+app.add_typer(fact_app, name="fact")
 
 
 def _headers(settings: Settings) -> dict[str, str]:
@@ -72,7 +74,14 @@ def _raise_for_api(response: httpx.Response) -> None:
     except ValueError:
         payload = {"error": {"message": response.text}}
     error = payload.get("error", {})
-    raise typer.BadParameter(error.get("message", f"HTTP {response.status_code}"))
+    if isinstance(error, dict):
+        code = error.get("code")
+        message = error.get("message")
+        if isinstance(code, str) and isinstance(message, str):
+            raise typer.BadParameter(f"{code}: {message}")
+        if isinstance(message, str):
+            raise typer.BadParameter(message)
+    raise typer.BadParameter(f"HTTP {response.status_code}")
 
 
 def _read_json_file(path: Path) -> dict[str, Any]:
@@ -557,6 +566,39 @@ def candidate_supersede(
         _emit(payload, json_output=True)
     else:
         typer.echo(f"{payload['id']}  {payload['status']}")
+
+
+@fact_app.command("promote")
+def fact_promote(
+    fact_id: str,
+    fact_type: Annotated[str, typer.Option("--fact-type")],
+    content: Annotated[str, typer.Option("--content")],
+    field_path: Annotated[str | None, typer.Option("--field-path")] = None,
+    sensitivity: Annotated[str | None, typer.Option("--sensitivity")] = None,
+    ai_use_policy: Annotated[str | None, typer.Option("--ai-use-policy")] = None,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    source_response = _request("GET", f"/api/entity-facts/{fact_id}")
+    _raise_for_api(source_response)
+    source = source_response.json()
+    payload = {
+        "entity_id": source["entity_id"],
+        "fact_type": fact_type,
+        "content": content,
+    }
+    if field_path:
+        payload["field_path"] = field_path
+    if sensitivity:
+        payload["sensitivity"] = sensitivity
+    if ai_use_policy:
+        payload["ai_use_policy"] = ai_use_policy
+    response = _request("POST", f"/api/entity-facts/{fact_id}/promote", payload=payload)
+    _raise_for_api(response)
+    body = response.json()
+    if json_output:
+        _emit(body, json_output=True)
+        return
+    typer.echo(f"{body['source_record_ref']} -> {body['replacement_record_ref']}")
 
 
 @correction_app.command("apply")

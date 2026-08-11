@@ -421,6 +421,17 @@ Validation:
 
 - `fact_type` must be registry-backed seed/config value.
 - Ambiguous contextual notes should be observations, not entity_facts.
+- Structured profile fact validators currently apply to `legal_name`, `birth_date`, `phone`,
+  `email`, `address`, `organization`, and `role`.
+- Structured validator rules:
+  - all supported structured fact content must be a string and cannot be blank after trimming;
+  - `birth_date` must be ISO `YYYY-MM-DD`;
+  - `email` must contain exactly one `@`, a non-empty local part, a dotted non-empty domain, and no
+    whitespace; the domain is normalized to lowercase;
+  - `phone` must contain at least seven decimal digits;
+  - `legal_name`, `address`, `organization`, and `role` trim surrounding whitespace.
+- Other registry-backed fact types, such as `memo`, remain valid profile facts but do not receive
+  the structured validator rules above unless code adds them to the structured validator set.
 
 ### `GET /api/entity-facts`
 
@@ -441,6 +452,51 @@ offset
 ### `DELETE /api/entity-facts/{id}`
 
 Soft delete semantics.
+
+### `POST /api/entity-facts/{id}/promote`
+
+Purpose: promote an active general profile fact into a structured profile fact while preserving
+provenance and superseding the source record.
+
+Request:
+
+```json
+{
+  "entity_id": "uuid",
+  "fact_type": "email",
+  "content": "alex@example.com",
+  "field_path": "profile.email",
+  "value": "alex@example.com",
+  "sensitivity": "high",
+  "ai_use_policy": "ask_before_use"
+}
+```
+
+Response:
+
+```json
+{
+  "source_record_ref": "entity_facts:old_uuid",
+  "replacement_record_ref": "entity_facts:new_uuid",
+  "source": {},
+  "replacement": {}
+}
+```
+
+Semantics:
+
+- Source fact must exist, belong to the request `entity_id`, have status `active`, belong to an
+  active entity, and must not already be one of the structured validator fact types.
+- Target `fact_type` must be one of the supported structured profile fact validator types listed
+  under `POST /api/entity-facts`.
+- Target content is normalized and validated by the structured validator rules.
+- A replacement `entity_facts` row is created. The source fact becomes `status = superseded`.
+- Replacement `value` stores `field_path`, `value`, and
+  `supersedes_record_ref = entity_facts:<source_id>`.
+- Replacement preserves source `claim_type`, confidence, validity window, and copied evidence.
+  `sensitivity` and `ai_use_policy` default from the source unless provided.
+- Errors include `validation_error` for invalid target type/content, entity mismatch, or already
+  structured source; `conflict` for inactive/stale source paths; and `not_found` for missing facts.
 
 ---
 
@@ -642,6 +698,11 @@ Response: candidate object.
 Validation:
 
 - `payload` validated by `candidate_type` using typed schemas.
+- `profile_field` candidates may include top-level `supersedes_record_ref`. When present it must
+  be `entity_facts:<id>`, point to an active fact on the same entity, and accept/edit-accept uses
+  the fact promotion path instead of creating an unrelated new fact.
+- Structured `profile_field` candidates use the same validation rules as direct `entity_facts`
+  writes. If `content` is omitted for a structured `fact_type`, validation uses `value` as content.
 - `observation` candidate payload supports `occurred_at`, `valid_from`, and `valid_to`; accept
   and edit-accept preserve those fields into canonical `observations`.
 - Evidence writes to `candidate_evidence` join table.
@@ -703,6 +764,8 @@ Filter rules:
 - unknown edge types return `relation_type_not_allowed` with the allowed edge-type list;
 - the filter validates evidence, entity refs, endpoint entity-type compatibility, and explicit
   user correction requirements for agent-submitted writes.
+- `profile_field` validation checks structured fact content, same-entity
+  `supersedes_record_ref`, and stale superseded-source refs before persistence.
 - observation candidates may return non-blocking warnings for content quality issues such as
   overlong content, dangling references, missing temporal scope, or typed-record boundary review;
   the filter does not rewrite observation prose into facts or edges.

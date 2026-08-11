@@ -57,7 +57,7 @@ Your next move: approve this slug when you want validation implemented first. Fu
 ## Todos
 > Implementation + Test = ONE todo. Never separate.
 <!-- APPEND TASK BATCHES BELOW THIS LINE WITH edit/apply_patch - never rewrite the headers above. -->
-- [ ] 1. Add tests that expose missing structured fact content validation.
+- [x] 1. Add tests that expose missing structured fact content validation.
   What to do / Must NOT do: Add failing tests for valid and invalid `email`, `phone`, `birth_date`, `legal_name`, `address`, `organization`, and `role` writes through direct fact API, accepted `profile_field` candidate, correction apply, and agent write validation. Do not change production code in this todo except fixtures/helpers required for tests.
   Parallelization: Wave 1 | Blocked by: none | Blocks: 2, 3
   References (executor has NO interview context - be exhaustive): `backend/src/kinlayer_backend/services/entities.py:119`, `backend/src/kinlayer_backend/services/candidates.py:274`, `backend/src/kinlayer_backend/services/agent_write_filter.py:159`, `docs/archive/planning/implementation-plan-2026-06-27.md:1535`
@@ -65,7 +65,7 @@ Your next move: approve this slug when you want validation implemented first. Fu
   QA scenarios (name the exact tool + invocation): `uv run pytest backend/tests/test_entities_api.py backend/tests/test_candidates_api.py backend/tests/test_corrections_api.py backend/tests/test_agent_write_filter.py -k "structured_profile_fact_validation"`; evidence `.omo/evidence/task-1-structured-profile-fact-validation.md`.
   Commit: Y | `test(profile-facts): cover structured content validation`
 
-- [ ] 2. Implement shared structured fact validator.
+- [x] 2. Implement shared structured fact validator.
   What to do / Must NOT do: Add one backend validator used by `EntityService.create_fact` and `EntityService.patch_fact`; normalize only conservative values such as trimmed email domain case and phone digit checks while preserving display content. Do not duplicate validation rules in every router.
   Parallelization: Wave 2 | Blocked by: 1 | Blocks: 3, final verification
   References (executor has NO interview context - be exhaustive): `backend/src/kinlayer_backend/services/entities.py:26`, `backend/src/kinlayer_backend/services/entities.py:119`, `backend/src/kinlayer_backend/services/entities.py:125`
@@ -73,7 +73,7 @@ Your next move: approve this slug when you want validation implemented first. Fu
   QA scenarios (name the exact tool + invocation): happy path creates `email`, `phone`, and `birth_date`; failure path rejects malformed values; evidence `.omo/evidence/task-2-structured-profile-fact-validation.md`.
   Commit: Y | `feat(profile-facts): validate structured fact content`
 
-- [ ] 3. Prove alternate write paths share the same validation.
+- [x] 3. Prove alternate write paths share the same validation.
   What to do / Must NOT do: Route or verify candidate accept/edit-accept, correction apply, and agent write validation through the shared rules. Do not add separate looser validation for agent-originated data.
   Parallelization: Wave 3 | Blocked by: 2 | Blocks: final verification
   References (executor has NO interview context - be exhaustive): `backend/src/kinlayer_backend/services/candidates.py:180`, `backend/src/kinlayer_backend/services/candidates.py:274`, `backend/src/kinlayer_backend/services/corrections.py`, `backend/src/kinlayer_backend/services/agent_write_filter.py:159`
@@ -83,10 +83,10 @@ Your next move: approve this slug when you want validation implemented first. Fu
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit
-- [ ] F2. Code quality review
-- [ ] F3. Real manual QA
-- [ ] F4. Scope fidelity
+- [x] F1. Plan compliance audit
+- [x] F2. Code quality review
+- [x] F3. Real manual QA
+- [x] F4. Scope fidelity
 
 ## Commit strategy
 - Keep this slug as the first implementation package.

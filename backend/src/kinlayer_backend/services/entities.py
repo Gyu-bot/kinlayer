@@ -1,10 +1,14 @@
+from dataclasses import dataclass
 from typing import Any
+from typing import TypeAlias
+from typing import assert_never
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
-from kinlayer_backend.models import Entity, EntityAlias, EntityFact
+from kinlayer_backend.models import Entity, EntityAlias, EntityFact, EntityFactEvidence
 from kinlayer_backend.repositories.entities import EntityRepository
 from kinlayer_backend.services.ontology import (
     CONFIRMATION_STATUSES,
@@ -15,12 +19,38 @@ from kinlayer_backend.services.ontology import (
     is_allowed_registry_value,
     normalize_name,
 )
+from kinlayer_backend.services.structured_facts import (
+    InvalidStructuredFactContent,
+    ValidStructuredFactContent,
+    is_structured_fact_type,
+    validate_structured_fact_content,
+)
 
 STRONG_RESOLVE_THRESHOLD = 0.85
 LOW_CONFIDENCE_THRESHOLD = 0.55
 CLOSE_MATCH_DELTA = 0.08
 DUPLICATE_MATCH_THRESHOLD = 0.68
 DEFAULT_MERGE_FIELDS = ["aliases", "profile_facts", "edges", "observations"]
+JsonValue: TypeAlias = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
+
+
+@dataclass(frozen=True, slots=True)
+class FactPromotionPayload:
+    entity_id: str
+    fact_type: str
+    content: str
+    field_path: str | None = None
+    value: JsonValue = None
+    sensitivity: str | None = None
+    ai_use_policy: str | None = None
+    created_by: str = "user"
+    source_candidate_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FactPromotionResult:
+    source: EntityFact
+    replacement: EntityFact
 
 
 def validate_common(payload: dict[str, Any], session: Session, fact_type: bool = False) -> None:
@@ -43,6 +73,19 @@ def validate_common(payload: dict[str, Any], session: Session, fact_type: bool =
     for key, values in checks.items():
         if key in payload and payload[key] is not None and payload[key] not in values:
             raise api_error(422, "validation_error", f"Invalid {key}.")
+
+
+def _normalized_fact_content(fact_type: str, content: Any) -> str:
+    if not isinstance(content, str):
+        raise api_error(422, "validation_error", "Structured fact content must be a string.")
+    result = validate_structured_fact_content(fact_type, content)
+    match result:
+        case ValidStructuredFactContent(content=normalized):
+            return normalized
+        case InvalidStructuredFactContent(message=message):
+            raise api_error(422, "validation_error", message)
+        case unreachable:
+            assert_never(unreachable)
 
 
 class EntityService:
@@ -118,12 +161,20 @@ class EntityService:
 
     def create_fact(self, payload: dict[str, Any], commit: bool = True) -> EntityFact:
         validate_common(payload, self.session, fact_type=True)
-        if not self.repository.get_entity(payload["entity_id"]):
+        entity = self.repository.get_entity(payload["entity_id"])
+        if not entity:
             raise api_error(404, "not_found", "Entity not found.")
+        if entity.status != "active":
+            raise api_error(409, "conflict", "Entity is not active.")
+        payload["content"] = _normalized_fact_content(payload["fact_type"], payload["content"])
         return self.repository.add_fact(payload, commit=commit)
 
     def patch_fact(self, fact: EntityFact, payload: dict[str, Any]) -> EntityFact:
         validate_common(payload, self.session, fact_type="fact_type" in payload)
+        if "fact_type" in payload or "content" in payload:
+            fact_type = payload["fact_type"] if "fact_type" in payload else fact.fact_type
+            content = payload["content"] if "content" in payload else fact.content
+            payload["content"] = _normalized_fact_content(fact_type, content)
         for key, value in payload.items():
             setattr(fact, key, value)
         self.repository.commit_refresh([fact])
@@ -133,6 +184,88 @@ class EntityService:
         fact.status = "deleted"
         self.repository.commit_refresh([fact])
         return fact
+
+    def promote_fact(
+        self,
+        source: EntityFact,
+        payload: FactPromotionPayload,
+        commit: bool = True,
+    ) -> FactPromotionResult:
+        source_entity = self.repository.get_entity(source.entity_id)
+        if source_entity is None:
+            raise api_error(404, "not_found", "Source fact entity not found.")
+        if source_entity.status != "active":
+            raise api_error(
+                409,
+                "conflict",
+                "Source fact entity is not active.",
+            )
+        if source.status != "active":
+            raise api_error(
+                409,
+                "conflict",
+                "Source fact is stale and cannot be promoted.",
+            )
+        if source.entity_id != payload.entity_id:
+            raise api_error(
+                422,
+                "validation_error",
+                "Promotion source and target entity do not match.",
+            )
+        if is_structured_fact_type(source.fact_type):
+            raise api_error(
+                422,
+                "validation_error",
+                "Source fact is already structured.",
+            )
+        if not is_structured_fact_type(payload.fact_type):
+            raise api_error(
+                422,
+                "validation_error",
+                "Promotion target fact_type is not supported for structured facts.",
+            )
+        fact_payload = {
+            "entity_id": payload.entity_id,
+            "fact_type": payload.fact_type,
+            "content": payload.content,
+            "value": {
+                "field_path": payload.field_path,
+                "value": payload.value,
+                "supersedes_record_ref": f"entity_facts:{source.id}",
+            },
+            "claim_type": source.claim_type,
+            "confidence": source.confidence,
+            "sensitivity": payload.sensitivity or source.sensitivity,
+            "ai_use_policy": payload.ai_use_policy or source.ai_use_policy,
+            "status": "active",
+            "valid_from": source.valid_from,
+            "valid_to": source.valid_to,
+            "source_candidate_id": payload.source_candidate_id,
+            "created_by": payload.created_by,
+        }
+        replacement = self.create_fact(fact_payload, commit=False)
+        source.status = "superseded"
+        self._copy_fact_evidence(source.id, replacement.id)
+        if commit:
+            self.repository.commit_refresh([source, replacement])
+        else:
+            self.session.flush()
+        return FactPromotionResult(source=source, replacement=replacement)
+
+    def _copy_fact_evidence(self, source_fact_id: str, replacement_fact_id: str) -> None:
+        rows = self.session.execute(
+            select(EntityFactEvidence).where(EntityFactEvidence.entity_fact_id == source_fact_id)
+        ).scalars()
+        for row in rows:
+            self.session.add(
+                EntityFactEvidence(
+                    entity_fact_id=replacement_fact_id,
+                    episode_id=row.episode_id,
+                    excerpt=row.excerpt,
+                    confidence=row.confidence,
+                )
+            )
+        self.session.flush()
 
     def resolve_entity(self, payload: dict[str, Any]) -> dict[str, Any]:
         surface = payload["surface"].strip()
