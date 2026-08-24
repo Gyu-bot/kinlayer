@@ -1,7 +1,9 @@
-from sqlalchemy import func, select
+from datetime import datetime
+
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import selectinload
 
-from kinlayer_backend.models import CurationDecision, CurationRun
+from kinlayer_backend.models import Candidate, CandidateEvidence, CurationDecision, CurationRun
 
 
 class CurationRepository:
@@ -47,6 +49,48 @@ class CurationRepository:
         return self.session.scalar(
             select(CurationDecision).where(CurationDecision.idempotency_key == key)
         )
+
+    def pending_candidates(
+        self,
+        *,
+        as_of: datetime,
+        created_after: datetime,
+        cursor_at: datetime | None,
+        cursor_id: str | None,
+        limit: int,
+    ) -> list[Candidate]:
+        statement = (
+            select(Candidate)
+            .options(
+                selectinload(Candidate.evidence).joinedload(CandidateEvidence.episode)
+            )
+            .where(
+                Candidate.status == "pending",
+                Candidate.created_at >= created_after,
+                Candidate.created_at <= as_of,
+            )
+        )
+        if cursor_at is not None and cursor_id is not None:
+            statement = statement.where(
+                or_(
+                    Candidate.created_at > cursor_at,
+                    and_(Candidate.created_at == cursor_at, Candidate.id > cursor_id),
+                )
+            )
+        return self.session.scalars(
+            statement.order_by(Candidate.created_at, Candidate.id).limit(limit)
+        ).all()
+
+    def candidates_by_ids(self, candidate_ids: list[str]) -> list[Candidate]:
+        if not candidate_ids:
+            return []
+        return self.session.scalars(
+            select(Candidate)
+            .options(
+                selectinload(Candidate.evidence).joinedload(CandidateEvidence.episode)
+            )
+            .where(Candidate.id.in_(candidate_ids))
+        ).all()
 
     def count_decisions(self, run_id: str, status: str) -> int:
         return (

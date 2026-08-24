@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -51,6 +51,71 @@ class CurationRiskLevel(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+
+
+class CurationCursor(CurationModel):
+    created_at: datetime
+    candidate_id: str
+
+
+class CurationSourcePackRequest(CurationModel):
+    cursor: CurationCursor | None = None
+    as_of: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    limit: int = Field(default=50, ge=1, le=200)
+    max_age_days: int = Field(default=30, ge=1, le=365)
+    max_evidence_per_candidate: int = Field(default=5, ge=1, le=20)
+    max_excerpt_chars: int = Field(default=500, ge=1, le=500)
+
+
+class CurationSourceEvidenceRead(CurationModel):
+    candidate_evidence_id: str
+    episode_id: str
+    excerpt: str
+    confidence: float | None = None
+    source_type: str
+    source_ref: str | None = None
+    body_hash: str
+    actor: str
+    occurred_at: datetime | None = None
+    ingested_at: datetime
+    created_at: datetime
+
+
+class CurationSourceCandidateRead(CurationModel):
+    id: str
+    candidate_type: str
+    target_entity_id: str | None = None
+    payload: dict[str, Any]
+    confidence: float
+    sensitivity: str
+    suggested_action: str | None = None
+    status: str
+    created_at: datetime
+    evidence: list[CurationSourceEvidenceRead]
+    validation_errors: list[dict[str, Any]]
+    validation_warnings: list[dict[str, Any]]
+    normalizations: list[dict[str, Any]]
+
+
+class CurationSourceGroupRead(CurationModel):
+    group_key: str
+    target_entity_id: str | None = None
+    unresolved_identity_key: str | None = None
+    candidates: list[CurationSourceCandidateRead]
+    target_context: dict[str, Any] | None = None
+    signals: dict[str, list[str]]
+    reason_codes: list[str]
+
+
+class CurationSourcePackRead(CurationModel):
+    as_of: datetime
+    cursor_started: CurationCursor | None = None
+    cursor_completed: CurationCursor | None = None
+    has_more: bool
+    input_candidate_count: int
+    groups: list[CurationSourceGroupRead]
+    budgets: dict[str, int]
+    diagnostics: dict[str, Any]
 
 
 class CurationPlanner(CurationModel):
