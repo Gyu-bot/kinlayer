@@ -382,7 +382,12 @@ Responsibilities:
 
 - source-pack endpoint creates a bounded incremental pack and cursor;
 - run creation validates the structured plan but does not execute when mode is `shadow`;
-- execute/resume applies only deterministic allowlisted decisions;
+- resume recovers persisted `pending|planning` plans to exact-readback `ready` state without
+  candidate/canonical writes; this is allowed in either enabled server mode after policy-version
+  validation, including stored shadow runs after a server move to apply;
+- ready shadow resume is idempotent and non-writing;
+- execute and apply-run resume from execution/reconciliation states apply only deterministic
+  allowlisted decisions and require configured server mode `apply`;
 - list/get surfaces counts, blocked reasons, canonical refs, and readback status without raw provider payloads.
 
 ### CLI
@@ -520,6 +525,8 @@ Acceptance:
 - injected failure rolls back and leaves sources pending;
 - retry does not create a duplicate canonical record;
 - completed decisions have verified `canonical_record_ref` and readback status.
+- pending/planning resume reuses persisted decisions, performs no canonical write, and is idempotent;
+- stale policy recovery fails before changing run, decision, candidate, or canonical state.
 
 ### Task 5 — API and CLI
 
@@ -533,6 +540,8 @@ Acceptance:
 - shadow mode never mutates candidate/canonical state;
 - disabled mode rejects execution;
 - apply mode executes only `allowed` decisions;
+- enabled shadow/apply modes may perform non-writing pending/planning recovery, while apply execution
+  states still require configured `apply`;
 - error responses preserve candidate state and actionable reason codes.
 
 ### Task 6 — Provisional context

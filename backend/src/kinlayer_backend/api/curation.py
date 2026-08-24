@@ -108,11 +108,14 @@ def execute_curation_run(run_id: str, session: SessionDep, request: Request):
 
 @router.post("/api/curation/runs/{run_id}/resume", response_model=CurationRunRead)
 def resume_curation_run(run_id: str, session: SessionDep, request: Request):
-    if _require_enabled(request) != "apply":
-        raise api_error(409, "shadow_mode", "Only apply mode can resume curation runs.")
+    configured_mode = _require_enabled(request)
     service = CurationService(session)
     run = service.get_run(run_id)
     if not run:
         raise api_error(404, "not_found", "Curation run not found.")
     _require_policy_version(request, run.policy_version)
-    return service.resume_run(run)
+    return service.resume_run(
+        run,
+        server_mode=configured_mode,
+        policy_version=request.app.state.settings.curation_policy_version,
+    )

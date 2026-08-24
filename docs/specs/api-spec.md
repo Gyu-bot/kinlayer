@@ -1305,5 +1305,13 @@ stored state. `shadow` never executes. `apply` commits canonical writes, source 
 and an `executing/verification_unknown` decision atomically, then marks `executed/verified` only after
 fresh exact post-commit reconciliation. Phone/email/address/contact-like content is never automatic.
 
+`POST .../resume` has two strictly separated roles. With curation enabled and the stored
+`policy_version` matching current configuration, persisted `pending` or `planning` runs are
+deterministically re-evaluated to `ready` with `allowed|blocked` decisions and fresh DB readback;
+this recovery performs no candidate or canonical writes. It may recover a stored shadow run while
+the server is configured as either `shadow` or `apply`. Repeating resume on a ready shadow run is a
+read-only no-op. Apply-run execution/reconciliation from `ready|executing|partial|failed|completed`
+still requires server mode `apply`; disabled mode and stale policy versions fail closed.
+
 Context-card query `include_provisional=true` and context-pack field `include_provisional=true`
 return eligible pending observations only in a separate `provisional_context` array.

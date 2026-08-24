@@ -305,8 +305,12 @@ The profile-local, provider-neutral adapter performs exactly this sequence:
    episode/candidate APIs and prepare again. Never scan all sessions.
 3. Require the configured model to return one JSON object matching the run schema below.
 4. `POST /api/curation/runs` and inspect Kinlayer's persisted allow/block reasons.
-5. Stop in `shadow`; in explicitly activated `apply`, call `/execute`, then `/resume` after partial or
-   interrupted work. Persist only cursor and run ID as adapter continuity state.
+5. Stop at `ready` in `shadow`. If submission was interrupted with a persisted `pending` or
+   `planning` run, `/resume` may safely complete deterministic plan evaluation under either enabled
+   server mode, including after a move from shadow to apply. This recovery writes no candidate or
+   canonical state. In explicitly activated `apply`, call `/execute`; use `/resume` for
+   ready/executing/partial/failed apply reconciliation only while the server remains in apply.
+   Persist only cursor and run ID as adapter continuity state.
 
 For every non-empty plan, copy the returned `cursor_started`, `cursor_completed`, and
 `input_candidate_count` into the run fields unchanged. Kinlayer re-derives that pending window and

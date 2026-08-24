@@ -513,4 +513,6 @@ kinlayer curation show RUN_ID --json
 ```
 
 These commands reuse the canonical API and existing URL/token settings. The server mode is
-authoritative. Context card/pack commands accept `--include-provisional`.
+authoritative: `resume` may non-destructively recover persisted `pending|planning` runs in either
+enabled mode, but apply-run execution/reconciliation still requires configured server mode
+`apply`. Context card/pack commands accept `--include-provisional`.

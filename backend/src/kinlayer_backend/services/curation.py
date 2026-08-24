@@ -300,9 +300,30 @@ class CurationService:
         validate_bounded_curation_json(payload.diagnostics, max_bytes=8192)
 
     def evaluate_run(self, run: CurationRun) -> CurationRun:
-        if run.status != "pending":
-            raise api_error(409, "invalid_status_transition", "Only pending runs can be evaluated.")
-        run.status = "planning"
+        run = self.repository.get_run(run.id)
+        if not run:
+            raise api_error(404, "not_found", "Curation run not found.")
+        if run.status not in {"pending", "planning"}:
+            raise api_error(
+                409,
+                "invalid_status_transition",
+                "Only pending or planning runs can be evaluated.",
+            )
+        if any(
+            decision.canonical_record_ref
+            or decision.status not in {"proposed", "allowed", "blocked"}
+            for decision in run.decisions
+        ):
+            raise api_error(
+                409,
+                "recovery_state_invalid",
+                "Planning recovery cannot contain execution state.",
+            )
+        if run.status == "pending":
+            run.status = "planning"
+            self.session.commit()
+            self.session.expire_all()
+            run = self.repository.get_run(run.id)
         blocked_count = 0
         for decision in run.decisions:
             reasons = self._policy_reasons(decision)
@@ -314,6 +335,7 @@ class CurationService:
         run.blocked_decision_count = blocked_count
         run.status = "ready"
         self.session.commit()
+        self.session.expire_all()
         return self.repository.get_run(run.id)
 
     def execute_run(self, run: CurationRun) -> CurationRun:
@@ -359,7 +381,33 @@ class CurationService:
         self.session.commit()
         return self.repository.get_run(run.id)
 
-    def resume_run(self, run: CurationRun) -> CurationRun:
+    def resume_run(
+        self,
+        run: CurationRun,
+        *,
+        server_mode: str = "apply",
+        policy_version: str | None = None,
+    ) -> CurationRun:
+        run = self.repository.get_run(run.id)
+        if not run:
+            raise api_error(404, "not_found", "Curation run not found.")
+        if server_mode == "disabled":
+            raise api_error(409, "curation_disabled", "Curation is disabled.")
+        if policy_version is not None and run.policy_version != policy_version:
+            raise api_error(
+                409,
+                "curation_policy_mismatch",
+                "Run policy_version must match the configured curation policy.",
+            )
+        if run.status in {"pending", "planning"}:
+            return self.evaluate_run(run)
+        if run.mode == "shadow" and run.status in {"ready", "completed"}:
+            self.session.expire_all()
+            return self.repository.get_run(run.id)
+        if run.mode != "apply":
+            raise api_error(409, "shadow_mode", "Shadow runs cannot execute decisions.")
+        if server_mode != "apply":
+            raise api_error(409, "shadow_mode", "Only apply mode can execute curation runs.")
         return self.execute_run(run)
 
     def is_provisional_candidate(self, candidate: Candidate, entity_id: str) -> bool:

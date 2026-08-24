@@ -4,7 +4,9 @@ from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_db_engine
 from kinlayer_backend.main import create_app
 from kinlayer_backend.models import Base
-from kinlayer_backend.models import Candidate, CurationDecision, CurationRun
+from kinlayer_backend.models import Candidate, CurationDecision, CurationRun, Observation
+from kinlayer_backend.schemas.curation import CurationRunCreate
+from kinlayer_backend.services.curation import CurationService
 
 
 def curation_client(database_url: str, mode: str) -> TestClient:
@@ -20,6 +22,43 @@ def empty_plan(mode: str) -> dict:
         "input_candidate_count": 0,
         "decisions": [],
     }
+
+
+def persisted_recovery_run(
+    client: TestClient,
+    *,
+    run_mode: str = "shadow",
+    status: str = "pending",
+    policy_version: str = "curation-policy-v1",
+    key: str = "recovery-decision",
+) -> str:
+    with client.app.state.session_factory() as session:
+        run = CurationService(session).create_run(
+            CurationRunCreate.model_validate(
+                {
+                    "mode": run_mode,
+                    "policy_version": policy_version,
+                    "input_candidate_count": 1,
+                    "decisions": [
+                        {
+                            "action": "defer",
+                            "risk_level": "low",
+                            "candidate_ids": ["missing-candidate"],
+                            "target_entity_id": None,
+                            "proposed_payload": {},
+                            "evidence_episode_ids": [],
+                            "reason_codes": [],
+                            "policy_version": policy_version,
+                            "idempotency_key": key,
+                            "planner": {"name": "test", "model": None, "version": "v1"},
+                        }
+                    ],
+                }
+            )
+        )
+        run.status = status
+        session.commit()
+        return run.id
 
 
 def test_disabled_mode_rejects_preparation_and_planning(client) -> None:
@@ -199,3 +238,70 @@ def test_run_rejects_decision_candidate_outside_server_source_window(database_ur
         accepted = client.post("/api/curation/runs", json=plan)
         assert accepted.status_code == 201
         assert accepted.json()["diagnostics"]["source_pack_candidate_count"] == 1
+
+
+def test_resume_recovers_pending_and_planning_shadow_runs_without_writes(
+    database_url: str,
+) -> None:
+    with curation_client(database_url, "shadow") as client:
+        pending_id = persisted_recovery_run(client, key="pending-recovery")
+        planning_id = persisted_recovery_run(
+            client,
+            status="planning",
+            key="planning-recovery",
+        )
+
+        pending = client.post(f"/api/curation/runs/{pending_id}/resume")
+        planning = client.post(f"/api/curation/runs/{planning_id}/resume")
+        repeated = client.post(f"/api/curation/runs/{pending_id}/resume")
+
+        assert pending.status_code == 200
+        assert pending.json()["status"] == "ready"
+        assert pending.json()["decisions"][0]["status"] == "blocked"
+        assert planning.status_code == 200
+        assert planning.json()["status"] == "ready"
+        assert repeated.json() == pending.json()
+        with client.app.state.session_factory() as session:
+            assert session.query(Candidate).count() == 0
+            assert session.query(Observation).count() == 0
+            assert session.query(CurationDecision).count() == 2
+
+
+def test_resume_recovers_pending_shadow_after_server_moves_to_apply(database_url: str) -> None:
+    with curation_client(database_url, "apply") as client:
+        run_id = persisted_recovery_run(client, key="shadow-under-apply")
+        recovered = client.post(f"/api/curation/runs/{run_id}/resume")
+        repeated = client.post(f"/api/curation/runs/{run_id}/resume")
+
+        assert recovered.status_code == 200
+        assert recovered.json()["mode"] == "shadow"
+        assert recovered.json()["status"] == "ready"
+        assert repeated.json() == recovered.json()
+        with client.app.state.session_factory() as session:
+            assert session.query(Observation).count() == 0
+
+
+def test_resume_recovery_rejects_stale_policy_and_preserves_apply_gate(
+    database_url: str,
+) -> None:
+    with curation_client(database_url, "shadow") as client:
+        stale_id = persisted_recovery_run(
+            client,
+            policy_version="stale-policy",
+            key="stale-recovery",
+        )
+        apply_ready_id = persisted_recovery_run(
+            client,
+            run_mode="apply",
+            status="ready",
+            key="apply-ready-under-shadow",
+        )
+
+        stale = client.post(f"/api/curation/runs/{stale_id}/resume")
+        gated = client.post(f"/api/curation/runs/{apply_ready_id}/resume")
+
+        assert stale.status_code == 409
+        assert stale.json()["error"]["code"] == "curation_policy_mismatch"
+        assert gated.status_code == 409
+        assert gated.json()["error"]["code"] == "shadow_mode"
+        assert client.get(f"/api/curation/runs/{stale_id}").json()["status"] == "pending"

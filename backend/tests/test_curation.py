@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_db_engine
-from kinlayer_backend.models import Base, CurationDecision, CurationRun
+from kinlayer_backend.models import Base, Candidate, CurationDecision, CurationRun, Observation
 from kinlayer_backend.schemas.curation import (
     CurationDecisionCreate,
     CurationRunCreate,
@@ -333,3 +333,95 @@ def test_curation_read_api_lists_and_returns_persisted_runs(client) -> None:
     missing = client.get("/api/curation/runs/missing")
     assert missing.status_code == 404
     assert missing.json()["error"]["code"] == "not_found"
+
+
+def test_service_resume_recovers_pending_and_planning_shadow_runs_idempotently(
+    session: Session,
+) -> None:
+    service = CurationService(session)
+    candidate = Candidate(
+        candidate_type="new_entity",
+        payload={"entity_type": "person", "display_name": "Casey Recovery"},
+        confidence=0.8,
+        sensitivity="low",
+        status="pending",
+        created_by="user",
+    )
+    session.add(candidate)
+    session.commit()
+    candidate_payload = dict(candidate.payload)
+    pending_payload = run_payload(
+        mode="shadow",
+        decisions=[
+            decision_payload(
+                candidate_ids=[candidate.id],
+                proposed_payload=candidate.payload,
+                target_entity_id=None,
+            )
+        ],
+    )
+    pending = service.create_run(
+        CurationRunCreate.model_validate(pending_payload)
+    )
+    decision_count = session.query(CurationDecision).count()
+
+    with pytest.raises(HTTPException) as stale_error:
+        service.resume_run(
+            pending,
+            server_mode="shadow",
+            policy_version="curation-policy-v2",
+        )
+    assert stale_error.value.detail["error"]["code"] == "curation_policy_mismatch"
+    session.expire_all()
+    assert service.get_run(pending.id).status == "pending"
+
+    recovered = service.resume_run(
+        pending,
+        server_mode="shadow",
+        policy_version="curation-policy-v1",
+    )
+    repeated = service.resume_run(
+        recovered,
+        server_mode="shadow",
+        policy_version="curation-policy-v1",
+    )
+
+    assert recovered.status == "ready"
+    assert recovered.decisions[0].status == "blocked"
+    assert repeated.id == recovered.id
+    assert repeated.status == "ready"
+    assert session.query(CurationDecision).count() == decision_count
+    assert session.query(Observation).count() == 0
+    persisted_candidate = session.get(Candidate, candidate.id)
+    assert persisted_candidate.status == "pending"
+    assert persisted_candidate.payload == candidate_payload
+    assert persisted_candidate.canonical_record_ref is None
+    session.expire_all()
+    persisted_run = service.get_run(recovered.id)
+    assert persisted_run.status == "ready"
+    assert persisted_run.decisions[0].id == recovered.decisions[0].id
+    assert persisted_run.decisions[0].status == "blocked"
+
+    planning_payload = run_payload(
+        mode="shadow",
+        decisions=[
+            decision_payload(
+                idempotency_key="curation:decision:planning",
+                candidate_ids=[candidate.id],
+                proposed_payload=candidate.payload,
+                target_entity_id=None,
+            )
+        ],
+    )
+    planning = service.create_run(CurationRunCreate.model_validate(planning_payload))
+    planning.status = "planning"
+    session.commit()
+
+    recovered_planning = service.resume_run(
+        planning,
+        server_mode="shadow",
+        policy_version="curation-policy-v1",
+    )
+    assert recovered_planning.status == "ready"
+    assert recovered_planning.decisions[0].status == "blocked"
+    assert session.query(Observation).count() == 0
