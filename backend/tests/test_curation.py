@@ -1,0 +1,319 @@
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from fastapi import HTTPException
+from pydantic import ValidationError
+from sqlalchemy import inspect
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from kinlayer_backend.config import Settings
+from kinlayer_backend.database import create_db_engine
+from kinlayer_backend.models import Base, CurationDecision, CurationRun
+from kinlayer_backend.schemas.curation import (
+    CurationDecisionCreate,
+    CurationRunCreate,
+)
+from kinlayer_backend.services.curation import CurationService
+
+
+def run_payload(**overrides):
+    started_at = datetime(2026, 8, 24, 1, 0, tzinfo=UTC)
+    payload = {
+        "mode": "shadow",
+        "cursor_started_at": started_at,
+        "cursor_started_id": "candidate-001",
+        "cursor_completed_at": started_at + timedelta(minutes=1),
+        "cursor_completed_id": "candidate-002",
+        "policy_version": "curation-policy-v1",
+        "input_candidate_count": 2,
+        "diagnostics": {"source": "focused-test"},
+        "decisions": [decision_payload()],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def decision_payload(**overrides):
+    payload = {
+        "action": "defer",
+        "risk_level": "medium",
+        "candidate_ids": ["candidate-001"],
+        "target_entity_id": None,
+        "proposed_payload": {"reason": "insufficient evidence"},
+        "evidence_episode_ids": ["episode-001"],
+        "reason_codes": ["needs_source_lookup"],
+        "policy_version": "curation-policy-v1",
+        "idempotency_key": "curation:decision:001",
+        "planner": {
+            "name": "external-curator",
+            "model": "provider-neutral-model",
+            "version": "adapter-v1",
+        },
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.fixture
+def session(database_url: str):
+    engine = create_db_engine(Settings(database_url=database_url))
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db_session:
+        yield db_session
+
+
+def test_curation_models_define_durable_fields_constraints_and_indexes(database_url: str) -> None:
+    engine = create_db_engine(Settings(database_url=database_url))
+    Base.metadata.create_all(engine)
+    inspector = inspect(engine)
+
+    assert {"curation_runs", "curation_decisions"} <= set(inspector.get_table_names())
+    assert {column["name"] for column in inspector.get_columns("curation_runs")} == {
+        "id",
+        "mode",
+        "status",
+        "cursor_started_at",
+        "cursor_started_id",
+        "cursor_completed_at",
+        "cursor_completed_id",
+        "policy_version",
+        "planner_name",
+        "planner_model",
+        "planner_version",
+        "input_candidate_count",
+        "planned_decision_count",
+        "executed_decision_count",
+        "blocked_decision_count",
+        "error_code",
+        "diagnostics",
+        "started_at",
+        "completed_at",
+        "created_at",
+        "updated_at",
+    }
+    decision_columns = {column["name"] for column in inspector.get_columns("curation_decisions")}
+    assert decision_columns == {
+        "id",
+        "run_id",
+        "action",
+        "status",
+        "risk_level",
+        "candidate_ids",
+        "target_entity_id",
+        "proposed_payload",
+        "evidence_episode_ids",
+        "reason_codes",
+        "policy_version",
+        "idempotency_key",
+        "canonical_record_ref",
+        "readback_status",
+        "readback_summary",
+        "api_error_code",
+        "created_at",
+        "updated_at",
+        "executed_at",
+    }
+    assert not decision_columns & {
+        "raw_prompt",
+        "provider_request",
+        "provider_response",
+        "session_content",
+    }
+    assert {index["name"] for index in inspector.get_indexes("curation_runs")} >= {
+        "ix_curation_runs_status"
+    }
+    assert {index["name"] for index in inspector.get_indexes("curation_decisions")} >= {
+        "ix_curation_decisions_run_id",
+        "ix_curation_decisions_status",
+    }
+    assert any(
+        constraint["name"] == "uq_curation_decisions_idempotency_key"
+        for constraint in inspector.get_unique_constraints("curation_decisions")
+    )
+    assert CurationRun.__table__.columns["status"].default.arg == "pending"
+    assert CurationDecision.__table__.columns["status"].default.arg == "proposed"
+
+
+def test_curation_schemas_reject_invalid_enums_cursors_and_raw_provider_fields() -> None:
+    with pytest.raises(ValidationError):
+        CurationRunCreate.model_validate(run_payload(mode="live"))
+    with pytest.raises(ValidationError):
+        CurationRunCreate.model_validate(run_payload(cursor_started_id=None))
+    with pytest.raises(ValidationError):
+        CurationRunCreate.model_validate(
+            run_payload(
+                cursor_completed_at=datetime(2026, 8, 23, tzinfo=UTC),
+                cursor_completed_id="candidate-999",
+            )
+        )
+    with pytest.raises(ValidationError):
+        CurationRunCreate.model_validate(run_payload(raw_provider_response={"secret": True}))
+    with pytest.raises(ValidationError):
+        CurationDecisionCreate.model_validate(decision_payload(action="rewrite_canonical"))
+
+
+def test_curation_run_and_decision_round_trip(session: Session) -> None:
+    service = CurationService(session)
+    created = service.create_run(CurationRunCreate.model_validate(run_payload()))
+
+    fetched = service.get_run(created.id)
+    assert fetched is not None
+    assert fetched.mode == "shadow"
+    assert fetched.status == "pending"
+    assert fetched.policy_version == "curation-policy-v1"
+    assert fetched.planner_name == "external-curator"
+    assert fetched.planner_model == "provider-neutral-model"
+    assert fetched.planner_version == "adapter-v1"
+    assert fetched.input_candidate_count == 2
+    assert fetched.planned_decision_count == 1
+    assert fetched.executed_decision_count == 0
+    assert fetched.blocked_decision_count == 0
+    assert fetched.diagnostics == {"source": "focused-test"}
+    assert len(fetched.decisions) == 1
+
+    decision = fetched.decisions[0]
+    assert decision.action == "defer"
+    assert decision.status == "proposed"
+    assert decision.candidate_ids == ["candidate-001"]
+    assert decision.evidence_episode_ids == ["episode-001"]
+    assert decision.reason_codes == ["needs_source_lookup"]
+    assert decision.policy_version == fetched.policy_version
+    assert decision.idempotency_key == "curation:decision:001"
+
+
+def test_duplicate_decision_idempotency_key_is_rejected_and_session_recovers(
+    session: Session,
+) -> None:
+    service = CurationService(session)
+    first = service.create_run(CurationRunCreate.model_validate(run_payload()))
+
+    duplicate = run_payload(
+        decisions=[decision_payload(candidate_ids=["candidate-002"])],
+        cursor_started_id="candidate-002",
+        cursor_completed_id="candidate-003",
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        service.create_run(CurationRunCreate.model_validate(duplicate))
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["error"]["code"] == "duplicate_idempotency_key"
+    assert service.get_run(first.id) is not None
+    assert session.query(CurationRun).count() == 1
+    assert session.query(CurationDecision).count() == 1
+
+
+def test_non_idempotency_integrity_errors_are_not_misreported(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = CurationService(session)
+    database_error = IntegrityError("insert", {}, Exception("different constraint"))
+
+    def fail_add_run(*_args, **_kwargs):
+        raise database_error
+
+    monkeypatch.setattr(service.repository, "add_run", fail_add_run)
+
+    with pytest.raises(IntegrityError) as exc_info:
+        service.create_run(CurationRunCreate.model_validate(run_payload()))
+    assert exc_info.value is database_error
+
+
+def test_curation_status_transitions_are_guarded_and_update_counts(session: Session) -> None:
+    service = CurationService(session)
+    run = service.create_run(CurationRunCreate.model_validate(run_payload()))
+    decision = run.decisions[0]
+
+    with pytest.raises(HTTPException) as run_error:
+        service.transition_run(run, "executing")
+    assert run_error.value.status_code == 409
+    assert run.status == "pending"
+
+    service.transition_run(run, "planning")
+    service.transition_run(run, "ready")
+    service.transition_decision(decision, "blocked")
+    service.transition_run(run, "completed")
+
+    assert decision.executed_at is None
+    assert run.executed_decision_count == 0
+    assert run.blocked_decision_count == 1
+    assert run.completed_at is not None
+    assert run.cursor_completed_id == "candidate-002"
+
+    with pytest.raises(HTTPException) as decision_error:
+        service.transition_decision(decision, "executing")
+    assert decision_error.value.status_code == 409
+    assert decision.status == "blocked"
+
+
+def test_shadow_run_cannot_enter_execution_status(session: Session) -> None:
+    service = CurationService(session)
+    run = service.create_run(CurationRunCreate.model_validate(run_payload()))
+    decision = run.decisions[0]
+    service.transition_run(run, "planning")
+    service.transition_run(run, "ready")
+    service.transition_decision(decision, "allowed")
+
+    with pytest.raises(HTTPException) as run_error:
+        service.transition_run(run, "executing")
+    with pytest.raises(HTTPException) as decision_error:
+        service.transition_decision(decision, "executing")
+
+    assert run_error.value.detail["error"]["code"] == "invalid_status_transition"
+    assert decision_error.value.detail["error"]["code"] == "invalid_status_transition"
+    assert run.status == "ready"
+    assert decision.status == "allowed"
+
+
+def test_executed_decision_requires_verified_canonical_readback(session: Session) -> None:
+    service = CurationService(session)
+    run = service.create_run(
+        CurationRunCreate.model_validate(run_payload(mode="apply"))
+    )
+    decision = run.decisions[0]
+    service.transition_run(run, "planning")
+    service.transition_run(run, "ready")
+    service.transition_decision(decision, "allowed")
+
+    with pytest.raises(HTTPException) as completion_error:
+        service.transition_run(run, "completed")
+    assert completion_error.value.detail["error"]["code"] == "completion_not_ready"
+    assert run.status == "ready"
+
+    service.transition_run(run, "executing")
+    service.transition_decision(decision, "executing")
+
+    with pytest.raises(HTTPException) as error:
+        service.transition_decision(decision, "executed")
+    assert error.value.detail["error"]["code"] == "readback_required"
+    assert decision.status == "executing"
+
+    decision.canonical_record_ref = "observations:synthetic"
+    decision.readback_status = "verified"
+    service.transition_decision(decision, "executed")
+    assert decision.executed_at is not None
+    service.transition_run(run, "completed")
+    assert run.status == "completed"
+
+
+def test_curation_read_api_lists_and_returns_persisted_runs(client) -> None:
+    with client.app.state.session_factory() as session:
+        created = CurationService(session).create_run(
+            CurationRunCreate.model_validate(run_payload())
+        )
+        run_id = created.id
+
+    listed = client.get("/api/curation/runs", params={"mode": "shadow", "status": "pending"})
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 1
+    assert listed.json()["items"][0]["id"] == run_id
+    assert "decisions" not in listed.json()["items"][0]
+
+    fetched = client.get(f"/api/curation/runs/{run_id}")
+    assert fetched.status_code == 200
+    assert fetched.json()["decisions"][0]["idempotency_key"] == "curation:decision:001"
+
+    missing = client.get("/api/curation/runs/missing")
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "not_found"

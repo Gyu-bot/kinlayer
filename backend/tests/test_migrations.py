@@ -1,4 +1,12 @@
+import runpy
 from pathlib import Path
+
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from sqlalchemy import inspect
+
+from kinlayer_backend.config import Settings
+from kinlayer_backend.database import create_db_engine
 
 
 def test_core_entity_migration_defines_required_tables_and_seeds() -> None:
@@ -124,3 +132,70 @@ def test_person_merge_migration_defines_required_table() -> None:
         "previous_refs",
     ]:
         assert f'"{column}"' in content
+
+
+def test_curation_migration_defines_durable_run_and_decision_tables() -> None:
+    migration = Path("backend/alembic/versions/20260824_0007_relationship_curation.py")
+    content = migration.read_text()
+
+    assert 'down_revision: str | None = "20260612_0006"' in content
+    for table in ["curation_runs", "curation_decisions"]:
+        assert f'"{table}"' in content
+    for column in [
+        "mode",
+        "status",
+        "cursor_started_at",
+        "cursor_started_id",
+        "cursor_completed_at",
+        "cursor_completed_id",
+        "policy_version",
+        "planner_name",
+        "planner_model",
+        "planner_version",
+        "input_candidate_count",
+        "planned_decision_count",
+        "executed_decision_count",
+        "blocked_decision_count",
+        "error_code",
+        "diagnostics",
+        "started_at",
+        "completed_at",
+        "run_id",
+        "action",
+        "risk_level",
+        "candidate_ids",
+        "target_entity_id",
+        "proposed_payload",
+        "evidence_episode_ids",
+        "reason_codes",
+        "idempotency_key",
+        "canonical_record_ref",
+        "readback_status",
+        "readback_summary",
+        "api_error_code",
+        "executed_at",
+    ]:
+        assert f'"{column}"' in content
+    for constraint in [
+        "uq_curation_decisions_idempotency_key",
+        "ix_curation_runs_status",
+        "ix_curation_decisions_run_id",
+        "ix_curation_decisions_status",
+    ]:
+        assert f'"{constraint}"' in content
+    for forbidden in ["raw_prompt", "provider_request", "provider_response", "session_content"]:
+        assert forbidden not in content
+
+
+def test_curation_migration_applies_to_an_empty_database(database_url: str) -> None:
+    migration = runpy.run_path(
+        "backend/alembic/versions/20260824_0007_relationship_curation.py"
+    )
+    engine = create_db_engine(Settings(database_url=database_url))
+
+    with engine.begin() as connection:
+        context = MigrationContext.configure(connection)
+        with Operations.context(context):
+            migration["upgrade"]()
+
+    assert {"curation_runs", "curation_decisions"} <= set(inspect(engine).get_table_names())

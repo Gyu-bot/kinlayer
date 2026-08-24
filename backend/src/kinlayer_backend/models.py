@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -389,6 +390,112 @@ class CandidateEvidence(Base):
     @property
     def actor(self) -> str | None:
         return self.episode.actor if self.episode else None
+
+
+class CurationRun(Base, TimestampMixin):
+    __tablename__ = "curation_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "mode in ('disabled', 'shadow', 'apply')",
+            name="ck_curation_runs_mode",
+        ),
+        CheckConstraint(
+            "status in ('pending', 'planning', 'ready', 'executing', "
+            "'completed', 'partial', 'failed')",
+            name="ck_curation_runs_status",
+        ),
+        CheckConstraint(
+            "(cursor_started_at is null) = (cursor_started_id is null)",
+            name="ck_curation_runs_started_cursor_pair",
+        ),
+        CheckConstraint(
+            "(cursor_completed_at is null) = (cursor_completed_id is null)",
+            name="ck_curation_runs_completed_cursor_pair",
+        ),
+        CheckConstraint(
+            "cursor_completed_at is null or cursor_started_at is not null",
+            name="ck_curation_runs_completed_cursor_requires_started",
+        ),
+        CheckConstraint(
+            "cursor_completed_at is null or cursor_completed_at > cursor_started_at or "
+            "(cursor_completed_at = cursor_started_at and cursor_completed_id >= cursor_started_id)",
+            name="ck_curation_runs_cursor_order",
+        ),
+        CheckConstraint(
+            "input_candidate_count >= 0 and planned_decision_count >= 0 and "
+            "executed_decision_count >= 0 and blocked_decision_count >= 0",
+            name="ck_curation_runs_nonnegative_counts",
+        ),
+        Index("ix_curation_runs_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    mode: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="pending")
+    cursor_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cursor_started_id: Mapped[str | None] = mapped_column(String(36))
+    cursor_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cursor_completed_id: Mapped[str | None] = mapped_column(String(36))
+    policy_version: Mapped[str] = mapped_column(String(120), nullable=False)
+    planner_name: Mapped[str | None] = mapped_column(String(160))
+    planner_model: Mapped[str | None] = mapped_column(String(240))
+    planner_version: Mapped[str | None] = mapped_column(String(120))
+    input_candidate_count: Mapped[int] = mapped_column(default=0)
+    planned_decision_count: Mapped[int] = mapped_column(default=0)
+    executed_decision_count: Mapped[int] = mapped_column(default=0)
+    blocked_decision_count: Mapped[int] = mapped_column(default=0)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    diagnostics: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    decisions: Mapped[list["CurationDecision"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+
+
+class CurationDecision(Base, TimestampMixin):
+    __tablename__ = "curation_decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "action in ('accept_existing', 'edit_accept_existing', 'consolidate_accept', "
+            "'archive_exact_duplicate', 'mark_needs_clarification', 'defer', "
+            "'recommend_merge_review', 'recommend_conflict_review')",
+            name="ck_curation_decisions_action",
+        ),
+        CheckConstraint(
+            "status in ('proposed', 'allowed', 'blocked', 'executing', 'executed', 'failed')",
+            name="ck_curation_decisions_status",
+        ),
+        CheckConstraint(
+            "risk_level in ('low', 'medium', 'high')",
+            name="ck_curation_decisions_risk_level",
+        ),
+        UniqueConstraint("idempotency_key", name="uq_curation_decisions_idempotency_key"),
+        Index("ix_curation_decisions_run_id", "run_id"),
+        Index("ix_curation_decisions_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(ForeignKey("curation_runs.id"), nullable=False)
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="proposed")
+    risk_level: Mapped[str] = mapped_column(String(40), nullable=False)
+    candidate_ids: Mapped[list] = mapped_column(JSON_TYPE, default=list)
+    target_entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id"))
+    proposed_payload: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    evidence_episode_ids: Mapped[list] = mapped_column(JSON_TYPE, default=list)
+    reason_codes: Mapped[list] = mapped_column(JSON_TYPE, default=list)
+    policy_version: Mapped[str] = mapped_column(String(120), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(240), nullable=False)
+    canonical_record_ref: Mapped[str | None] = mapped_column(String(120))
+    readback_status: Mapped[str | None] = mapped_column(String(60))
+    readback_summary: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    api_error_code: Mapped[str | None] = mapped_column(String(80))
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    run: Mapped[CurationRun] = relationship(back_populates="decisions")
 
 
 class EntityMerge(Base, TimestampMixin):
