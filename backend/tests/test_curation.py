@@ -150,6 +150,22 @@ def test_curation_schemas_reject_invalid_enums_cursors_and_raw_provider_fields()
     with pytest.raises(ValidationError):
         CurationRunCreate.model_validate(run_payload(raw_provider_response={"secret": True}))
     with pytest.raises(ValidationError):
+        CurationRunCreate.model_validate(
+            run_payload(diagnostics={"nested": [{"rawProviderRequest": "full prompt secret"}]})
+        )
+    with pytest.raises(ValidationError):
+        CurationRunCreate.model_validate(
+            run_payload(diagnostics={"nested": ["providerRequest secret"]})
+        )
+    with pytest.raises(ValidationError):
+        CurationDecisionCreate.model_validate(
+            decision_payload(
+                proposed_payload={
+                    "nested": [{"raw_provider_request": "full prompt secret"}]
+                }
+            )
+        )
+    with pytest.raises(ValidationError):
         CurationDecisionCreate.model_validate(decision_payload(action="rewrite_canonical"))
 
 

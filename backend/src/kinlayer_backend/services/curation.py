@@ -30,7 +30,7 @@ from kinlayer_backend.schemas.curation import (
     CurationSourcePackRequest,
     RESERVED_CURATION_KEYS,
     RESERVED_CURATION_KEY_TOKENS,
-    RESERVED_CURATION_MARKERS,
+    contains_reserved_curation_marker,
     validate_bounded_curation_json,
 )
 from kinlayer_backend.services.agent_write_filter import AgentWriteFilter
@@ -1001,7 +1001,7 @@ class CurationService:
                 return value
             if isinstance(value, str):
                 normalized = re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_")
-                if any(marker in normalized for marker in RESERVED_CURATION_MARKERS):
+                if contains_reserved_curation_marker(normalized):
                     unsafe = True
                     return None
                 return value[:MAX_SOURCE_PAYLOAD_STRING_CHARS]

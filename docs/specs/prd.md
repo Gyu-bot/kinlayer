@@ -264,7 +264,7 @@ MVP embeds:
 
 ```text
 observations.content
-query / situation_text at retrieval time
+query, plus optional pack-only situation, at retrieval time
 ```
 
 MVP does not embed:
@@ -531,20 +531,26 @@ Agents send:
 
 ```text
 query
-situation_text
-retrieval_intent
-desired_context
-candidate_entities
+entity_hints
 focal_entity_id optional
-time_window
-include_pending_recent
-max_results
-debug
+query_embedding optional
+include_debug
+limit
+situation optional, context-pack only
+include_provisional, context-pack only
 ```
 
-`situation_text` is the semantic embedding target / normalized situation description.
+`situation` is combined with `query` for context-pack retrieval. Request schemas use
+`extra = forbid`: legacy fields such as `situation_text`, `retrieval_intent`, `desired_context`,
+`candidate_entities`, `time_window`, `include_pending_recent`, `max_results`, and `debug` are
+rejected with HTTP 422 rather than silently ignored.
 
-`situation_tags`, if present, are optional weak hints only. Specific situation understanding should not depend on enum tags.
+Raw retrieval returns `matched_entities`, `observations`, `scores`, `match_reasons`,
+`score_breakdown`, `ambiguity_detected`, and wrapper-level `debug`. Context pack returns
+`{context_pack, debug}`; the inner pack contains `confidence`, `suggested_response_policy`,
+`ambiguity_detected`, `matched_entities`, `buckets`, `recent_context`, `stable_context`, `cautions`,
+`provenance`, and the separate opt-in `provisional_context`. Person context cards use the exact keys
+listed in `context-output-contract.md`.
 
 ### Hybrid retrieval signals
 

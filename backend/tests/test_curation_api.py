@@ -87,6 +87,10 @@ def test_nested_raw_or_unbounded_curation_json_never_persists(database_url: str)
     with curation_client(database_url, "shadow") as client:
         raw = empty_plan("shadow")
         raw["diagnostics"] = {"safe": [{"raw_provider_response": "RAW_TRANSCRIPT secret"}]}
+        raw_request = empty_plan("shadow")
+        raw_request["diagnostics"] = {
+            "nested": [{"raw_provider_request": "full prompt request secret"}]
+        }
         oversized = empty_plan("shadow")
         oversized["diagnostics"] = {"note": "x" * 9000}
         too_deep = empty_plan("shadow")
@@ -104,7 +108,9 @@ def test_nested_raw_or_unbounded_curation_json_never_persists(database_url: str)
                 "risk_level": "low",
                 "candidate_ids": ["candidate-id"],
                 "target_entity_id": None,
-                "proposed_payload": {"nested": [{"tool": "RAW_TRANSCRIPT secret"}]},
+                "proposed_payload": {
+                    "nested": [{"providerRequest": "full provider prompt secret"}]
+                },
                 "evidence_episode_ids": [],
                 "reason_codes": [],
                 "policy_version": "curation-policy-v1",
@@ -117,9 +123,14 @@ def test_nested_raw_or_unbounded_curation_json_never_persists(database_url: str)
         assert raw_response.status_code == 422
         assert "RAW_TRANSCRIPT" not in raw_response.text
         assert "secret" not in raw_response.text
+        request_response = client.post("/api/curation/runs", json=raw_request)
+        assert request_response.status_code == 422
+        assert "full prompt request secret" not in request_response.text
         assert client.post("/api/curation/runs", json=oversized).status_code == 422
         assert client.post("/api/curation/runs", json=too_deep).status_code == 422
-        assert client.post("/api/curation/runs", json=proposed).status_code == 422
+        proposed_response = client.post("/api/curation/runs", json=proposed)
+        assert proposed_response.status_code == 422
+        assert "full provider prompt secret" not in proposed_response.text
         with client.app.state.session_factory() as session:
             assert session.query(CurationRun).count() == 0
             assert session.query(CurationDecision).count() == 0
@@ -128,6 +139,7 @@ def test_nested_raw_or_unbounded_curation_json_never_persists(database_url: str)
         readback = client.get(f"/api/curation/runs/{safe.json()['id']}").text
         assert "RAW_TRANSCRIPT" not in readback
         assert "raw_provider_response" not in readback
+        assert "provider_request" not in readback
 
 
 def test_run_rejects_decision_candidate_outside_server_source_window(database_url: str) -> None:

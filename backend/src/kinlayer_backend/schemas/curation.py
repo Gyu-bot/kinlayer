@@ -23,6 +23,8 @@ RESERVED_CURATION_KEYS = {
     "raw_prompt",
     "raw_provider_response",
     "provider_response",
+    "raw_provider_request",
+    "provider_request",
     "raw_transcript",
     "transcript",
     "session",
@@ -43,11 +45,23 @@ RESERVED_CURATION_MARKERS = {
     "raw_prompt",
     "raw_provider_response",
     "provider_response",
+    "raw_provider_request",
+    "provider_request",
     "raw_transcript",
+}
+RESERVED_CURATION_MARKER_TOKENS = {
+    marker.replace("_", "") for marker in RESERVED_CURATION_MARKERS
 }
 RESERVED_CURATION_KEY_TOKENS = {
     key.replace("_", "") for key in RESERVED_CURATION_KEYS
 }
+
+
+def contains_reserved_curation_marker(value: str) -> bool:
+    compact = value.replace("_", "")
+    return any(marker in value for marker in RESERVED_CURATION_MARKERS) or any(
+        marker in compact for marker in RESERVED_CURATION_MARKER_TOKENS
+    )
 
 
 def validate_bounded_curation_json(value: dict[str, Any], *, max_bytes: int) -> dict[str, Any]:
@@ -70,7 +84,7 @@ def validate_bounded_curation_json(value: dict[str, Any], *, max_bytes: int) -> 
             if len(item) > CURATION_JSON_MAX_STRING_CHARS:
                 raise ValueError("Curation JSON string is too long.")
             normalized = re.sub(r"[^a-z0-9]+", "_", item.casefold()).strip("_")
-            if any(marker in normalized for marker in RESERVED_CURATION_MARKERS):
+            if contains_reserved_curation_marker(normalized):
                 raise ValueError("Curation JSON contains reserved raw-content markers.")
             return
         if isinstance(item, list):

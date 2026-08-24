@@ -1,9 +1,10 @@
 import runpy
 from pathlib import Path
 
+import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_db_engine
@@ -217,3 +218,55 @@ def test_candidate_canonicalization_guard_migration_defines_unique_indexes() -> 
     ]:
         assert f'"{index}"' in content
     assert "unique=True" in content
+
+
+def test_candidate_canonicalization_migration_preflight_reports_legacy_duplicates(
+    database_url: str,
+) -> None:
+    migration = runpy.run_path(
+        "backend/alembic/versions/20260825_0008_unique_candidate_canonicalization.py"
+    )
+    engine = create_db_engine(Settings(database_url=database_url))
+    columns = {
+        "entity_aliases": "source_candidate_id",
+        "entity_facts": "source_candidate_id",
+        "entity_edges": "source_candidate_id",
+        "observations": "source_candidate_id",
+        "entity_merges": "candidate_id",
+    }
+    with engine.begin() as connection:
+        for table, column in columns.items():
+            connection.execute(text(f"create table {table} (id text, {column} text)"))
+        connection.execute(
+            text(
+                "insert into observations (id, source_candidate_id) values "
+                "('one', 'duplicate-candidate'), ('two', 'duplicate-candidate')"
+            )
+        )
+        with pytest.raises(RuntimeError) as exc_info:
+            migration["_assert_no_historical_duplicates"](connection)
+
+    message = str(exc_info.value)
+    assert "observations.source_candidate_id" in message
+    assert "Resolve those duplicates manually" in message
+    assert "No rows were changed" in message
+    assert "duplicate-candidate" not in message
+
+
+def test_candidate_canonicalization_migration_offline_preflight_lists_key_classes() -> None:
+    migration = runpy.run_path(
+        "backend/alembic/versions/20260825_0008_unique_candidate_canonicalization.py"
+    )
+
+    sql = str(migration["_offline_postgres_preflight_sql"]())
+
+    for key_class in [
+        "entity_aliases.source_candidate_id",
+        "entity_facts.source_candidate_id",
+        "entity_edges.source_candidate_id",
+        "observations.source_candidate_id",
+        "entity_merges.candidate_id",
+    ]:
+        assert key_class in sql
+    assert "Resolve those duplicates manually, then retry" in sql
+    assert "No rows were changed" in sql
