@@ -206,6 +206,7 @@ class AgentOperationService:
         operation_type: str,
         source_path: str,
         exc: HTTPException,
+        attempted_payload: dict[str, Any] | None = None,
     ) -> None:
         if candidate.created_by != "ai_agent":
             return
@@ -220,7 +221,7 @@ class AgentOperationService:
                 {
                     "candidate_type": candidate.candidate_type,
                     "target_entity_id": candidate.target_entity_id,
-                    "payload": candidate.payload,
+                    "payload": attempted_payload or candidate.payload,
                     "confidence": float(candidate.confidence),
                     "sensitivity": candidate.sensitivity,
                     "suggested_action": candidate.suggested_action,

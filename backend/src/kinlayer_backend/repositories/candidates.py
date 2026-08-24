@@ -13,14 +13,23 @@ class CandidateRepository:
     def __init__(self, session):
         self.session = session
 
-    def add_candidate(self, payload: dict, evidence: list[dict]) -> Candidate:
+    def add_candidate(
+        self,
+        payload: dict,
+        evidence: list[dict],
+        *,
+        commit: bool = True,
+    ) -> Candidate:
         candidate = Candidate(**payload)
         self.session.add(candidate)
         self.session.flush()
         for item in evidence:
             self.session.add(CandidateEvidence(candidate_id=candidate.id, **item))
-        self.session.commit()
-        self.session.refresh(candidate)
+        if commit:
+            self.session.commit()
+            self.session.refresh(candidate)
+        else:
+            self.session.flush()
         return candidate
 
     def get_candidate(self, candidate_id: str) -> Candidate | None:

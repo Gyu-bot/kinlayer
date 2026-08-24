@@ -158,6 +158,7 @@ def edit_accept_candidate(
             "candidate_edit_accept",
             f"/api/candidates/{candidate_id}/edit-accept",
             exc,
+            attempted_payload=payload.payload,
         )
         raise
     AgentOperationService(session).record_candidate_action(

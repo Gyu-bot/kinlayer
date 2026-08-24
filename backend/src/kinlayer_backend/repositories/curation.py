@@ -50,6 +50,12 @@ class CurationRepository:
             select(CurationDecision).where(CurationDecision.idempotency_key == key)
         )
 
+    def get_decision(self, decision_id: str, *, for_update: bool = False) -> CurationDecision | None:
+        statement = select(CurationDecision).where(CurationDecision.id == decision_id)
+        if for_update:
+            statement = statement.with_for_update()
+        return self.session.scalar(statement)
+
     def pending_candidates(
         self,
         *,
@@ -90,6 +96,19 @@ class CurationRepository:
                 selectinload(Candidate.evidence).joinedload(CandidateEvidence.episode)
             )
             .where(Candidate.id.in_(candidate_ids))
+        ).all()
+
+    def lock_candidates(self, candidate_ids: list[str]) -> list[Candidate]:
+        if not candidate_ids:
+            return []
+        return self.session.scalars(
+            select(Candidate)
+            .options(
+                selectinload(Candidate.evidence).joinedload(CandidateEvidence.episode)
+            )
+            .where(Candidate.id.in_(candidate_ids))
+            .order_by(Candidate.id)
+            .with_for_update()
         ).all()
 
     def count_decisions(self, run_id: str, status: str) -> int:

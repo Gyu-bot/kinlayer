@@ -60,7 +60,7 @@ class CandidateService:
         self.session = session
         self.repository = CandidateRepository(session)
 
-    def create_candidate(self, payload: dict[str, Any]) -> Candidate:
+    def create_candidate(self, payload: dict[str, Any], *, commit: bool = True) -> Candidate:
         evidence = payload.pop("evidence", [])
         validate_common(payload, self.session)
         if not is_allowed_registry_value(self.session, "candidate_type", payload["candidate_type"]):
@@ -91,7 +91,7 @@ class CandidateService:
             )
         )
         payload.setdefault("status", "pending")
-        return self.repository.add_candidate(payload, evidence)
+        return self.repository.add_candidate(payload, evidence, commit=commit)
 
     def patch_candidate(self, candidate: Candidate, payload: dict[str, Any]) -> Candidate:
         validate_common(payload, self.session)
@@ -147,6 +147,7 @@ class CandidateService:
         status: str = "accepted",
         resolution_note: str | None = None,
         resolved_by: str = "user",
+        commit: bool = True,
     ) -> Candidate:
         try:
             self._ensure_resolvable(candidate)
@@ -154,8 +155,11 @@ class CandidateService:
             canonical_record_ref = self._write_canonical_record(candidate)
             candidate.canonical_record_ref = canonical_record_ref
             self._resolve(candidate, status, resolution_note, resolved_by, commit=False)
-            self.session.commit()
-            self.session.refresh(candidate)
+            if commit:
+                self.session.commit()
+                self.session.refresh(candidate)
+            else:
+                self.session.flush()
             return candidate
         except Exception:
             self.session.rollback()
@@ -167,9 +171,10 @@ class CandidateService:
         edited_payload: dict[str, Any],
         resolution_note: str | None = None,
         resolved_by: str = "user",
+        commit: bool = True,
     ) -> Candidate:
         try:
-            candidate.payload = PAYLOAD_MODELS[candidate.candidate_type].model_validate(
+            validated_payload = PAYLOAD_MODELS[candidate.candidate_type].model_validate(
                 edited_payload
             ).model_dump(mode="json", exclude_none=True)
         except (KeyError, ValidationError) as exc:
@@ -177,16 +182,18 @@ class CandidateService:
         self._validate_payload(
             CandidatePayloadValidation(
                 candidate_type=candidate.candidate_type,
-                payload=candidate.payload,
+                payload=validated_payload,
                 target_entity_id=candidate.target_entity_id,
                 supersedes_record_ref=candidate.supersedes_record_ref,
             )
         )
+        candidate.payload = validated_payload
         return self.accept_candidate(
             candidate,
             status="edited_accepted",
             resolution_note=resolution_note,
             resolved_by=resolved_by,
+            commit=commit,
         )
 
     def _entity(self, entity_id: str) -> Entity:

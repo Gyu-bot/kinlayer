@@ -369,6 +369,7 @@ def test_relationship_edge_edit_accept_rejects_invalid_relation_type_and_audits(
     assert operation["candidate_id"] == candidate["id"]
     assert operation["request_summary"]["relation_type"] == "reply_strategy"
     assert operation["diagnostics"]["message"] == "Invalid relation_type."
+    assert client.get(f"/api/candidates/{candidate['id']}").json()["payload"] == candidate["payload"]
     assert client.get("/api/edges", params={"entity_id": alex["id"]}).json()["total"] == 0
 
 

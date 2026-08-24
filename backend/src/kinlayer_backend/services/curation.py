@@ -18,6 +18,7 @@ from kinlayer_backend.models import (
     EntityAlias,
     Observation,
     ObservationEntity,
+    ObservationEvidence,
 )
 from kinlayer_backend.repositories.curation import CurationRepository
 from kinlayer_backend.schemas.curation import (
@@ -27,6 +28,7 @@ from kinlayer_backend.schemas.curation import (
     CurationSourcePackRequest,
 )
 from kinlayer_backend.services.agent_write_filter import AgentWriteFilter
+from kinlayer_backend.services.candidates import CandidateService
 from kinlayer_backend.services.ontology import normalize_name
 
 RUN_TRANSITIONS = {
@@ -222,6 +224,333 @@ class CurationService:
         self.session.commit()
         return self.repository.get_run(run.id)
 
+    def execute_run(self, run: CurationRun) -> CurationRun:
+        run = self.repository.get_run(run.id)
+        if not run:
+            raise api_error(404, "not_found", "Curation run not found.")
+        if run.mode == "disabled":
+            raise api_error(409, "curation_disabled", "Curation execution is disabled.")
+        if run.mode != "apply":
+            raise api_error(409, "shadow_mode", "Shadow runs cannot execute decisions.")
+        if run.status == "completed":
+            for decision in run.decisions:
+                if decision.status == "executed":
+                    self._verify_execution(
+                        decision,
+                        self.repository.candidates_by_ids(decision.candidate_ids),
+                        decision.canonical_record_ref,
+                    )
+            return self.repository.get_run(run.id)
+        if run.status not in {"ready", "executing", "partial", "failed"}:
+            raise api_error(409, "invalid_status_transition", "Curation run is not executable.")
+
+        if run.status != "executing":
+            run.status = "executing"
+            run.completed_at = None
+            self.session.commit()
+        for decision_id in [decision.id for decision in run.decisions]:
+            self._execute_decision(decision_id)
+
+        run = self.repository.get_run(run.id)
+        executed_count = self.repository.count_decisions(run.id, "executed")
+        blocked_count = self.repository.count_decisions(run.id, "blocked")
+        failed_count = self.repository.count_decisions(run.id, "failed")
+        run.executed_decision_count = executed_count
+        run.blocked_decision_count = blocked_count
+        run.status = "partial" if failed_count else "completed"
+        run.completed_at = datetime.now(UTC)
+        self.session.commit()
+        return self.repository.get_run(run.id)
+
+    def resume_run(self, run: CurationRun) -> CurationRun:
+        return self.execute_run(run)
+
+    def _execute_decision(self, decision_id: str) -> None:
+        decision = self.repository.get_decision(decision_id, for_update=True)
+        if not decision or decision.status in {"blocked", "executed"}:
+            return
+        if decision.status not in {"allowed", "failed"}:
+            return
+        candidates = self.repository.lock_candidates(decision.candidate_ids)
+        if decision.target_entity_id:
+            self.session.scalar(
+                select(Entity)
+                .where(Entity.id == decision.target_entity_id)
+                .with_for_update()
+            )
+        reasons = self._policy_reasons(decision)
+        if reasons:
+            decision.status = "blocked"
+            decision.reason_codes = list(dict.fromkeys([*decision.reason_codes, *reasons]))
+            self.session.commit()
+            return
+
+        try:
+            decision.status = "executing"
+            decision.api_error_code = None
+            replacement_candidate_id = None
+            if decision.action == "accept_existing":
+                canonical_ref = self._execute_accept(candidates[0], edit=False)
+            elif decision.action == "edit_accept_existing":
+                canonical_ref = self._execute_accept(
+                    candidates[0],
+                    edit=True,
+                    payload=decision.proposed_payload,
+                )
+            elif decision.action == "consolidate_accept":
+                canonical_ref, replacement_candidate_id = self._execute_consolidation(
+                    decision,
+                    candidates,
+                )
+            elif decision.action == "archive_exact_duplicate":
+                canonical_ref = self._execute_duplicate_archive(decision, candidates)
+            else:
+                raise api_error(422, "unsupported_action", "Unsupported curation action.")
+
+            summary = self._verify_execution(
+                decision,
+                candidates,
+                canonical_ref,
+                replacement_candidate_id=replacement_candidate_id,
+            )
+            decision.canonical_record_ref = canonical_ref
+            decision.readback_status = "verified"
+            decision.readback_summary = summary
+            decision.status = "executed"
+            decision.executed_at = datetime.now(UTC)
+            self.session.commit()
+        except Exception as exc:
+            self.session.rollback()
+            failed = self.repository.get_decision(decision_id)
+            if not failed:
+                raise
+            failed.status = "failed"
+            failed.api_error_code = self._execution_error_code(exc)
+            failed.readback_status = None
+            self.session.commit()
+
+    def _execute_accept(
+        self,
+        candidate: Candidate,
+        *,
+        edit: bool,
+        payload: dict[str, Any] | None = None,
+    ) -> str:
+        service = CandidateService(self.session)
+        if edit:
+            result = service.edit_accept_candidate(
+                candidate,
+                payload or {},
+                resolution_note="curation:edit_accept_existing",
+                resolved_by="system",
+                commit=False,
+            )
+        else:
+            result = service.accept_candidate(
+                candidate,
+                resolution_note="curation:accept_existing",
+                resolved_by="system",
+                commit=False,
+            )
+        return result.canonical_record_ref
+
+    def _execute_consolidation(
+        self,
+        decision: CurationDecision,
+        candidates: list[Candidate],
+    ) -> tuple[str, str]:
+        if len(candidates) < 2:
+            raise api_error(422, "candidate_count_invalid", "Consolidation requires candidates.")
+        evidence_by_key = {}
+        for candidate in candidates:
+            for evidence in candidate.evidence:
+                evidence_by_key[(evidence.episode_id, evidence.excerpt)] = {
+                    "episode_id": evidence.episode_id,
+                    "excerpt": evidence.excerpt,
+                    "confidence": (
+                        float(evidence.confidence) if evidence.confidence is not None else None
+                    ),
+                }
+        if set(decision.evidence_episode_ids) != {
+            item["episode_id"] for item in evidence_by_key.values()
+        }:
+            raise api_error(
+                422,
+                "evidence_episode_set_mismatch",
+                "Consolidation evidence must match attached candidate evidence.",
+            )
+        sensitivity_rank = {"low": 0, "medium": 1, "high": 2}
+        sensitivity = max(
+            (candidate.sensitivity for candidate in candidates),
+            key=lambda value: sensitivity_rank.get(value, 99),
+        )
+        replacement = CandidateService(self.session).create_candidate(
+            {
+                "candidate_type": "observation",
+                "target_entity_id": decision.target_entity_id,
+                "payload": deepcopy(decision.proposed_payload),
+                "evidence": list(evidence_by_key.values()),
+                "confidence": min(float(candidate.confidence) for candidate in candidates),
+                "sensitivity": sensitivity,
+                "suggested_action": "accept",
+                "created_by": "system",
+            },
+            commit=False,
+        )
+        accepted = CandidateService(self.session).accept_candidate(
+            replacement,
+            resolution_note=f"curation:consolidated:{decision.id}",
+            resolved_by="system",
+            commit=False,
+        )
+        for candidate in candidates:
+            candidate.status = "superseded"
+            candidate.supersedes_candidate_id = replacement.id
+            candidate.resolution_note = f"curation:consolidated_into:{replacement.id}"
+            candidate.resolved_by = "system"
+            candidate.resolved_at = datetime.now(UTC)
+        self.session.flush()
+        return accepted.canonical_record_ref, replacement.id
+
+    def _execute_duplicate_archive(
+        self,
+        decision: CurationDecision,
+        candidates: list[Candidate],
+    ) -> str:
+        requested_ref = decision.proposed_payload.get("canonical_record_ref")
+        if isinstance(requested_ref, str) and requested_ref.startswith("observations:"):
+            observation = self.session.get(Observation, requested_ref.split(":", 1)[1])
+            fingerprint = self._candidate_fingerprint(decision.proposed_payload)
+            if not observation or self._observation_fingerprint(observation) != fingerprint:
+                raise api_error(409, "duplicate_not_exact", "Canonical duplicate is not exact.")
+            for candidate in candidates:
+                candidate.status = "archived"
+                candidate.resolution_note = f"curation:exact_duplicate_of:{requested_ref}"
+                candidate.resolved_by = "system"
+                candidate.resolved_at = datetime.now(UTC)
+            self.session.flush()
+            return requested_ref
+
+        if len(candidates) < 2 or len(
+            {self._candidate_fingerprint(candidate.payload) for candidate in candidates}
+        ) != 1:
+            raise api_error(409, "duplicate_not_exact", "Pending duplicate is not exact.")
+        retained = min(candidates, key=lambda candidate: (candidate.created_at, candidate.id))
+        for candidate in candidates:
+            if candidate.id == retained.id:
+                continue
+            candidate.status = "superseded"
+            candidate.supersedes_candidate_id = retained.id
+            candidate.resolution_note = f"curation:exact_duplicate_of:{retained.id}"
+            candidate.resolved_by = "system"
+            candidate.resolved_at = datetime.now(UTC)
+        self.session.flush()
+        return f"candidates:{retained.id}"
+
+    def _verify_execution(
+        self,
+        decision: CurationDecision,
+        source_candidates: list[Candidate],
+        canonical_ref: str | None,
+        *,
+        replacement_candidate_id: str | None = None,
+    ) -> dict[str, Any]:
+        if not canonical_ref:
+            raise api_error(409, "readback_failed", "Canonical record reference is missing.")
+        prefix, _separator, record_id = canonical_ref.partition(":")
+        evidence_episode_ids: list[str] = []
+        target_entity_id = decision.target_entity_id
+        if prefix == "observations":
+            observation = self.session.get(Observation, record_id)
+            if not observation or observation.subject_entity_id != target_entity_id:
+                raise api_error(409, "readback_failed", "Canonical observation readback failed.")
+            if self._observation_fingerprint(observation) != self._candidate_fingerprint(
+                decision.proposed_payload
+            ):
+                raise api_error(409, "readback_failed", "Canonical observation content differs.")
+            expected_source_candidate_id = (
+                replacement_candidate_id
+                or decision.readback_summary.get("replacement_candidate_id")
+                if decision.action == "consolidate_accept"
+                else source_candidates[0].id
+            )
+            if (
+                decision.action != "archive_exact_duplicate"
+                and observation.source_candidate_id != expected_source_candidate_id
+            ):
+                raise api_error(409, "readback_failed", "Canonical source candidate differs.")
+            evidence_episode_ids = sorted(
+                self.session.scalars(
+                    select(ObservationEvidence.episode_id).where(
+                        ObservationEvidence.observation_id == observation.id
+                    )
+                ).all()
+            )
+            if decision.action != "archive_exact_duplicate" and set(evidence_episode_ids) != set(
+                decision.evidence_episode_ids
+            ):
+                raise api_error(409, "readback_failed", "Canonical evidence readback failed.")
+        elif prefix == "candidates":
+            retained = self.session.get(Candidate, record_id)
+            deterministic_retained = min(
+                source_candidates,
+                key=lambda candidate: (candidate.created_at, candidate.id),
+            )
+            fingerprints = {
+                self._candidate_fingerprint(candidate.payload) for candidate in source_candidates
+            }
+            superseded = [
+                candidate for candidate in source_candidates if candidate.id != retained.id
+            ] if retained else []
+            if (
+                not retained
+                or retained.id != deterministic_retained.id
+                or retained.status != "pending"
+                or len(fingerprints) != 1
+                or None in fingerprints
+                or any(
+                    candidate.status != "superseded"
+                    or candidate.supersedes_candidate_id != retained.id
+                    for candidate in superseded
+                )
+            ):
+                raise api_error(409, "readback_failed", "Retained candidate readback failed.")
+        else:
+            raise api_error(409, "readback_failed", "Unsupported canonical readback reference.")
+
+        source_statuses = {candidate.id: candidate.status for candidate in source_candidates}
+        expected_statuses = {
+            "accept_existing": {"accepted"},
+            "edit_accept_existing": {"edited_accepted"},
+            "consolidate_accept": {"superseded"},
+            "archive_exact_duplicate": {"archived", "pending", "superseded"},
+        }[decision.action]
+        if any(status not in expected_statuses for status in source_statuses.values()):
+            raise api_error(409, "readback_failed", "Candidate state readback failed.")
+        target = self.session.get(Entity, target_entity_id) if target_entity_id else None
+        return {
+            "canonical_record_ref": canonical_ref,
+            "record_type": prefix,
+            "record_id": record_id,
+            "target_entity_id": target_entity_id,
+            "target_entity": (
+                {"id": target.id, "display_name": target.display_name, "status": target.status}
+                if target
+                else None
+            ),
+            "evidence_episode_ids": evidence_episode_ids,
+            "source_candidate_statuses": source_statuses,
+            "replacement_candidate_id": replacement_candidate_id,
+        }
+
+    @staticmethod
+    def _execution_error_code(exc: Exception) -> str:
+        if isinstance(exc, HTTPException) and isinstance(exc.detail, dict):
+            error = exc.detail.get("error", {})
+            if isinstance(error, dict) and isinstance(error.get("code"), str):
+                return error["code"]
+        return "execution_failed"
+
     def _policy_reasons(self, decision: CurationDecision) -> list[str]:
         reasons: list[str] = []
         if decision.action not in AUTO_ACTIONS:
@@ -296,7 +625,7 @@ class CurationService:
         }
         if not evidence_episode_ids:
             reasons.append("evidence_required")
-        if not set(decision.evidence_episode_ids) or not set(decision.evidence_episode_ids).issubset(
+        if not set(decision.evidence_episode_ids) or set(decision.evidence_episode_ids) != (
             evidence_episode_ids
         ):
             reasons.append("evidence_episode_set_mismatch")
@@ -306,6 +635,9 @@ class CurationService:
             validation = self._candidate_validation(candidate)
             reasons.extend(issue["code"] for issue in validation["errors"])
             reasons.extend(issue["code"] for issue in validation["warnings"])
+        proposal_validation = self._proposal_validation(ordered[0], proposed)
+        reasons.extend(issue["code"] for issue in proposal_validation["errors"])
+        reasons.extend(issue["code"] for issue in proposal_validation["warnings"])
 
         if proposed.get("claim_type") == "pattern" and len(evidence_episode_ids) < 2:
             reasons.append("pattern_requires_multiple_episodes")
@@ -411,6 +743,26 @@ class CurationService:
             "warnings": result["warnings"],
             "normalizations": result["normalizations_applied"],
         }
+
+    def _proposal_validation(
+        self,
+        candidate: Candidate,
+        proposed_payload: dict[str, Any],
+    ) -> dict[str, list[dict[str, Any]]]:
+        result = AgentWriteFilter(self.session).validate(
+            "candidate",
+            {
+                "candidate_type": "observation",
+                "target_entity_id": candidate.target_entity_id,
+                "payload": deepcopy(proposed_payload),
+                "evidence": [],
+                "confidence": float(candidate.confidence),
+                "sensitivity": candidate.sensitivity,
+                "suggested_action": candidate.suggested_action,
+                "created_by": "system",
+            },
+        )
+        return {"errors": result["errors"], "warnings": result["warnings"]}
 
     def _evidence_reasons(self, evidence) -> list[str]:
         episode = evidence.episode
