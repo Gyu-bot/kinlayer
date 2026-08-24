@@ -313,7 +313,7 @@ README는 제품 설명과 기본 설치 흐름을 다룹니다. API 계약, 데
 
 - `docs/README.md`: 문서 구조와 active/archive 구분
 - `docs/specs/prd.md`: 제품 요구사항과 원칙
-- `.omo/plans/index.md`: 실행 계획 SSOT
+- `docs/plans/relationship-curation-cycle.md`: 현재 승인된 관계 후보 curation·canonical 승격 구현 계획
 - `docs/kinlayer-roadmap.md`: 사용자가 구현 지시를 내릴 때 보는 한글 로드맵
 - `docs/specs/api-spec.md`: HTTP API 계약
 - `docs/specs/data-model.md`: 데이터 모델

@@ -2,7 +2,7 @@
 
 ## OVERVIEW
 
-Active documentation lives in `specs/` and `agents/`; `archive/` is historical
+Active documentation lives in `specs/`, `agents/`, and `plans/`; `archive/` is historical
 and excluded from SSOT.
 
 ## STRUCTURE
@@ -11,6 +11,7 @@ and excluded from SSOT.
 docs/
 ├── specs/    # active product/API/model/CLI/Web contracts
 ├── agents/   # active agent integration and write guidance
+├── plans/    # active implementation plans
 ├── kinlayer-roadmap.md  # Korean user-facing implementation guide
 └── archive/  # ignored for SSOT; do not update for active truth
 ```
@@ -22,6 +23,7 @@ docs/
 | Product/API/model contract | `specs/` | More specific specs win over PRD prose |
 | Agent write behavior | `agents/agent-write-instruction-pack.md` | Operational instruction pack |
 | Integration ideas | `agents/agent-integration-notes.md` | Adapter/runtime planning, not core extraction |
+| Active implementation | `plans/relationship-curation-cycle.md` | Current approved curation-cycle implementation contract |
 | User-facing roadmap | `kinlayer-roadmap.md` | Korean guide for directing future implementation |
 | Documentation map | `README.md` | Active/archive boundaries |
 | Historical context | `archive/` | Reference only; never active SSOT |
@@ -29,8 +31,8 @@ docs/
 ## CONVENTIONS
 
 - Keep root docs sparse. Do not add new root Markdown unless explicitly approved.
-- Active execution plans live in `.omo/plans/`; docs may summarize or link them
-  but must not fork a second execution SSOT.
+- Active execution plans live in `plans/`; specs and roadmap may summarize or
+  link them but must not fork a second execution SSOT.
 - The archived `implementation-plan.md` snapshot is historical only.
 - When docs and code conflict, inspect live routers/services/schemas first, then
   update active docs.

@@ -34,9 +34,11 @@ Ambiguous or unsupported memory -> no write, or ask for clarification
 8. If the target person or old record is ambiguous, do not write a canonical correction.
 9. If the correct ontology value is missing, stop instead of creating a new value.
 10. Verify the API response and surface validation failures as diagnostics, not as rewritten facts.
-11. Do not use optional LLM-assisted background curation unless the user has explicitly approved a
-    separate implementation plan; it remains deferred, disabled by default, review-only, and
-    candidate-producing only.
+11. Periodic relationship curation has an approved implementation plan at
+    `../plans/relationship-curation-cycle.md`, but it remains unavailable until that implementation
+    lands and an operator explicitly enables a runtime mode. An external LLM may propose a structured
+    curation plan; only Kinlayer's deterministic policy and transactional executor may promote an
+    allowlisted decision into canonical state.
 
 Controlled fields include at least:
 
@@ -990,4 +992,4 @@ kinlayer_list_recent_write_audit() # future diagnostics
 
 The deterministic service guard should validate schema, registry membership, endpoint entity-type compatibility, evidence presence, and low-risk exact normalization. It should not use an LLM, fuzzy semantic matching, synonym lists, or keyword-based intent rewriting.
 
-LLM-assisted background curation is deferred and disabled by default. If a later plan enables it, the workflow must stay review-only, must never directly write canonical records, and must still pass deterministic validation before creating candidates.
+Periodic curation is disabled until the approved implementation plan lands and a runtime mode is explicitly enabled. The external curator must consume bounded candidate/evidence packs and emit a structured plan. It must never mutate canonical records directly. Kinlayer may execute only deterministic, allowlisted decisions, and every promotion must preserve evidence, candidate state transitions, idempotency, transactional rollback, and canonical readback. Identity, graph, sensitive, ambiguous, and conflicting changes remain review exceptions.

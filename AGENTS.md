@@ -1,8 +1,8 @@
 # PROJECT KNOWLEDGE BASE
 
-**Snapshot:** 2026-06-27
-**Commit:** fb9a20a
-**Branch:** codex/omo-agents
+**Snapshot:** 2026-08-24
+**Commit:** 1ff177c
+**Branch:** codex/kinlayer-curation-cycle
 
 ## OVERVIEW
 
@@ -20,11 +20,9 @@ kinlayer/
 ├── docs/
 │   ├── specs/      # active product/API/model/CLI/Web contracts
 │   ├── agents/     # active agent integration/write guidance
+│   ├── plans/      # active implementation plans
 │   ├── kinlayer-roadmap.md  # Korean user-facing implementation roadmap
 │   └── archive/    # historical only; not SSOT
-├── .omo/
-│   ├── plans/      # active execution-plan SSOT
-│   └── drafts/     # plan assumptions, topology ledgers, approval gates
 ├── README.md       # product overview and local runbook
 └── AGENTS.md       # this router and project-wide operating rules
 ```
@@ -42,7 +40,7 @@ kinlayer/
 | Web routes | `frontend/src/App.tsx`, `frontend/src/routes/` | Browser-visible surfaces |
 | Product specs | `docs/specs/` | Active contracts; update when behavior changes |
 | Agent write rules | `docs/agents/agent-write-instruction-pack.md` | Required for agent/adapter writes |
-| Execution plans | `.omo/plans/` | Active planning SSOT; `index.md` routes current packages |
+| Execution plans | `docs/plans/` | Active implementation contracts; start with the named current plan |
 | User roadmap | `docs/kinlayer-roadmap.md` | Korean planning guide for requesting implementation |
 | Validation | `scripts/smoke-slice0.sh`, `backend/tests/`, `frontend/package.json` | No GitHub Actions currently |
 
@@ -72,7 +70,7 @@ kinlayer/
 - New work branches must be based on the latest `origin/main`.
 - UI changes need browser or equivalent visual verification when feasible.
 - Keep root Markdown sparse: `README.md`, `AGENTS.md`.
-- Use `.omo/plans/` as the active execution-plan SSOT.
+- Use `docs/plans/` for active implementation plans.
 - Use `docs/kinlayer-roadmap.md` as the Korean user-facing implementation guide.
 - `docs/archive/planning/implementation-plan-2026-06-27.md` is historical only.
 

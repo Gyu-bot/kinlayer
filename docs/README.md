@@ -13,6 +13,7 @@ This directory keeps project documentation that should not live at the repositor
 - `specs/context-output-contract.md`: retrieval output and Context Pack contract.
 - `specs/candidate-lifecycle-and-payload.md`: candidate lifecycle and payload rules.
 - `specs/ontology-design.md`: ontology registry and relationship boundary design.
+- `plans/relationship-curation-cycle.md`: approved periodic candidate curation and canonical-promotion implementation plan.
 - `kinlayer-roadmap.md`: Korean user-facing roadmap for directing implementation.
 - `agents/agent-integration-notes.md`: agent integration and post-turn boundary notes.
 - `agents/agent-write-instruction-pack.md`: copy/paste-ready write guidance for agents, skills, plugins, MCP adapters, and runtime hooks.
@@ -38,5 +39,5 @@ The repository root intentionally keeps only the high-signal entry points:
 - `README.md`: product overview, setup, and local operation.
 - `AGENTS.md`: local agent operating instructions.
 
-Execution planning now lives under `.omo/plans/`, with `.omo/plans/index.md` as
-the active plan index.
+Active implementation planning lives under `plans/`. The current plan is
+`plans/relationship-curation-cycle.md`.
