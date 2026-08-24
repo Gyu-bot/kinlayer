@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from fastapi.testclient import TestClient
 
 from kinlayer_backend.config import Settings
@@ -328,6 +330,201 @@ def test_api_source_window_requires_complete_exact_once_coverage(database_url: s
         )
         assert one_to_one.status_code == 201
         assert consolidate.status_code == 201
+
+
+def test_source_pack_api_upper_cursor_does_not_widen_same_timestamp(database_url: str) -> None:
+    with curation_client(database_url, "shadow") as client:
+        timestamp = datetime(2026, 8, 24, tzinfo=UTC)
+        with client.app.state.session_factory() as session:
+            session.add_all(
+                [
+                    Candidate(
+                        id=f"api-upper-{suffix}",
+                        candidate_type="new_entity",
+                        payload={"entity_type": "person", "display_name": f"Casey {suffix}"},
+                        confidence=0.8,
+                        sensitivity="low",
+                        status="pending",
+                        created_by="user",
+                        created_at=timestamp,
+                        updated_at=timestamp,
+                    )
+                    for suffix in ["a", "b", "c"]
+                ]
+            )
+            session.commit()
+        response = client.post(
+            "/api/curation/source-packs",
+            json={
+                "cursor": {
+                    "created_at": timestamp.isoformat(),
+                    "candidate_id": "api-upper-a",
+                },
+                "upper_cursor": {
+                    "created_at": timestamp.isoformat(),
+                    "candidate_id": "api-upper-b",
+                },
+                "as_of": (timestamp + timedelta(hours=1)).isoformat(),
+                "limit": 1,
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        packed_ids = [
+            item["id"]
+            for group in body["groups"]
+            for item in group["candidates"]
+        ]
+        assert packed_ids == ["api-upper-b"]
+        assert body["has_more"] is False
+        assert "api-upper-c" not in response.text
+
+
+def test_apply_empty_replay_checkpoint_completes_and_replays_idempotently(
+    database_url: str,
+) -> None:
+    with curation_client(database_url, "apply") as client:
+        start = datetime(2026, 8, 24, tzinfo=UTC)
+        end = start + timedelta(hours=1)
+        payload = {
+            "mode": "apply",
+            "cursor_started_at": start.isoformat(),
+            "cursor_started_id": "checkpoint-start",
+            "cursor_completed_at": end.isoformat(),
+            "cursor_completed_id": "checkpoint-end",
+            "policy_version": "curation-policy-v1",
+            "input_candidate_count": 0,
+            "diagnostics": {"replay_checkpoint": True},
+            "decisions": [],
+        }
+
+        created = client.post("/api/curation/runs", json=payload)
+        assert created.status_code == 201
+        body = created.json()
+        run_id = body["id"]
+        assert body["status"] == "completed"
+        assert body["cursor_started_id"] == "checkpoint-start"
+        assert body["cursor_completed_id"] == "checkpoint-end"
+        assert body["diagnostics"]["replay_checkpoint_verified_empty"] is True
+
+        fetched = client.get(f"/api/curation/runs/{run_id}")
+        executed = client.post(f"/api/curation/runs/{run_id}/execute")
+        resumed = client.post(f"/api/curation/runs/{run_id}/resume")
+        for response in [fetched, executed, resumed]:
+            readback = response.json()
+            assert readback["id"] == run_id
+            assert readback["status"] == "completed"
+            assert readback["cursor_started_id"] == "checkpoint-start"
+            assert readback["cursor_completed_id"] == "checkpoint-end"
+            assert readback["decisions"] == []
+            assert readback["diagnostics"] == body["diagnostics"]
+        with client.app.state.session_factory() as session:
+            assert session.query(CurationRun).count() == 1
+            assert session.query(CurationDecision).count() == 0
+            assert session.query(Candidate).count() == 0
+            assert session.query(Observation).count() == 0
+
+
+def test_empty_replay_checkpoint_rejects_pending_tuple_window(database_url: str) -> None:
+    with curation_client(database_url, "apply") as client:
+        start = datetime(2026, 8, 24, tzinfo=UTC)
+        end = start + timedelta(hours=1)
+        with client.app.state.session_factory() as session:
+            session.add(
+                Candidate(
+                    id="checkpoint-pending",
+                    candidate_type="new_entity",
+                    payload={"entity_type": "person", "display_name": "Casey Checkpoint"},
+                    confidence=0.8,
+                    sensitivity="low",
+                    status="pending",
+                    created_by="user",
+                    created_at=start + timedelta(minutes=30),
+                    updated_at=start + timedelta(minutes=30),
+                )
+            )
+            session.commit()
+        response = client.post(
+            "/api/curation/runs",
+            json={
+                "mode": "apply",
+                "cursor_started_at": start.isoformat(),
+                "cursor_started_id": "checkpoint-start",
+                "cursor_completed_at": end.isoformat(),
+                "cursor_completed_id": "checkpoint-end",
+                "policy_version": "curation-policy-v1",
+                "input_candidate_count": 0,
+                "diagnostics": {"replay_checkpoint": True},
+                "decisions": [],
+            },
+        )
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "replay_checkpoint_not_empty"
+        with client.app.state.session_factory() as session:
+            assert session.query(CurationRun).count() == 0
+            assert session.get(Candidate, "checkpoint-pending").status == "pending"
+            assert session.query(Observation).count() == 0
+
+
+def test_empty_replay_checkpoint_rejects_invalid_contracts(database_url: str) -> None:
+    start = datetime(2026, 8, 24, tzinfo=UTC)
+    end = start + timedelta(hours=1)
+    base = {
+        "mode": "apply",
+        "cursor_started_at": start.isoformat(),
+        "cursor_started_id": "checkpoint-start",
+        "cursor_completed_at": end.isoformat(),
+        "cursor_completed_id": "checkpoint-end",
+        "policy_version": "curation-policy-v1",
+        "input_candidate_count": 0,
+        "diagnostics": {"replay_checkpoint": True},
+        "decisions": [],
+    }
+    with curation_client(database_url, "apply") as client:
+        missing = {**base, "cursor_completed_at": None, "cursor_completed_id": None}
+        reversed_bounds = {
+            **base,
+            "cursor_started_at": end.isoformat(),
+            "cursor_completed_at": start.isoformat(),
+        }
+        with_decision = {
+            **base,
+            "decisions": [
+                {
+                    "action": "defer",
+                    "risk_level": "low",
+                    "candidate_ids": ["unexpected-candidate"],
+                    "target_entity_id": None,
+                    "proposed_payload": {},
+                    "evidence_episode_ids": [],
+                    "reason_codes": [],
+                    "policy_version": "curation-policy-v1",
+                    "idempotency_key": "checkpoint-unexpected-decision",
+                    "planner": {"name": "test", "model": None, "version": "v1"},
+                }
+            ],
+        }
+        spoofed_audit = {
+            **base,
+            "diagnostics": {
+                "replay_checkpoint": True,
+                "replay_checkpoint_verified_empty": True,
+            },
+        }
+        assert client.post("/api/curation/runs", json=missing).status_code == 409
+        assert client.post("/api/curation/runs", json=reversed_bounds).status_code == 422
+        decision_response = client.post("/api/curation/runs", json=with_decision)
+        assert decision_response.status_code == 409
+        assert decision_response.json()["error"]["code"] == "replay_checkpoint_invalid"
+        spoofed = client.post("/api/curation/runs", json=spoofed_audit)
+        assert spoofed.status_code == 409
+        assert spoofed.json()["error"]["code"] == "replay_checkpoint_invalid"
+
+    with curation_client(database_url, "shadow") as client:
+        shadow = {**base, "mode": "shadow"}
+        response = client.post("/api/curation/runs", json=shadow)
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "replay_checkpoint_invalid"
 
 
 def test_resume_recovers_pending_and_planning_shadow_runs_without_writes(

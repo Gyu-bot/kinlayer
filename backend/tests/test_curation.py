@@ -11,8 +11,10 @@ from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_db_engine
 from kinlayer_backend.models import Base, Candidate, CurationDecision, CurationRun, Observation
 from kinlayer_backend.schemas.curation import (
+    CurationCursor,
     CurationDecisionCreate,
     CurationRunCreate,
+    CurationSourcePackRequest,
 )
 from kinlayer_backend.services.curation import CurationService
 
@@ -167,6 +169,19 @@ def test_curation_schemas_reject_invalid_enums_cursors_and_raw_provider_fields()
         )
     with pytest.raises(ValidationError):
         CurationDecisionCreate.model_validate(decision_payload(action="rewrite_canonical"))
+    lower = CurationCursor(
+        created_at=datetime(2026, 8, 24, tzinfo=UTC),
+        candidate_id="candidate-b",
+    )
+    assert CurationSourcePackRequest(
+        cursor=lower,
+        upper_cursor=CurationCursor(
+            created_at=lower.created_at,
+            candidate_id="candidate-c",
+        ),
+    ).upper_cursor.candidate_id == "candidate-c"
+    with pytest.raises(ValidationError):
+        CurationSourcePackRequest(cursor=lower, upper_cursor=lower)
 
 
 def test_curation_run_and_decision_round_trip(session: Session) -> None:
@@ -517,3 +532,48 @@ def test_service_source_window_requires_exact_once_candidate_coverage(session: S
     with pytest.raises(HTTPException) as empty_error:
         service.validate_run_source_window(CurationRunCreate.model_validate(empty_plan))
     assert empty_error.value.detail["error"]["code"] == "source_pack_empty_run_mismatch"
+
+
+def test_service_validates_empty_replay_checkpoint_contract(session: Session) -> None:
+    service = CurationService(session)
+    start = datetime(2026, 8, 24, tzinfo=UTC)
+    end = start + timedelta(hours=1)
+
+    def checkpoint(**overrides) -> CurationRunCreate:
+        payload = {
+            "mode": "apply",
+            "cursor_started_at": start,
+            "cursor_started_id": "candidate-start",
+            "cursor_completed_at": end,
+            "cursor_completed_id": "candidate-end",
+            "policy_version": "curation-policy-v1",
+            "input_candidate_count": 0,
+            "diagnostics": {"replay_checkpoint": True},
+            "decisions": [],
+        }
+        payload.update(overrides)
+        return CurationRunCreate.model_validate(payload)
+
+    valid = checkpoint()
+    service.validate_run_source_window(valid)
+    assert valid.diagnostics["replay_checkpoint_verified_empty"] is True
+
+    invalid = [
+        checkpoint(mode="shadow"),
+        checkpoint(cursor_completed_at=None, cursor_completed_id=None),
+        checkpoint(
+            decisions=[decision_payload(idempotency_key="checkpoint-has-decision")]
+        ),
+    ]
+    for payload in invalid:
+        with pytest.raises(HTTPException) as exc_info:
+            service.validate_run_source_window(payload)
+        assert exc_info.value.detail["error"]["code"] == "replay_checkpoint_invalid"
+
+    with pytest.raises(ValidationError):
+        checkpoint(
+            cursor_started_at=end,
+            cursor_started_id="candidate-end",
+            cursor_completed_at=start,
+            cursor_completed_id="candidate-start",
+        )

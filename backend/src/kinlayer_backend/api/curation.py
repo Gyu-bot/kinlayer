@@ -65,8 +65,10 @@ def create_curation_run(
         )
     _require_policy_version(request, payload.policy_version)
     service = CurationService(session)
+    replay_checkpoint = payload.diagnostics.get("replay_checkpoint") is True
     service.validate_run_source_window(payload)
-    return service.evaluate_run(service.create_run(payload))
+    run = service.evaluate_run(service.create_run(payload))
+    return service.execute_run(run) if replay_checkpoint else run
 
 
 @router.get("/api/curation/runs", response_model=CurationRunList)

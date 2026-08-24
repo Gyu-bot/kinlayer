@@ -161,12 +161,16 @@ class CurationService:
     def build_source_pack(self, request: CurationSourcePackRequest) -> dict[str, Any]:
         cursor_at = request.cursor.created_at if request.cursor else None
         cursor_id = request.cursor.candidate_id if request.cursor else None
+        upper_at = request.upper_cursor.created_at if request.upper_cursor else None
+        upper_id = request.upper_cursor.candidate_id if request.upper_cursor else None
         created_after = request.as_of - timedelta(days=request.max_age_days)
         rows = self.repository.pending_candidates(
             as_of=request.as_of,
             created_after=created_after,
             cursor_at=cursor_at,
             cursor_id=cursor_id,
+            upper_at=upper_at,
+            upper_id=upper_id,
             limit=request.limit + 1,
         )
         has_more = len(rows) > request.limit
@@ -245,10 +249,15 @@ class CurationService:
             for candidate_id in decision.candidate_ids
         ]
         decision_candidate_ids = set(candidate_memberships)
+        if payload.diagnostics.get("replay_checkpoint") is True:
+            self._validate_empty_replay_checkpoint(payload, candidate_memberships)
+            return
         if payload.input_candidate_count == 0:
             if (
                 candidate_memberships
                 or payload.decisions
+                or payload.cursor_started_at is not None
+                or payload.cursor_started_id is not None
                 or payload.cursor_completed_at is not None
                 or payload.cursor_completed_id is not None
             ):
@@ -286,6 +295,8 @@ class CurationService:
             created_after=payload.cursor_started_at,
             cursor_at=payload.cursor_started_at,
             cursor_id=payload.cursor_started_id,
+            upper_at=payload.cursor_completed_at,
+            upper_id=payload.cursor_completed_id,
             limit=payload.input_candidate_count + 1,
         )
         source_candidate_ids = [candidate.id for candidate in rows]
@@ -296,7 +307,7 @@ class CurationService:
                 "source_pack_count_mismatch",
                 "Run input_candidate_count does not match the source-pack window.",
             )
-        if not completed or (completed.created_at, completed.id) != (
+        if not completed or self._cursor_key(completed.created_at, completed.id) != self._cursor_key(
             payload.cursor_completed_at,
             payload.cursor_completed_id,
         ):
@@ -333,6 +344,70 @@ class CurationService:
             }
         )
         validate_bounded_curation_json(payload.diagnostics, max_bytes=8192)
+
+    def _validate_empty_replay_checkpoint(
+        self,
+        payload: CurationRunCreate,
+        candidate_memberships: list[str],
+    ) -> None:
+        if (
+            set(payload.diagnostics) != {"replay_checkpoint"}
+            or payload.mode != "apply"
+            or payload.input_candidate_count != 0
+            or payload.decisions
+            or candidate_memberships
+            or payload.cursor_started_at is None
+            or payload.cursor_started_id is None
+            or payload.cursor_completed_at is None
+            or payload.cursor_completed_id is None
+        ):
+            raise api_error(
+                409,
+                "replay_checkpoint_invalid",
+                "Replay checkpoints require an empty apply run and complete cursor bounds.",
+            )
+        if self._cursor_key(
+            payload.cursor_completed_at,
+            payload.cursor_completed_id,
+        ) <= self._cursor_key(payload.cursor_started_at, payload.cursor_started_id):
+            raise api_error(
+                409,
+                "replay_checkpoint_invalid",
+                "Replay checkpoint end must be greater than start.",
+            )
+        pending = self.repository.pending_candidates(
+            as_of=payload.cursor_completed_at,
+            created_after=payload.cursor_started_at,
+            cursor_at=payload.cursor_started_at,
+            cursor_id=payload.cursor_started_id,
+            upper_at=payload.cursor_completed_at,
+            upper_id=payload.cursor_completed_id,
+            limit=1,
+        )
+        if pending:
+            raise api_error(
+                409,
+                "replay_checkpoint_not_empty",
+                "Replay checkpoint window still contains pending candidates.",
+            )
+        payload.diagnostics.update(
+            {
+                "replay_checkpoint_verified_empty": True,
+                "replay_checkpoint_window": {
+                    "started_at": payload.cursor_started_at.isoformat(),
+                    "started_id": payload.cursor_started_id,
+                    "completed_at": payload.cursor_completed_at.isoformat(),
+                    "completed_id": payload.cursor_completed_id,
+                },
+            }
+        )
+        validate_bounded_curation_json(payload.diagnostics, max_bytes=8192)
+
+    @staticmethod
+    def _cursor_key(created_at: datetime, candidate_id: str) -> tuple[datetime, str]:
+        if created_at.tzinfo is not None:
+            created_at = created_at.astimezone(UTC).replace(tzinfo=None)
+        return created_at, candidate_id
 
     def evaluate_run(self, run: CurationRun) -> CurationRun:
         run = self.repository.get_run(run.id)
@@ -414,6 +489,7 @@ class CurationService:
         )
         run.completed_at = datetime.now(UTC)
         self.session.commit()
+        self.session.expire_all()
         return self.repository.get_run(run.id)
 
     def resume_run(

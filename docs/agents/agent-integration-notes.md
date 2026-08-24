@@ -300,6 +300,8 @@ Skills, Hermes plugins/tools, and runtime hooks are follow-up work after MVP com
 The profile-local, provider-neutral adapter performs exactly this sequence:
 
 1. `POST /api/curation/source-packs` with its saved cursor and bounded budgets.
+   For deterministic replay, optionally send `upper_cursor`; Kinlayer returns only
+   `cursor < candidate <= upper_cursor` and computes `has_more` inside that bound.
 2. Only for `needs_source_lookup`, `ambiguous_identity`, or `missing_temporal_scope`, perform a
    targeted lookup around returned source refs. Submit additional user-authored text through normal
    episode/candidate APIs and prepare again. Never scan all sessions.
@@ -319,6 +321,14 @@ candidate merely because the planner chooses `defer`; emit an explicit defer dec
 a candidate in multiple decisions. `consolidate_accept` may reference multiple candidates only when
 none also appears elsewhere. Out-of-window IDs, partial coverage, duplicates, count drift, and
 non-empty decisions for an empty window are rejected before persistence.
+
+If a bounded replay window is empty, the adapter may submit an auditable checkpoint only in apply
+mode: zero input, zero decisions, the returned lower cursor plus the requested `upper_cursor` as the
+complete start/end cursor pairs, and
+`diagnostics: {"replay_checkpoint": true}`. Kinlayer re-queries the exact tuple window and returns one
+empty completed run only when no pending candidate exists. Do not use this flag for ordinary empty
+runs, omit bounds, add other diagnostics, or infer emptiness client-side. Execute/resume of the
+completed checkpoint is idempotent and exists only to preserve normal cursor continuity.
 
 Source-pack response shape:
 

@@ -63,6 +63,8 @@ class CurationRepository:
         created_after: datetime,
         cursor_at: datetime | None,
         cursor_id: str | None,
+        upper_at: datetime | None,
+        upper_id: str | None,
         limit: int,
     ) -> list[Candidate]:
         statement = (
@@ -81,6 +83,13 @@ class CurationRepository:
                 or_(
                     Candidate.created_at > cursor_at,
                     and_(Candidate.created_at == cursor_at, Candidate.id > cursor_id),
+                )
+            )
+        if upper_at is not None and upper_id is not None:
+            statement = statement.where(
+                or_(
+                    Candidate.created_at < upper_at,
+                    and_(Candidate.created_at == upper_at, Candidate.id <= upper_id),
                 )
             )
         return self.session.scalars(

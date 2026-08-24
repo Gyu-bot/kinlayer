@@ -1306,6 +1306,20 @@ candidates cannot appear in another decision. An empty window requires zero coun
 Reason codes are `source_pack_candidate_coverage_mismatch`, `duplicate_candidate_membership`,
 `candidate_outside_source_pack`, `source_pack_count_mismatch`,
 `source_pack_snapshot_mismatch`, and `source_pack_empty_run_mismatch`.
+
+`POST /api/curation/source-packs` accepts optional `upper_cursor`. Selection is the full tuple window
+`cursor < (created_at,candidate_id) <= upper_cursor`; `upper_cursor` must be greater than the effective
+lower cursor. `has_more` and the limit+1 probe are computed only inside that window, so same-timestamp
+IDs greater than the upper ID cannot widen results. Run validation applies the completed cursor as the
+same tuple-inclusive upper bound.
+
+An auditable empty replay checkpoint is an apply-mode run with zero input/decisions, complete start
+and completed cursor pairs, and exactly `diagnostics.replay_checkpoint=true`. Before persistence,
+Kinlayer re-queries the exact `(start,end]` tuple window and requires zero pending candidates. A valid
+checkpoint is created, evaluated, and executed to an empty `completed` apply run; repeated execute or
+resume is idempotent and performs no candidate/canonical mutation. Missing/reversed bounds, non-apply
+mode, decisions, or pending rows fail with `replay_checkpoint_invalid` or
+`replay_checkpoint_not_empty`. Ordinary empty runs remain cursorless and are not auto-executed.
 Run diagnostics/proposals reject nested reserved raw/session/transcript/tool keys and over-limit JSON.
 Run submission persists proposals and recomputes `allowed`/`blocked` from
 stored state. `shadow` never executes. `apply` commits canonical writes, source states, evidence,

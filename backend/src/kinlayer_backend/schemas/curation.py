@@ -1,7 +1,7 @@
 import json
 import math
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -160,11 +160,22 @@ class CurationCursor(CurationModel):
 
 class CurationSourcePackRequest(CurationModel):
     cursor: CurationCursor | None = None
+    upper_cursor: CurationCursor | None = None
     as_of: datetime = Field(default_factory=lambda: datetime.now(UTC))
     limit: int = Field(default=50, ge=1, le=200)
     max_age_days: int = Field(default=30, ge=1, le=365)
     max_evidence_per_candidate: int = Field(default=5, ge=1, le=20)
     max_excerpt_chars: int = Field(default=500, ge=1, le=500)
+
+    @model_validator(mode="after")
+    def validate_cursor_window(self) -> "CurationSourcePackRequest":
+        lower = self.cursor or CurationCursor(
+            created_at=self.as_of - timedelta(days=self.max_age_days),
+            candidate_id="",
+        )
+        if self.upper_cursor and _cursor_key(self.upper_cursor) <= _cursor_key(lower):
+            raise ValueError("upper_cursor must be greater than cursor.")
+        return self
 
 
 class CurationSourceEvidenceRead(CurationModel):
@@ -259,7 +270,13 @@ class CurationRunCreate(CurationModel):
     @field_validator("diagnostics")
     @classmethod
     def validate_diagnostics(cls, value: dict[str, Any]) -> dict[str, Any]:
-        return validate_bounded_curation_json(value, max_bytes=CURATION_DIAGNOSTICS_MAX_BYTES)
+        validated = validate_bounded_curation_json(
+            value,
+            max_bytes=CURATION_DIAGNOSTICS_MAX_BYTES,
+        )
+        if "replay_checkpoint" in validated and validated["replay_checkpoint"] is not True:
+            raise ValueError("replay_checkpoint must be true when provided.")
+        return validated
 
     @model_validator(mode="after")
     def validate_cursor_and_plan(self) -> "CurationRunCreate":
@@ -270,16 +287,10 @@ class CurationRunCreate(CurationModel):
         if self.cursor_completed_at is not None:
             if self.cursor_started_at is None:
                 raise ValueError("A completed cursor requires a started cursor.")
-            started_at = self.cursor_started_at
-            completed_at = self.cursor_completed_at
-            if started_at.tzinfo is not None:
-                started_at = started_at.astimezone(UTC).replace(tzinfo=None)
-            if completed_at.tzinfo is not None:
-                completed_at = completed_at.astimezone(UTC).replace(tzinfo=None)
-            if (completed_at, self.cursor_completed_id) < (
-                started_at,
-                self.cursor_started_id,
-            ):
+            if _cursor_key_from_parts(
+                self.cursor_completed_at,
+                self.cursor_completed_id,
+            ) < _cursor_key_from_parts(self.cursor_started_at, self.cursor_started_id):
                 raise ValueError("The completed cursor cannot precede the started cursor.")
         if any(decision.policy_version != self.policy_version for decision in self.decisions):
             raise ValueError("Decision policy_version must match the run policy_version.")
@@ -356,3 +367,13 @@ class CurationRunRead(CurationRunSummaryRead):
 
 
 CurationRunList = ListResponse[CurationRunSummaryRead]
+
+
+def _cursor_key(cursor: CurationCursor) -> tuple[datetime, str]:
+    return _cursor_key_from_parts(cursor.created_at, cursor.candidate_id)
+
+
+def _cursor_key_from_parts(created_at: datetime, candidate_id: str) -> tuple[datetime, str]:
+    if created_at.tzinfo is not None:
+        created_at = created_at.astimezone(UTC).replace(tzinfo=None)
+    return created_at, candidate_id

@@ -14,9 +14,11 @@ from kinlayer_backend.models import (
     Observation,
 )
 from kinlayer_backend.schemas.curation import (
+    CurationCursor,
     CurationRunCreate,
     CurationSourcePackRequest,
 )
+from kinlayer_backend.repositories.curation import CurationRepository
 from kinlayer_backend.services.curation import CurationService
 from kinlayer_backend.services.ontology import seed_ontology_values
 
@@ -209,6 +211,80 @@ def test_source_pack_is_bounded_incremental_and_excludes_non_user_bodies(session
         limit=20,
     )
     assert CurationService(session).build_source_pack(after)["input_candidate_count"] == 0
+
+
+def test_upper_cursor_is_tuple_inclusive_without_same_timestamp_widening(
+    session: Session,
+) -> None:
+    timestamp = AS_OF - timedelta(minutes=5)
+    candidates = [
+        Candidate(
+            id=f"same-time-{suffix}",
+            candidate_type="new_entity",
+            payload={"entity_type": "person", "display_name": f"Casey {suffix}"},
+            confidence=0.8,
+            sensitivity="low",
+            status="pending",
+            created_by="user",
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        for suffix in ["a", "b", "c"]
+    ]
+    session.add_all(candidates)
+    session.commit()
+    lower = CurationCursor(created_at=timestamp, candidate_id="same-time-a")
+    upper = CurationCursor(created_at=timestamp, candidate_id="same-time-b")
+
+    repository_rows = CurationRepository(session).pending_candidates(
+        as_of=AS_OF,
+        created_after=timestamp - timedelta(days=1),
+        cursor_at=lower.created_at,
+        cursor_id=lower.candidate_id,
+        upper_at=upper.created_at,
+        upper_id=upper.candidate_id,
+        limit=10,
+    )
+    packed = CurationService(session).build_source_pack(
+        CurationSourcePackRequest(
+            cursor=lower,
+            upper_cursor=upper,
+            as_of=AS_OF,
+            limit=1,
+        )
+    )
+
+    assert [candidate.id for candidate in repository_rows] == ["same-time-b"]
+    packed_ids = [
+        item["id"]
+        for group in packed["groups"]
+        for item in group["candidates"]
+    ]
+    assert packed_ids == ["same-time-b"]
+    assert packed["has_more"] is False
+    assert "same-time-c" not in str(packed)
+    CurationService(session).validate_run_source_window(
+        CurationRunCreate.model_validate(
+            {
+                "mode": "shadow",
+                "cursor_started_at": lower.created_at,
+                "cursor_started_id": lower.candidate_id,
+                "cursor_completed_at": upper.created_at,
+                "cursor_completed_id": upper.candidate_id,
+                "policy_version": "curation-policy-v1",
+                "input_candidate_count": 1,
+                "decisions": [
+                    decision_payload(
+                        candidates[1],
+                        "same-time-window",
+                        action="defer",
+                        proposed_payload={},
+                        evidence_episode_ids=[],
+                    )
+                ],
+            }
+        )
+    )
 
 
 def test_policy_allows_only_safe_user_grounded_observations_and_persists_reasons(

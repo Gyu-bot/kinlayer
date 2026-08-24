@@ -100,6 +100,17 @@ server-derived candidate ID must appear exactly once: no omission, duplicate mem
 Multi-candidate consolidation remains valid when each source belongs only to that decision. Empty
 source windows accept only zero decisions/count. Violations fail before run/decision persistence.
 
+Replay preparation may include an optional tuple `upper_cursor`. Candidate selection stays lower
+exclusive and becomes upper inclusive on `(created_at,id)`; limit and `has_more` must never inspect
+beyond that tuple, including same-timestamp larger IDs. Run source-window validation uses the same
+completed tuple upper bound.
+
+To preserve cursor continuity across a proven empty replay interval, an APPLY run may set only the
+allowlisted `diagnostics.replay_checkpoint=true` flag with zero decisions/count and complete ordered
+start/end cursor pairs. Kinlayer must re-query `(start,end]`, reject if any pending candidate exists,
+then create/evaluate/execute one empty completed run with exact DB readback and no canonical/candidate
+mutation. Ordinary empty runs remain cursorless. Checkpoint validation never deletes or resolves data.
+
 It must not include:
 
 - full episode bodies;
@@ -383,8 +394,11 @@ POST /api/curation/runs/{run_id}/resume
 Responsibilities:
 
 - source-pack endpoint creates a bounded incremental pack and cursor;
+- optional upper replay cursor is full-tuple inclusive and cannot widen `has_more`;
 - run creation validates the structured plan but does not execute when mode is `shadow`;
 - run creation requires exact-once candidate coverage of the complete server-derived source window;
+- a verified empty APPLY replay checkpoint may advance cursor continuity only after a zero-row
+  server requery of the exact tuple window;
 - resume recovers persisted `pending|planning` plans to exact-readback `ready` state without
   candidate/canonical writes; this is allowed in either enabled server mode after policy-version
   validation, including stored shadow runs after a server move to apply;
