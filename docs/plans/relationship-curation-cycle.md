@@ -1,6 +1,6 @@
 # Periodic Relationship Curation Cycle — Implementation Plan
 
-**Status:** Approved for implementation
+**Status:** Repository Phases 1-4 implemented; Phase 5 adapter handoff ready
 **Approved by user:** 2026-08-24
 **Execution branch:** `codex/kinlayer-curation-cycle`
 **Source baseline:** `origin/main` at `1ff177c`
@@ -440,10 +440,10 @@ Hermes implementation and activation are separate state changes:
 
 ### Task 1 — Durable run/decision model and schemas
 
-- [ ] Add migration and SQLAlchemy models.
-- [ ] Add Pydantic request/response schemas and enums.
-- [ ] Add idempotency uniqueness and status indexes.
-- [ ] Add migration/model tests.
+- [x] Add migration and SQLAlchemy models.
+- [x] Add Pydantic request/response schemas and enums.
+- [x] Add idempotency uniqueness and status indexes.
+- [x] Add migration/model tests.
 
 Acceptance:
 
@@ -454,11 +454,11 @@ Acceptance:
 
 ### Task 2 — Bounded source-pack builder
 
-- [ ] Select pending candidates incrementally from cursor.
-- [ ] Join bounded evidence and compact canonical target context.
-- [ ] Group by exact target entity or normalized unresolved identity key.
-- [ ] Enforce candidate/evidence/age/count budgets.
-- [ ] Return insufficiency and ambiguity reason codes.
+- [x] Select pending candidates incrementally from cursor.
+- [x] Join bounded evidence and compact canonical target context.
+- [x] Group by exact target entity or normalized unresolved identity key.
+- [x] Enforce candidate/evidence/age/count budgets.
+- [x] Return insufficiency and ambiguity reason codes.
 
 Acceptance:
 
@@ -470,11 +470,11 @@ Acceptance:
 
 ### Task 3 — Deterministic policy evaluator
 
-- [ ] Revalidate stored candidate payloads and ontology values.
-- [ ] Enforce automatic-action allowlist and hard denylist.
-- [ ] Detect exact canonical/pending duplicates.
-- [ ] Validate evidence ownership and temporal requirements.
-- [ ] Persist blocked reason codes.
+- [x] Revalidate stored candidate payloads and ontology values.
+- [x] Enforce automatic-action allowlist and hard denylist.
+- [x] Detect exact canonical/pending duplicates.
+- [x] Validate evidence ownership and temporal requirements.
+- [x] Persist blocked reason codes.
 
 Acceptance:
 
@@ -485,11 +485,11 @@ Acceptance:
 
 ### Task 4 — Transactional executor and readback
 
-- [ ] Execute allowed accept/edit-accept decisions.
-- [ ] Implement transactional `consolidate_accept`.
-- [ ] Implement exact-duplicate archival/supersession.
-- [ ] Verify canonical/evidence/source-candidate state before commit.
-- [ ] Add idempotent post-commit readback and resume.
+- [x] Execute allowed accept/edit-accept decisions.
+- [x] Implement transactional `consolidate_accept`.
+- [x] Implement exact-duplicate archival/supersession.
+- [x] Verify canonical/evidence/source-candidate state before commit.
+- [x] Add idempotent post-commit readback and resume.
 
 Acceptance:
 
@@ -502,9 +502,9 @@ Acceptance:
 
 ### Task 5 — API and CLI
 
-- [ ] Add source-pack, run, execute, resume, list, and get endpoints.
-- [ ] Add CLI prepare/plan-file/execute/resume/show commands.
-- [ ] Audit agent-originated curation operations without raw payload leakage.
+- [x] Add source-pack, run, execute, resume, list, and get endpoints.
+- [x] Add CLI prepare/plan-file/execute/resume/show commands.
+- [x] Use durable redacted run/decision records as the curation audit trail.
 
 Acceptance:
 
@@ -516,9 +516,9 @@ Acceptance:
 
 ### Task 6 — Provisional context
 
-- [ ] Add opt-in provisional context fields to context card/pack.
-- [ ] Enforce exact entity, observation-only, recency, count, and policy bounds.
-- [ ] Keep canonical and provisional content structurally separate.
+- [x] Add opt-in provisional context fields to context card/pack.
+- [x] Enforce exact entity, observation-only, recency, count, and policy bounds.
+- [x] Keep canonical and provisional content structurally separate.
 
 Acceptance:
 
@@ -529,10 +529,10 @@ Acceptance:
 
 ### Task 7 — Active docs, smoke coverage, and synthetic regressions
 
-- [ ] Update API, data-model, candidate-lifecycle, context-output, Web/CLI, and agent integration docs.
-- [ ] Update the Korean roadmap.
-- [ ] Add synthetic regressions for duplicate names, spelling variants, honorific roles, mixed-subject observations, transient facts, and failed readback.
-- [ ] Add API/CLI smoke coverage for one shadow run, one allowed apply decision, one blocked decision, rollback, resume, and readback.
+- [x] Update API, data-model, candidate-lifecycle, context-output, Web/CLI, and agent integration docs.
+- [x] Update the Korean roadmap.
+- [x] Add synthetic regressions for duplicate names, spelling variants, honorific roles, mixed-subject observations, transient facts, and failed readback.
+- [x] Add API/CLI smoke coverage plus focused apply/block/rollback/resume/readback tests.
 
 Acceptance:
 
@@ -543,8 +543,8 @@ Acceptance:
 
 ### Task 8 — Hermes adapter handoff and implementation
 
-- [ ] Publish the exact source-pack and plan JSON schemas for external adapters.
-- [ ] Document targeted session-lookup fallback and evidence restrictions.
+- [x] Publish the exact source-pack and plan JSON schemas for external adapters.
+- [x] Document targeted session-lookup fallback and evidence restrictions.
 - [ ] Implement the profile-local Hermes adapter after Tasks 1–7 stabilize.
 - [ ] Run shadow mode without live canonical writes.
 

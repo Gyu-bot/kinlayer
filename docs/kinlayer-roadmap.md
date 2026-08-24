@@ -16,12 +16,14 @@
 - 구조화 프로필 사실 검증이 직접 API, 후보 accept/edit-accept, correction apply, agent-write validation 경로에 반영돼 있다.
 - 일반 프로필 사실을 구조화 사실로 승격하는 API·CLI·Web 흐름이 구현돼 있다.
 - candidate accept/edit-accept가 canonical record를 만들고 `canonical_record_ref`를 남기는 기본 경로가 존재한다.
-- post-turn 에이전트가 제출한 관계 정보는 주로 pending candidate에 머무르며, 이를 주기적으로 다시 검토하고 정리·승격하는 별도 단계는 아직 구현돼 있지 않다.
+- post-turn pending candidate를 bounded source pack, deterministic policy, transactional executor로
+  정리·승격하는 repository Phases 1-4가 구현돼 있다.
 - 사용자는 2026-08-24에 별도 curation/dreaming 단계 구현을 승인했다.
 
 ## 다음 구현 목표
 
-현재 우선순위는 **Periodic Relationship Curation Cycle**이다.
+Repository Phases 1-4는 구현됐다. 다음 경계는 **Phase 5 profile-local adapter**, shadow 검토,
+그리고 별도 승인되는 runtime activation이다.
 
 핵심 흐름:
 
@@ -150,10 +152,10 @@ codex/kinlayer-curation-cycle
 docs/plans/relationship-curation-cycle.md
 ```
 
-첫 실행 범위는 Phase 1부터 시작한다.
+다음 실행 범위는 Phase 5 adapter handoff부터 시작한다.
 
 ```text
-Read AGENTS.md and docs/plans/relationship-curation-cycle.md. Implement Phase 1 first: durable curation run/decision state, migrations, schemas, repository/service foundations, idempotency, and focused tests. Do not activate live curation, start/restart services, modify the Hermes profile plugin, or push implementation commits. Continue to later phases only after Phase 1 contracts and tests are stable.
+Read AGENTS.md, docs/plans/relationship-curation-cycle.md, and docs/agents/agent-integration-notes.md. Repository Phases 1-4 are implemented. Implement the profile-local Phase 5 adapter against the exact bounded source-pack/run contract, run shadow inspection, and keep Gateway restart or apply activation as separate explicitly authorized deployment actions.
 ```
 
 ## 검증 원칙

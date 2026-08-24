@@ -1278,3 +1278,27 @@ Returns newline-delimited JSON with a manifest first, then bounded operation rec
 ## 18. Handoff Notes
 
 This spec is intentionally Markdown-first. After implementation stabilizes, generate `openapi.yaml` from FastAPI/Pydantic models or convert this file into formal OpenAPI.
+
+## 19. Periodic Relationship Curation
+
+`KINLAYER_CURATION_MODE=disabled|shadow|apply` is authoritative and is returned by
+`GET /api/system/config` with `policy_version`.
+
+```text
+POST /api/curation/source-packs
+POST /api/curation/runs
+GET  /api/curation/runs
+GET  /api/curation/runs/{run_id}
+POST /api/curation/runs/{run_id}/execute
+POST /api/curation/runs/{run_id}/resume
+```
+
+Source packs use an exclusive `(created_at,candidate_id)` cursor, fixed `as_of`, and explicit
+candidate/evidence/excerpt budgets. They contain bounded user-authored excerpts, compact target
+context, validation diagnostics, and exact duplicate/conflict signals, never episode bodies or raw
+provider/session data. Run submission persists proposals and recomputes `allowed`/`blocked` from
+stored state. `shadow` never executes. `apply` commits canonical writes, source states, evidence,
+decision status, and exact readback atomically.
+
+Context-card query `include_provisional=true` and context-pack field `include_provisional=true`
+return eligible pending observations only in a separate `provisional_context` array.

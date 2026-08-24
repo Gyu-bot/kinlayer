@@ -60,6 +60,21 @@ class ContextRetrieveResponse(APIModel):
 
 class ContextPackRequest(ContextRetrieveRequest):
     situation: str | None = None
+    include_provisional: bool = False
+
+
+class ProvisionalContextRead(APIModel):
+    candidate_id: str
+    content: str
+    observation_type: str
+    sensitivity: str
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    occurred_at: datetime | None = None
+    created_at: datetime
+    label: str = "provisional"
+    review_status: str = "unreviewed"
+    write_evidence_eligible: bool = False
 
 
 class ProvenanceItem(APIModel):
@@ -81,6 +96,7 @@ class ContextPack(APIModel):
     stable_context: list[RetrievedObservationRead]
     cautions: list[RetrievedObservationRead]
     provenance: list[ProvenanceItem]
+    provisional_context: list[ProvisionalContextRead] = Field(default_factory=list)
 
 
 class ContextPackResponse(APIModel):
@@ -114,3 +130,4 @@ class ContextCardResponse(APIModel):
     cautions: list[ObservationRead]
     provenance_summary: ProvenanceSummary
     retrieval_hints: RetrievalHints
+    provisional_context: list[ProvisionalContextRead] = Field(default_factory=list)

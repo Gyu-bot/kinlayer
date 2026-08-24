@@ -704,3 +704,17 @@ Rules:
 3. `canonical_record_ref` remains string-based in the form `table:id`.
 4. MVP indexes cover entity type, canonical name, confirmation/status, aliases, facts, edges, observations, episodes, and evidence lookup paths used by current retrieval and smoke checks.
 5. Agent write operation export uses newline-delimited JSON with a manifest followed by bounded operation records.
+
+## 11. Curation State
+
+`curation_runs` stores mode/status, stable cursor tuples, immutable policy version, planner metadata,
+counts, bounded diagnostics, and timestamps. `curation_decisions` stores allowlisted action/status,
+candidate and episode IDs, proposed typed payload, deterministic reasons, global idempotency key,
+canonical reference, and bounded readback. Neither stores raw prompts, transcripts, sessions, or
+provider responses.
+
+Planner proposals transition `pending -> planning -> ready`. Apply execution uses
+`ready|partial|failed -> executing -> completed|partial`; decisions use
+`proposed -> allowed|blocked` and `allowed|failed -> executing -> executed|failed`. Consolidation
+creates one accepted replacement candidate and supersedes sources in the same transaction. Rollback
+leaves original candidates pending.

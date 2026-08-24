@@ -502,3 +502,15 @@ import management
 ```
 
 These capabilities exist in HTTP API where relevant and are covered by acceptance smoke scripts.
+## Curation CLI
+
+```text
+kinlayer curation prepare --limit 50 --json
+kinlayer curation plan-file PLAN.json --mode shadow --json
+kinlayer curation execute RUN_ID --json
+kinlayer curation resume RUN_ID --json
+kinlayer curation show RUN_ID --json
+```
+
+These commands reuse the canonical API and existing URL/token settings. The server mode is
+authoritative. Context card/pack commands accept `--include-provisional`.

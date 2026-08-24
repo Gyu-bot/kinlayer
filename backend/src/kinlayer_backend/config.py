@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://kinlayer:kinlayer@127.0.0.1:15432/kinlayer"
     bootstrap_self: bool = False
     self_name: str = "Self"
+    curation_mode: str = "disabled"
+    curation_policy_version: str = "curation-policy-v1"
     embedding_provider: str | None = Field(default=None)
     embedding_api_url: str | None = Field(default=None)
     embedding_api_key: str | None = Field(default=None)
@@ -29,6 +31,13 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_optional_int(cls, value: Any) -> Any:
         return None if value == "" else value
+
+    @field_validator("curation_mode")
+    @classmethod
+    def validate_curation_mode(cls, value: str) -> str:
+        if value not in {"disabled", "shadow", "apply"}:
+            raise ValueError("curation_mode must be disabled, shadow, or apply")
+        return value
 
     @model_validator(mode="after")
     def apply_embedding_defaults(self) -> "Settings":

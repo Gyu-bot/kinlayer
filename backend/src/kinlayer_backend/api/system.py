@@ -30,6 +30,10 @@ def config(request: Request) -> dict[str, Any]:
     return {
         "bind_host": settings.bind_host,
         "auth_token_configured": bool(settings.api_token),
+        "curation": {
+            "mode": settings.curation_mode,
+            "policy_version": settings.curation_policy_version,
+        },
         "embedding": _embedding_config(settings),
     }
 

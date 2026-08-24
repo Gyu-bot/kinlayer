@@ -15,6 +15,7 @@ embedding_app = typer.Typer(help="Inspect and backfill observation embeddings.")
 candidate_app = typer.Typer(help="Submit and resolve candidate records.")
 correction_app = typer.Typer(help="Apply explicit corrections.")
 context_app = typer.Typer(help="Retrieve and package context.")
+curation_app = typer.Typer(help="Prepare, plan, and inspect periodic curation runs.")
 debug_app = typer.Typer(help="Inspect retrieval internals.")
 graph_app = typer.Typer(help="Inspect relationship graph views.")
 ontology_app = typer.Typer(help="Inspect ontology registries and diagnostics.")
@@ -26,6 +27,7 @@ app.add_typer(embedding_app, name="embedding")
 app.add_typer(candidate_app, name="candidate")
 app.add_typer(correction_app, name="correction")
 app.add_typer(context_app, name="context")
+app.add_typer(curation_app, name="curation")
 app.add_typer(debug_app, name="debug")
 app.add_typer(graph_app, name="graph")
 app.add_typer(ontology_app, name="ontology")
@@ -270,9 +272,13 @@ def retrieve_context(
 @app.command("context-card")
 def context_card(
     entity_id: str,
+    include_provisional: Annotated[bool, typer.Option("--include-provisional")] = False,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    response = _request("GET", f"/api/entities/{entity_id}/context-card")
+    path = f"/api/entities/{entity_id}/context-card"
+    if include_provisional:
+        path += "?include_provisional=true"
+    response = _request("GET", path)
     _raise_for_api(response)
     payload = response.json()
     if json_output:
@@ -293,6 +299,7 @@ def context_pack(
     focal_entity_id: Annotated[str | None, typer.Option("--focal-entity-id")] = None,
     situation: Annotated[str | None, typer.Option("--situation")] = None,
     include_debug: Annotated[bool, typer.Option("--debug")] = False,
+    include_provisional: Annotated[bool, typer.Option("--include-provisional")] = False,
     limit: Annotated[int, typer.Option("--limit", min=1, max=50)] = 10,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
@@ -305,6 +312,8 @@ def context_pack(
     )
     if situation:
         payload["situation"] = situation
+    if include_provisional:
+        payload["include_provisional"] = True
     response = _request("POST", "/api/context/pack", payload=payload)
     _raise_for_api(response)
     body = response.json()
@@ -315,6 +324,61 @@ def context_pack(
     typer.echo(f"Confidence: {pack['confidence']}")
     typer.echo(f"Policy: {pack['suggested_response_policy']}")
     _emit_context_summary(body)
+
+
+@curation_app.command("prepare")
+def curation_prepare(
+    limit: Annotated[int, typer.Option("--limit", min=1, max=200)] = 50,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    response = _request("POST", "/api/curation/source-packs", payload={"limit": limit})
+    _raise_for_api(response)
+    _emit(response.json(), json_output)
+
+
+@curation_app.command("plan-file")
+def curation_plan_file(
+    plan_json: Path,
+    mode: Annotated[str, typer.Option("--mode")] = "shadow",
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    payload = _read_json_file(plan_json)
+    payload["mode"] = mode
+    response = _request("POST", "/api/curation/runs", payload=payload)
+    _raise_for_api(response)
+    _emit(response.json(), json_output)
+
+
+def _curation_run_action(run_id: str, action: str, json_output: bool) -> None:
+    response = _request("POST", f"/api/curation/runs/{run_id}/{action}")
+    _raise_for_api(response)
+    _emit(response.json(), json_output)
+
+
+@curation_app.command("execute")
+def curation_execute(
+    run_id: str,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    _curation_run_action(run_id, "execute", json_output)
+
+
+@curation_app.command("resume")
+def curation_resume(
+    run_id: str,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    _curation_run_action(run_id, "resume", json_output)
+
+
+@curation_app.command("show")
+def curation_show(
+    run_id: str,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    response = _request("GET", f"/api/curation/runs/{run_id}")
+    _raise_for_api(response)
+    _emit(response.json(), json_output)
 
 
 @debug_app.command("retrieval")

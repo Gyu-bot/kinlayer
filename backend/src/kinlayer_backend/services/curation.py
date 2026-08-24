@@ -265,6 +265,24 @@ class CurationService:
     def resume_run(self, run: CurationRun) -> CurationRun:
         return self.execute_run(run)
 
+    def is_provisional_candidate(self, candidate: Candidate, entity_id: str) -> bool:
+        if (
+            candidate.status != "pending"
+            or candidate.candidate_type != "observation"
+            or candidate.target_entity_id != entity_id
+            or candidate.payload.get("subject_entity_id") != entity_id
+            or candidate.sensitivity == "high"
+            or candidate.payload.get("sensitivity", candidate.sensitivity) == "high"
+            or candidate.payload.get("observation_type") not in AUTO_OBSERVATION_TYPES
+            or candidate.payload.get("ai_use_policy", "cautious_use")
+            in RESTRICTED_AI_USE_POLICIES
+            or not candidate.evidence
+            or any(self._evidence_reasons(evidence) for evidence in candidate.evidence)
+        ):
+            return False
+        validation = self._candidate_validation(candidate)
+        return not validation["errors"] and not validation["warnings"]
+
     def _execute_decision(self, decision_id: str) -> None:
         decision = self.repository.get_decision(decision_id, for_update=True)
         if not decision or decision.status in {"blocked", "executed"}:

@@ -157,7 +157,7 @@ def test_source_pack_is_bounded_incremental_and_excludes_non_user_bodies(session
             occurred_at=datetime(2026, 8, 24, tzinfo=UTC),
         )
     )
-    for name in ["Casey Park", " casey   park "]:
+    for name in ["Casey Park", " casey   park ", "Casey Parks"]:
         session.add(
             Candidate(
                 candidate_type="new_entity",
@@ -183,7 +183,7 @@ def test_source_pack_is_bounded_incremental_and_excludes_non_user_bodies(session
     retry = CurationService(session).build_source_pack(request)
 
     assert first == retry
-    assert first["input_candidate_count"] == 3
+    assert first["input_candidate_count"] == 4
     assert first["cursor_completed"]["candidate_id"] is not None
     entity_group = next(group for group in first["groups"] if group["target_entity_id"] == entity.id)
     packed_candidate = entity_group["candidates"][0]
@@ -194,6 +194,11 @@ def test_source_pack_is_bounded_incremental_and_excludes_non_user_bodies(session
     unresolved = next(group for group in first["groups"] if group["group_key"] == "unresolved:casey park")
     assert len(unresolved["candidates"]) == 2
     assert "ambiguous_identity" in unresolved["reason_codes"]
+    spelling_variant = next(
+        group for group in first["groups"] if group["group_key"] == "unresolved:casey parks"
+    )
+    assert len(spelling_variant["candidates"]) == 1
+    assert "ambiguous_identity" in spelling_variant["reason_codes"]
     serialized = str(first)
     assert "private prefix" not in serialized
     assert "must not leave Kinlayer" not in serialized
@@ -210,6 +215,7 @@ def test_policy_allows_only_safe_user_grounded_observations_and_persists_reasons
     session: Session,
 ) -> None:
     entity = add_person(session)
+    other_entity = add_person(session, "Jordan Synthetic")
     user_episode = add_episode(session)
     grounded_content = "As of 2026-08-24, Casey repeatedly prefers concise scheduling."
     grounded_episodes = [
@@ -265,6 +271,15 @@ def test_policy_allows_only_safe_user_grounded_observations_and_persists_reasons
             occurred_at=None,
         ),
     )
+    mixed_subject = add_observation_candidate(
+        session,
+        entity,
+        [user_episode],
+        payload=observation_payload(
+            other_entity.id,
+            content="As of 2026-08-24, Jordan prefers concise scheduling.",
+        ),
+    )
     structural = Candidate(
         candidate_type="new_entity",
         payload={"entity_type": "person", "display_name": "Director"},
@@ -283,6 +298,7 @@ def test_policy_allows_only_safe_user_grounded_observations_and_persists_reasons
         decision_payload(non_user, "policy:non-user"),
         decision_payload(sensitive, "policy:sensitive"),
         decision_payload(transient, "policy:transient"),
+        decision_payload(mixed_subject, "policy:mixed-subject"),
         decision_payload(
             structural,
             "policy:structural",
@@ -311,6 +327,7 @@ def test_policy_allows_only_safe_user_grounded_observations_and_persists_reasons
     assert "non_user_evidence" in by_key["policy:non-user"].reason_codes
     assert "high_sensitivity" in by_key["policy:sensitive"].reason_codes
     assert "missing_temporal_scope" in by_key["policy:transient"].reason_codes
+    assert "target_entity_mismatch" in by_key["policy:mixed-subject"].reason_codes
     assert "unsupported_candidate_type" in by_key["policy:structural"].reason_codes
     assert all(
         decision.status == "blocked"

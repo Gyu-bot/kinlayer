@@ -294,3 +294,124 @@ MVP should only include:
 - output schemas suitable for tool/plugin/MCP use later.
 
 Skills, Hermes plugins/tools, and runtime hooks are follow-up work after MVP completion.
+
+## Phase 5 Periodic-curator Adapter Contract
+
+The profile-local, provider-neutral adapter performs exactly this sequence:
+
+1. `POST /api/curation/source-packs` with its saved cursor and bounded budgets.
+2. Only for `needs_source_lookup`, `ambiguous_identity`, or `missing_temporal_scope`, perform a
+   targeted lookup around returned source refs. Submit additional user-authored text through normal
+   episode/candidate APIs and prepare again. Never scan all sessions.
+3. Require the configured model to return one JSON object matching the run schema below.
+4. `POST /api/curation/runs` and inspect Kinlayer's persisted allow/block reasons.
+5. Stop in `shadow`; in explicitly activated `apply`, call `/execute`, then `/resume` after partial or
+   interrupted work. Persist only cursor and run ID as adapter continuity state.
+
+Source-pack response shape:
+
+```json
+{
+  "as_of": "2026-08-25T00:05:00Z",
+  "cursor_started": null,
+  "cursor_completed": {
+    "created_at": "2026-08-25T00:04:00Z",
+    "candidate_id": "candidate-b"
+  },
+  "has_more": false,
+  "input_candidate_count": 2,
+  "groups": [{
+    "group_key": "entity:entity-id",
+    "target_entity_id": "entity-id",
+    "unresolved_identity_key": null,
+    "candidates": [{
+      "id": "candidate-a",
+      "candidate_type": "observation",
+      "target_entity_id": "entity-id",
+      "payload": {},
+      "confidence": 0.9,
+      "sensitivity": "low",
+      "suggested_action": "accept",
+      "status": "pending",
+      "created_at": "2026-08-25T00:03:00Z",
+      "evidence": [{
+        "candidate_evidence_id": "evidence-link-id",
+        "episode_id": "episode-a",
+        "excerpt": "Bounded user-authored excerpt.",
+        "confidence": 0.9,
+        "source_type": "agent_conversation",
+        "source_ref": "thread-ref",
+        "body_hash": "sha256:hash",
+        "actor": "user",
+        "occurred_at": "2026-08-25T00:00:00Z",
+        "ingested_at": "2026-08-25T00:01:00Z",
+        "created_at": "2026-08-25T00:03:00Z"
+      }],
+      "validation_errors": [],
+      "validation_warnings": [],
+      "normalizations": []
+    }],
+    "target_context": {},
+    "signals": {
+      "exact_pending_duplicate_ids": [],
+      "exact_canonical_duplicate_refs": [],
+      "canonical_conflict_refs": []
+    },
+    "reason_codes": []
+  }],
+  "budgets": {
+    "candidate_limit": 50,
+    "max_age_days": 30,
+    "max_evidence_per_candidate": 5,
+    "max_excerpt_chars": 500,
+    "max_target_aliases": 10,
+    "max_target_observations": 20
+  },
+  "diagnostics": {
+    "selection": "pending_candidates_keyset",
+    "evidence_policy": "user_authored_only"
+  }
+}
+```
+
+```json
+{
+  "mode": "shadow",
+  "cursor_started_at": "2026-08-25T00:00:00Z",
+  "cursor_started_id": "candidate-start-id",
+  "cursor_completed_at": "2026-08-25T00:05:00Z",
+  "cursor_completed_id": "candidate-end-id",
+  "policy_version": "curation-policy-v1",
+  "input_candidate_count": 2,
+  "diagnostics": {},
+  "decisions": [{
+    "action": "consolidate_accept",
+    "risk_level": "low",
+    "candidate_ids": ["candidate-a", "candidate-b"],
+    "target_entity_id": "entity-id",
+    "proposed_payload": {
+      "subject_entity_id": "entity-id",
+      "related_entity_ids": [],
+      "observation_type": "communication_preference",
+      "content": "As of 2026-08-24, Casey prefers concise scheduling messages.",
+      "claim_type": "preference",
+      "sensitivity": "low",
+      "ai_use_policy": "cautious_use",
+      "occurred_at": "2026-08-24T00:00:00Z"
+    },
+    "evidence_episode_ids": ["episode-a", "episode-b"],
+    "reason_codes": ["same_subject", "overlapping_claims"],
+    "policy_version": "curation-policy-v1",
+    "idempotency_key": "adapter-generated-stable-key",
+    "planner": {
+      "name": "kinlayer-periodic-curator",
+      "model": "provider/model",
+      "version": "adapter-v1"
+    }
+  }]
+}
+```
+
+The adapter must not persist raw prompts, full provider responses, full session bodies, secrets,
+chain-of-thought, tool output, or retrieved memory as evidence. Installation, scheduling, Gateway
+restart, `shadow -> apply`, and live database execution remain separate operator actions.

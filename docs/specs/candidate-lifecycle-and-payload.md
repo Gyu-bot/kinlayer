@@ -559,3 +559,15 @@ superseded → excluded unless audit/debug mode
 3. Should profile fields be embedded in `entities.properties` or normalized as separate records?
 4. Should `needs_clarification` generate suggested user-facing questions or just mark state?
 5. Should candidates support bulk creation in one request for agent post-turn extraction?
+## Periodic Curation Lifecycle
+
+Pending candidates are the normal curation change feed. Preparation reads them by keyset cursor,
+groups exact targets or exact normalized unresolved names, and includes only bounded user-authored
+evidence. Similar spellings remain separate review cases.
+
+Kinlayer revalidates status/type, target, ontology, warnings, evidence ownership, temporal scope,
+sensitivity, AI-use policy, duplicates/conflicts, and pattern episode count. First-release automatic
+promotion is limited to safe existing-person observations. `consolidate_accept` preserves the union
+of evidence in one replacement candidate and canonical observation. Exact duplicate archival retains
+an exact canonical record or deterministic oldest pending candidate. Retry/resume verifies the saved
+reference and never writes a second record.

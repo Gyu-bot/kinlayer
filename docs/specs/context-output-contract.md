@@ -467,3 +467,12 @@ reviewable and should not be presented as confirmed context.
 - `/api/context/pack` replaces older `/api/context/situation` naming.
 - Kinlayer does not perform open-ended LLM situation understanding.
 - Agents provide structured hints plus free-text `situation_text`; Kinlayer uses deterministic hybrid retrieval and policy packaging.
+## Opt-in Provisional Context
+
+Context-card and context-pack expose a separate `provisional_context` array, empty unless explicitly
+requested. It contains at most five pending observation candidates from the last 30 days for one
+exactly resolved active entity, after user-evidence/content/policy validation.
+
+Every item is labelled `provisional` and `unreviewed` with `write_evidence_eligible=false`.
+Provisional items never enter canonical context buckets, provenance, retrieval evidence, or later
+write/evidence inputs.

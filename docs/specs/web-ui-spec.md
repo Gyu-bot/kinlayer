@@ -367,3 +367,8 @@ The UI should make it easy to answer:
 3. Why did the agent retrieve this context?
 4. What is pending review?
 5. How do I correct or hide a bad memory?
+## Periodic Curation Boundary
+
+Repository Phases 1-4 use API and CLI as the canonical control surface. No state-changing curation UI
+is implemented. A future Web surface may provide read-only run/decision audit views through the same
+API, never a second execution path.

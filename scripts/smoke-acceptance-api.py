@@ -724,6 +724,30 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
     assert_true(fixtures["accepted_canonical_record_ref"].split(":", 1)[1] in json.dumps(card), "accepted evidence link missing")
     assert_true(profile_fact_id in json.dumps(card), "accepted profile fact missing from context card")
 
+    curation_config = client.get("/api/system/config")["curation"]
+    curation_mode = curation_config["mode"]
+    if curation_mode != "disabled":
+        source_pack = client.post("/api/curation/source-packs", {"limit": 10})
+        assert_true("groups" in source_pack, "curation source pack failed")
+        curation_run = client.post(
+            "/api/curation/runs",
+            {
+                "mode": curation_mode,
+                "policy_version": curation_config["policy_version"],
+                "input_candidate_count": 0,
+                "decisions": [],
+            },
+        )
+        assert_true(curation_run["status"] == "ready", "curation plan failed")
+        if curation_mode == "apply":
+            curation_run = client.post(
+                f"/api/curation/runs/{curation_run['id']}/execute",
+                {},
+            )
+            assert_true(curation_run["status"] == "completed", "curation execute failed")
+            resumed = client.post(f"/api/curation/runs/{curation_run['id']}/resume", {})
+            assert_true(resumed["id"] == curation_run["id"], "curation resume failed")
+
     graph = client.get(f"/api/graph/ego/{self_id}?depth=1")
     assert_true(len(graph["nodes"]) >= 3 and len(graph["edges"]) >= 2, "ego graph missing fixture nodes/edges")
 
@@ -744,6 +768,7 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
         "accepted_canonical_record_ref": fixtures["accepted_canonical_record_ref"],
         "accepted_merge_ref": accepted_merge["canonical_record_ref"],
         "api_smoke": "ok",
+        "curation_mode": curation_mode,
     }
 
 
