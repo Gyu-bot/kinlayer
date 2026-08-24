@@ -95,8 +95,10 @@ A curation source pack may contain only:
 Candidate payloads in a source pack are typed, allowlisted, bounded projections rather than raw DB
 JSON. Unknown/raw keys are removed fail-closed; reserved raw prompt/provider/session/transcript/tool
 markers and over-limit payloads are never returned. A non-empty submitted run must use the exact
-server-returned start/completed cursor window and input count, and every decision candidate ID must
-belong to that re-derived pending set.
+server-returned start/completed cursor window and input count. Across the whole plan, every
+server-derived candidate ID must appear exactly once: no omission, duplicate membership, or extra ID.
+Multi-candidate consolidation remains valid when each source belongs only to that decision. Empty
+source windows accept only zero decisions/count. Violations fail before run/decision persistence.
 
 It must not include:
 
@@ -382,6 +384,7 @@ Responsibilities:
 
 - source-pack endpoint creates a bounded incremental pack and cursor;
 - run creation validates the structured plan but does not execute when mode is `shadow`;
+- run creation requires exact-once candidate coverage of the complete server-derived source window;
 - resume recovers persisted `pending|planning` plans to exact-readback `ready` state without
   candidate/canonical writes; this is allowed in either enabled server mode after policy-version
   validation, including stored shadow runs after a server move to apply;

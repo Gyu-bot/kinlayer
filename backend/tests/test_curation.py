@@ -425,3 +425,95 @@ def test_service_resume_recovers_pending_and_planning_shadow_runs_idempotently(
     assert recovered_planning.status == "ready"
     assert recovered_planning.decisions[0].status == "blocked"
     assert session.query(Observation).count() == 0
+
+
+def test_service_source_window_requires_exact_once_candidate_coverage(session: Session) -> None:
+    service = CurationService(session)
+    candidates = [
+        Candidate(
+            candidate_type="new_entity",
+            payload={"entity_type": "person", "display_name": f"Casey Coverage {index}"},
+            confidence=0.8,
+            sensitivity="low",
+            status="pending",
+            created_by="user",
+        )
+        for index in range(3)
+    ]
+    session.add_all(candidates)
+    session.commit()
+    ordered = sorted(candidates, key=lambda candidate: (candidate.created_at, candidate.id))
+    packed_ids = [candidate.id for candidate in ordered[:2]]
+    outside_id = ordered[2].id
+    cursor_started = {"created_at": ordered[0].created_at, "candidate_id": ""}
+    cursor_completed = {
+        "created_at": ordered[1].created_at,
+        "candidate_id": ordered[1].id,
+    }
+
+    def plan(
+        memberships: list[list[str]],
+        *,
+        input_count: int = 2,
+        action: str = "defer",
+    ) -> CurationRunCreate:
+        return CurationRunCreate.model_validate(
+            {
+                "mode": "shadow",
+                "cursor_started_at": cursor_started["created_at"],
+                "cursor_started_id": cursor_started["candidate_id"],
+                "cursor_completed_at": cursor_completed["created_at"],
+                "cursor_completed_id": cursor_completed["candidate_id"],
+                "policy_version": "curation-policy-v1",
+                "input_candidate_count": input_count,
+                "decisions": [
+                    {
+                        "action": action,
+                        "risk_level": "low",
+                        "candidate_ids": candidate_ids,
+                        "target_entity_id": None,
+                        "proposed_payload": {},
+                        "evidence_episode_ids": [],
+                        "reason_codes": [],
+                        "policy_version": "curation-policy-v1",
+                        "idempotency_key": f"coverage:{index}:{action}",
+                        "planner": {"name": "test", "model": None, "version": "v1"},
+                    }
+                    for index, candidate_ids in enumerate(memberships)
+                ],
+            }
+        )
+
+    service.validate_run_source_window(plan([[packed_ids[0]], [packed_ids[1]]]))
+    service.validate_run_source_window(
+        plan([packed_ids], action="consolidate_accept")
+    )
+
+    failures = [
+        (plan([[packed_ids[0]]]), "source_pack_candidate_coverage_mismatch"),
+        (
+            plan([[packed_ids[0]], packed_ids]),
+            "duplicate_candidate_membership",
+        ),
+        (plan([[packed_ids[0]], [packed_ids[1]]], input_count=1), "source_pack_count_mismatch"),
+        (
+            plan([[packed_ids[0]], [packed_ids[1]], [outside_id]]),
+            "candidate_outside_source_pack",
+        ),
+    ]
+    for payload, expected_code in failures:
+        with pytest.raises(HTTPException) as exc_info:
+            service.validate_run_source_window(payload)
+        assert exc_info.value.detail["error"]["code"] == expected_code
+
+    empty = CurationRunCreate.model_validate(empty_plan := {
+        "mode": "shadow",
+        "policy_version": "curation-policy-v1",
+        "input_candidate_count": 0,
+        "decisions": [],
+    })
+    service.validate_run_source_window(empty)
+    empty_plan["input_candidate_count"] = 1
+    with pytest.raises(HTTPException) as empty_error:
+        service.validate_run_source_window(CurationRunCreate.model_validate(empty_plan))
+    assert empty_error.value.detail["error"]["code"] == "source_pack_empty_run_mismatch"

@@ -240,6 +240,96 @@ def test_run_rejects_decision_candidate_outside_server_source_window(database_ur
         assert accepted.json()["diagnostics"]["source_pack_candidate_count"] == 1
 
 
+def test_api_source_window_requires_complete_exact_once_coverage(database_url: str) -> None:
+    with curation_client(database_url, "shadow") as client:
+        with client.app.state.session_factory() as session:
+            candidates = [
+                Candidate(
+                    candidate_type="new_entity",
+                    payload={"entity_type": "person", "display_name": f"Casey API {index}"},
+                    confidence=0.8,
+                    sensitivity="low",
+                    status="pending",
+                    created_by="user",
+                )
+                for index in range(3)
+            ]
+            session.add_all(candidates)
+            session.commit()
+            all_ids = [candidate.id for candidate in candidates]
+
+        pack = client.post("/api/curation/source-packs", json={"limit": 2}).json()
+        packed_ids = [
+            item["id"]
+            for group in pack["groups"]
+            for item in group["candidates"]
+        ]
+        outside_id = next(candidate_id for candidate_id in all_ids if candidate_id not in packed_ids)
+
+        def plan(
+            memberships: list[list[str]],
+            *,
+            input_count: int = 2,
+            action: str = "defer",
+        ) -> dict:
+            return {
+                "mode": "shadow",
+                "cursor_started_at": pack["cursor_started"]["created_at"],
+                "cursor_started_id": pack["cursor_started"]["candidate_id"],
+                "cursor_completed_at": pack["cursor_completed"]["created_at"],
+                "cursor_completed_id": pack["cursor_completed"]["candidate_id"],
+                "policy_version": "curation-policy-v1",
+                "input_candidate_count": input_count,
+                "decisions": [
+                    {
+                        "action": action,
+                        "risk_level": "low",
+                        "candidate_ids": candidate_ids,
+                        "target_entity_id": None,
+                        "proposed_payload": {},
+                        "evidence_episode_ids": [],
+                        "reason_codes": [],
+                        "policy_version": "curation-policy-v1",
+                        "idempotency_key": f"api-coverage:{index}:{action}",
+                        "planner": {"name": "test", "model": None, "version": "v1"},
+                    }
+                    for index, candidate_ids in enumerate(memberships)
+                ],
+            }
+
+        rejected = [
+            (plan([[packed_ids[0]]]), "source_pack_candidate_coverage_mismatch"),
+            (plan([[packed_ids[0]], packed_ids]), "duplicate_candidate_membership"),
+            (
+                plan([[packed_ids[0]], [packed_ids[1]]], input_count=1),
+                "source_pack_count_mismatch",
+            ),
+            (
+                plan([[packed_ids[0]], [packed_ids[1]], [outside_id]]),
+                "candidate_outside_source_pack",
+            ),
+            (empty_plan("shadow") | {"input_candidate_count": 1}, "source_pack_empty_run_mismatch"),
+        ]
+        for payload, expected_code in rejected:
+            response = client.post("/api/curation/runs", json=payload)
+            assert response.status_code == 409
+            assert response.json()["error"]["code"] == expected_code
+            with client.app.state.session_factory() as session:
+                assert session.query(CurationRun).count() == 0
+                assert session.query(CurationDecision).count() == 0
+
+        one_to_one = client.post(
+            "/api/curation/runs",
+            json=plan([[packed_ids[0]], [packed_ids[1]]]),
+        )
+        consolidate = client.post(
+            "/api/curation/runs",
+            json=plan([packed_ids], action="consolidate_accept"),
+        )
+        assert one_to_one.status_code == 201
+        assert consolidate.status_code == 201
+
+
 def test_resume_recovers_pending_and_planning_shadow_runs_without_writes(
     database_url: str,
 ) -> None:

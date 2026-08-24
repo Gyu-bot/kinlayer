@@ -1298,7 +1298,14 @@ candidate/evidence/excerpt budgets. They contain bounded user-authored excerpts,
 context, validation diagnostics, and exact duplicate/conflict signals, never episode bodies or raw
 provider/session data. Candidate payloads are bounded typed projections. The first pack returns a
 server-derived lower-bound `cursor_started`; non-empty plans must echo that start, the completed
-cursor, and input count, and may reference only candidates re-derived inside that pending window.
+cursor, and input count. The deduplicated union of all decision `candidate_ids` must equal the exact
+server-derived pending candidate set, and every candidate must appear in exactly one decision.
+Partial coverage, duplicate membership, out-of-window IDs, and count drift return HTTP 409 before
+any run or decision is persisted. A consolidate decision may contain multiple candidates, but those
+candidates cannot appear in another decision. An empty window requires zero count and zero decisions.
+Reason codes are `source_pack_candidate_coverage_mismatch`, `duplicate_candidate_membership`,
+`candidate_outside_source_pack`, `source_pack_count_mismatch`,
+`source_pack_snapshot_mismatch`, and `source_pack_empty_run_mismatch`.
 Run diagnostics/proposals reject nested reserved raw/session/transcript/tool keys and over-limit JSON.
 Run submission persists proposals and recomputes `allowed`/`blocked` from
 stored state. `shadow` never executes. `apply` commits canonical writes, source states, evidence,

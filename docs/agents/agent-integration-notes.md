@@ -314,7 +314,11 @@ The profile-local, provider-neutral adapter performs exactly this sequence:
 
 For every non-empty plan, copy the returned `cursor_started`, `cursor_completed`, and
 `input_candidate_count` into the run fields unchanged. Kinlayer re-derives that pending window and
-rejects any out-of-window candidate ID or cursor/count drift before persistence.
+requires every returned candidate ID to appear exactly once across all decisions. Do not omit a
+candidate merely because the planner chooses `defer`; emit an explicit defer decision. Do not repeat
+a candidate in multiple decisions. `consolidate_accept` may reference multiple candidates only when
+none also appears elsewhere. Out-of-window IDs, partial coverage, duplicates, count drift, and
+non-empty decisions for an empty window are rejected before persistence.
 
 Source-pack response shape:
 

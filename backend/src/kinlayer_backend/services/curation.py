@@ -239,13 +239,37 @@ class CurationService:
         }
 
     def validate_run_source_window(self, payload: CurationRunCreate) -> None:
-        decision_candidate_ids = {
+        candidate_memberships = [
             candidate_id
             for decision in payload.decisions
             for candidate_id in decision.candidate_ids
-        }
-        if not decision_candidate_ids:
+        ]
+        decision_candidate_ids = set(candidate_memberships)
+        if payload.input_candidate_count == 0:
+            if (
+                candidate_memberships
+                or payload.decisions
+                or payload.cursor_completed_at is not None
+                or payload.cursor_completed_id is not None
+            ):
+                raise api_error(
+                    409,
+                    "source_pack_empty_run_mismatch",
+                    "An empty source window requires zero decisions and candidates.",
+                )
             return
+        if not candidate_memberships:
+            raise api_error(
+                409,
+                "source_pack_empty_run_mismatch",
+                "A non-empty source window requires candidate decisions.",
+            )
+        if len(candidate_memberships) != len(decision_candidate_ids):
+            raise api_error(
+                409,
+                "duplicate_candidate_membership",
+                "Each source-pack candidate must appear in exactly one decision.",
+            )
         if (
             payload.cursor_started_at is None
             or payload.cursor_started_id is None
@@ -266,22 +290,33 @@ class CurationService:
         )
         source_candidate_ids = [candidate.id for candidate in rows]
         completed = rows[-1] if rows else None
-        if (
-            len(rows) != payload.input_candidate_count
-            or not completed
-            or (completed.created_at, completed.id)
-            != (payload.cursor_completed_at, payload.cursor_completed_id)
+        if len(rows) != payload.input_candidate_count:
+            raise api_error(
+                409,
+                "source_pack_count_mismatch",
+                "Run input_candidate_count does not match the source-pack window.",
+            )
+        if not completed or (completed.created_at, completed.id) != (
+            payload.cursor_completed_at,
+            payload.cursor_completed_id,
         ):
             raise api_error(
                 409,
                 "source_pack_snapshot_mismatch",
                 "Run cursor/count does not match the current pending source-pack window.",
             )
-        if not decision_candidate_ids.issubset(source_candidate_ids):
+        source_candidate_id_set = set(source_candidate_ids)
+        if decision_candidate_ids - source_candidate_id_set:
             raise api_error(
                 409,
                 "candidate_outside_source_pack",
                 "A decision references a candidate outside the source-pack window.",
+            )
+        if source_candidate_id_set - decision_candidate_ids:
+            raise api_error(
+                409,
+                "source_pack_candidate_coverage_mismatch",
+                "Every source-pack candidate must appear in exactly one decision.",
             )
         payload.diagnostics.update(
             {
