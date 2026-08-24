@@ -334,3 +334,83 @@ def test_policy_allows_only_safe_user_grounded_observations_and_persists_reasons
         for key, decision in by_key.items()
         if key not in {"policy:safe", "policy:grounded-pattern"}
     )
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "As of 2026-08-24, Casey's email is casey@example.test.",
+        "As of 2026-08-24, Casey's phone is 010-1234-5678.",
+        "As of 2026-08-24, Casey's address is 10 Synthetic Road.",
+        "As of 2026-08-24, Casey shared updated contact details.",
+    ],
+)
+def test_low_sensitivity_contact_content_is_never_auto_promoted(
+    session: Session,
+    content: str,
+) -> None:
+    entity = add_person(session)
+    episode = add_episode(session, excerpt=content, source_ref=f"contact-{len(content)}")
+    candidate = add_observation_candidate(
+        session,
+        entity,
+        [episode],
+        payload=observation_payload(entity.id, content=content),
+    )
+    run = CurationService(session).create_run(
+        CurationRunCreate.model_validate(
+            {
+                "mode": "shadow",
+                "policy_version": "curation-policy-v1",
+                "input_candidate_count": 1,
+                "decisions": [decision_payload(candidate, f"contact:{len(content)}")],
+            }
+        )
+    )
+    decision = CurationService(session).evaluate_run(run).decisions[0]
+    assert decision.status == "blocked"
+    assert "high_impact_content" in decision.reason_codes
+
+
+def test_source_pack_redacts_unsafe_and_bounds_legacy_candidate_payload(session: Session) -> None:
+    entity = add_person(session)
+    unsafe = Candidate(
+        candidate_type="observation",
+        target_entity_id=entity.id,
+        payload={
+            **observation_payload(entity.id),
+            "raw_transcript": {"provider_response": "RAW_TRANSCRIPT secret"},
+        },
+        confidence=0.8,
+        sensitivity="low",
+        status="pending",
+        created_by="user",
+        created_at=AS_OF - timedelta(minutes=2),
+    )
+    long = Candidate(
+        candidate_type="observation",
+        target_entity_id=entity.id,
+        payload=observation_payload(entity.id, content="x" * 10000),
+        confidence=0.8,
+        sensitivity="low",
+        status="pending",
+        created_by="user",
+        created_at=AS_OF - timedelta(minutes=1),
+    )
+    session.add_all([unsafe, long])
+    session.commit()
+
+    packed = CurationService(session).build_source_pack(
+        CurationSourcePackRequest(as_of=AS_OF, limit=10)
+    )
+    serialized = str(packed)
+    assert "RAW_TRANSCRIPT" not in serialized
+    assert "secret" not in serialized
+    items = {
+        item["id"]: item
+        for group in packed["groups"]
+        for item in group["candidates"]
+    }
+    assert items[unsafe.id]["payload"] == {}
+    assert items[unsafe.id]["validation_errors"][0]["code"] == "unsafe_candidate_payload"
+    assert len(items[long.id]["payload"]["content"]) <= 500

@@ -5,6 +5,7 @@ from typing import assert_never
 
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
@@ -149,8 +150,25 @@ class CandidateService:
         resolved_by: str = "user",
         commit: bool = True,
     ) -> Candidate:
+        candidate = self._lock_resolvable_candidate(candidate.id)
+        return self._accept_locked_candidate(
+            candidate,
+            status=status,
+            resolution_note=resolution_note,
+            resolved_by=resolved_by,
+            commit=commit,
+        )
+
+    def _accept_locked_candidate(
+        self,
+        candidate: Candidate,
+        *,
+        status: str,
+        resolution_note: str | None,
+        resolved_by: str,
+        commit: bool,
+    ) -> Candidate:
         try:
-            self._ensure_resolvable(candidate)
             candidate.resolved_by = resolved_by
             canonical_record_ref = self._write_canonical_record(candidate)
             candidate.canonical_record_ref = canonical_record_ref
@@ -161,6 +179,15 @@ class CandidateService:
             else:
                 self.session.flush()
             return candidate
+        except IntegrityError as exc:
+            self.session.rollback()
+            if self._is_source_candidate_conflict(exc):
+                raise api_error(
+                    409,
+                    "candidate_already_canonicalized",
+                    "Candidate already produced a canonical record.",
+                ) from exc
+            raise
         except Exception:
             self.session.rollback()
             raise
@@ -173,6 +200,7 @@ class CandidateService:
         resolved_by: str = "user",
         commit: bool = True,
     ) -> Candidate:
+        candidate = self._lock_resolvable_candidate(candidate.id)
         try:
             validated_payload = PAYLOAD_MODELS[candidate.candidate_type].model_validate(
                 edited_payload
@@ -188,13 +216,31 @@ class CandidateService:
             )
         )
         candidate.payload = validated_payload
-        return self.accept_candidate(
+        return self._accept_locked_candidate(
             candidate,
             status="edited_accepted",
             resolution_note=resolution_note,
             resolved_by=resolved_by,
             commit=commit,
         )
+
+    def _lock_resolvable_candidate(self, candidate_id: str) -> Candidate:
+        candidate = self.repository.lock_candidate(candidate_id)
+        if not candidate:
+            raise api_error(404, "not_found", "Candidate not found.")
+        self._ensure_resolvable(candidate)
+        return candidate
+
+    @staticmethod
+    def _is_source_candidate_conflict(exc: IntegrityError) -> bool:
+        constraint_name = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        return constraint_name in {
+            "ux_entity_aliases_source_candidate_id",
+            "ux_entity_facts_source_candidate_id",
+            "ux_entity_edges_source_candidate_id",
+            "ux_observations_source_candidate_id",
+            "ux_entity_merges_candidate_id",
+        } or "source_candidate_id" in str(exc.orig) or "entity_merges.candidate_id" in str(exc.orig)
 
     def _entity(self, entity_id: str) -> Entity:
         entity = self.session.get(Entity, entity_id)

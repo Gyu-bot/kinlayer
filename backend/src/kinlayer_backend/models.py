@@ -142,6 +142,13 @@ class EntityAlias(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_entity_aliases_entity_id", "entity_id"),
         Index("ix_entity_aliases_normalized_alias", "normalized_alias"),
+        Index(
+            "ux_entity_aliases_source_candidate_id",
+            "source_candidate_id",
+            unique=True,
+            sqlite_where=text("source_candidate_id is not null"),
+            postgresql_where=text("source_candidate_id is not null"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -162,6 +169,13 @@ class EntityFact(Base, TimestampMixin):
         Index("ix_entity_facts_entity_id", "entity_id"),
         Index("ix_entity_facts_fact_type", "fact_type"),
         Index("ix_entity_facts_status", "status"),
+        Index(
+            "ux_entity_facts_source_candidate_id",
+            "source_candidate_id",
+            unique=True,
+            sqlite_where=text("source_candidate_id is not null"),
+            postgresql_where=text("source_candidate_id is not null"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -209,6 +223,13 @@ class EntityEdge(Base, TimestampMixin):
         Index("ix_entity_edges_to_entity_id", "to_entity_id"),
         Index("ix_entity_edges_relation_type", "relation_type"),
         Index("ix_entity_edges_status", "status"),
+        Index(
+            "ux_entity_edges_source_candidate_id",
+            "source_candidate_id",
+            unique=True,
+            sqlite_where=text("source_candidate_id is not null"),
+            postgresql_where=text("source_candidate_id is not null"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -239,6 +260,13 @@ class Observation(Base, TimestampMixin):
         Index("ix_observations_observation_type", "observation_type"),
         Index("ix_observations_status", "status"),
         Index("ix_observations_claim_type", "claim_type"),
+        Index(
+            "ux_observations_source_candidate_id",
+            "source_candidate_id",
+            unique=True,
+            sqlite_where=text("source_candidate_id is not null"),
+            postgresql_where=text("source_candidate_id is not null"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -504,6 +532,13 @@ class EntityMerge(Base, TimestampMixin):
         Index("ix_entity_merges_source_entity_id", "source_entity_id"),
         Index("ix_entity_merges_target_entity_id", "target_entity_id"),
         Index("ix_entity_merges_candidate_id", "candidate_id"),
+        Index(
+            "ux_entity_merges_candidate_id",
+            "candidate_id",
+            unique=True,
+            sqlite_where=text("candidate_id is not null"),
+            postgresql_where=text("candidate_id is not null"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)

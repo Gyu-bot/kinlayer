@@ -571,3 +571,8 @@ promotion is limited to safe existing-person observations. `consolidate_accept` 
 of evidence in one replacement candidate and canonical observation. Exact duplicate archival retains
 an exact canonical record or deterministic oldest pending candidate. Retry/resume verifies the saved
 reference and never writes a second record.
+
+Manual accept/edit-accept and curation execution use one shared `FOR UPDATE` candidate boundary.
+Stale callers must reload and lose with HTTP 409 after another caller canonicalizes first. Partial
+unique canonical-source indexes are the DB fallback; actual PostgreSQL lock contention remains a
+service-backed release gate.

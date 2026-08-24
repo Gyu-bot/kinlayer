@@ -35,6 +35,14 @@ class CandidateRepository:
     def get_candidate(self, candidate_id: str) -> Candidate | None:
         return self.session.get(Candidate, candidate_id)
 
+    def lock_candidate(self, candidate_id: str) -> Candidate | None:
+        return self.session.scalar(
+            select(Candidate)
+            .where(Candidate.id == candidate_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+
     def list_candidates(
         self,
         status: str | None = None,

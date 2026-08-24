@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.config import Settings
@@ -171,6 +172,36 @@ def test_accept_existing_executes_once_and_resume_only_reads_back(session: Sessi
     assert session.scalar(select(func.count()).select_from(Observation)) == observation_count
 
 
+def test_database_rejects_duplicate_canonical_source_candidate(session: Session) -> None:
+    entity = setup_person(session)
+    candidate = add_candidate(
+        session,
+        entity,
+        "As of 2026-08-24, Casey prefers concise scheduling.",
+        "thread-unique-source",
+    )
+    rows = [
+        Observation(
+            subject_entity_id=entity.id,
+            observation_type="communication_preference",
+            content=f"Synthetic canonical {index}",
+            claim_type="preference",
+            sensitivity="low",
+            ai_use_policy="cautious_use",
+            status="active",
+            source_candidate_id=candidate.id,
+            created_by="system",
+        )
+        for index in (1, 2)
+    ]
+    session.add(rows[0])
+    session.commit()
+    session.add(rows[1])
+    with pytest.raises(IntegrityError):
+        session.flush()
+    session.rollback()
+
+
 def test_edit_accept_existing_reuses_candidate_writer(session: Session) -> None:
     entity = setup_person(session)
     candidate = add_candidate(
@@ -288,6 +319,86 @@ def test_execution_failure_rolls_back_canonical_and_leaves_source_pending(
     assert resumed.status == "completed"
     assert resumed.decisions[0].status == "executed"
     assert session.get(Candidate, candidate.id).status == "accepted"
+    assert session.scalar(select(func.count()).select_from(Observation)) == 1
+
+
+def test_commit_ack_loss_reconciles_without_second_canonical_write(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entity = setup_person(session)
+    candidate = add_candidate(
+        session,
+        entity,
+        "As of 2026-08-24, Casey prefers concise scheduling.",
+        "thread-ack-loss",
+    )
+    service, run = create_run(
+        session,
+        [candidate],
+        action="accept_existing",
+        proposed_payload=candidate.payload,
+        key="execute:ack-loss",
+    )
+    run.status = "executing"
+    session.commit()
+    real_commit = session.commit
+    raised = False
+
+    def commit_then_lose_ack():
+        nonlocal raised
+        real_commit()
+        if not raised:
+            raised = True
+            raise RuntimeError("simulated commit acknowledgement loss")
+
+    monkeypatch.setattr(session, "commit", commit_then_lose_ack)
+    result = service.execute_run(run)
+
+    assert result.status == "completed"
+    assert result.decisions[0].status == "executed"
+    assert result.decisions[0].readback_status == "verified"
+    assert session.scalar(select(func.count()).select_from(Observation)) == 1
+    assert service.resume_run(result).status == "completed"
+    assert session.scalar(select(func.count()).select_from(Observation)) == 1
+
+
+def test_unknown_postcommit_verification_resumes_without_rewrite(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entity = setup_person(session)
+    candidate = add_candidate(
+        session,
+        entity,
+        "As of 2026-08-24, Casey prefers concise scheduling.",
+        "thread-verification-unknown",
+    )
+    service, run = create_run(
+        session,
+        [candidate],
+        action="accept_existing",
+        proposed_payload=candidate.payload,
+        key="execute:verification-unknown",
+    )
+    def fail_postcommit_verification(_service, decision, *_args, **_kwargs):
+        assert decision.status == "executing"
+        assert decision.readback_status == "verification_unknown"
+        raise RuntimeError("simulated postcommit readback outage")
+
+    monkeypatch.setattr(service, "_postcommit_verify", fail_postcommit_verification)
+    partial = service.execute_run(run)
+
+    assert partial.status == "partial"
+    assert partial.decisions[0].status == "failed"
+    assert partial.decisions[0].readback_status == "verification_unknown"
+    assert partial.decisions[0].canonical_record_ref.startswith("observations:")
+    assert session.scalar(select(func.count()).select_from(Observation)) == 1
+
+    monkeypatch.undo()
+    resumed = service.resume_run(partial)
+    assert resumed.status == "completed"
+    assert resumed.decisions[0].readback_status == "verified"
     assert session.scalar(select(func.count()).select_from(Observation)) == 1
 
 

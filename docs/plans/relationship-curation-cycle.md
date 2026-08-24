@@ -92,6 +92,12 @@ A curation source pack may contain only:
 - deterministic validation warnings and normalizations;
 - exact duplicate or conflict signals computed from canonical records and other candidates.
 
+Candidate payloads in a source pack are typed, allowlisted, bounded projections rather than raw DB
+JSON. Unknown/raw keys are removed fail-closed; reserved raw prompt/provider/session/transcript/tool
+markers and over-limit payloads are never returned. A non-empty submitted run must use the exact
+server-returned start/completed cursor window and input count, and every decision candidate ID must
+belong to that re-derived pending set.
+
 It must not include:
 
 - full episode bodies;
@@ -190,6 +196,10 @@ executed_at nullable
 
 Do not store raw session content or complete provider responses in either table.
 
+`diagnostics` and `proposed_payload` reject reserved raw prompt/provider/session/transcript/tool keys
+recursively and enforce JSON-only depth, node, string, and byte ceilings before persistence. Read
+schemas apply the same checks so an unsafe legacy row fails closed rather than being returned.
+
 A run is resumable from persisted decisions. Retrying the same decision must not create a second canonical record.
 
 ## 7. Curation action schema
@@ -273,6 +283,10 @@ For `claim_type=pattern`, automatic execution additionally requires evidence fro
 - any decision that depends on assistant/tool/retrieved text as evidence;
 - any action requiring an ontology value that is missing or ambiguous.
 
+Contact-like content includes deterministic phone, email, address, and contact keywords/patterns and
+is blocked regardless of declared sensitivity or planner-proposed wording. The check applies to both
+stored source candidates and the proposed payload.
+
 These decisions remain pending, become `needs_clarification`, or are surfaced as review recommendations. The LLM may recommend them but cannot cause direct canonical mutation.
 
 ### Duplicate handling
@@ -324,6 +338,13 @@ After commit, read back:
 - processed duplicate/superseded candidate states.
 
 If transactional verification fails, roll back and keep source candidates pending. If the transaction committed but an external post-commit readback is unavailable, record `verification_unknown`, do not claim full success, and make retry idempotently verify the committed state rather than writing again.
+
+The first canonical transaction persists `canonical_record_ref` with `status=executing` and
+`readback_status=verification_unknown`, never `verified`. A separate fresh-session reconciliation
+must reload the run, decision, affected candidates, exact canonical content/evidence, and compact
+target projection before setting `executed/verified`. Resume sees a persisted canonical ref and runs
+reconciliation only. Manual and curation acceptance share the same locked candidate canonicalization
+boundary; partial unique indexes on canonical `source_candidate_id` provide a second DB guard.
 
 ## 11. Provisional pending context
 

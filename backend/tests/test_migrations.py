@@ -199,3 +199,21 @@ def test_curation_migration_applies_to_an_empty_database(database_url: str) -> N
             migration["upgrade"]()
 
     assert {"curation_runs", "curation_decisions"} <= set(inspect(engine).get_table_names())
+
+
+def test_candidate_canonicalization_guard_migration_defines_unique_indexes() -> None:
+    migration = Path(
+        "backend/alembic/versions/20260825_0008_unique_candidate_canonicalization.py"
+    )
+    content = migration.read_text()
+
+    assert 'down_revision: str | None = "20260824_0007"' in content
+    for index in [
+        "ux_entity_aliases_source_candidate_id",
+        "ux_entity_facts_source_candidate_id",
+        "ux_entity_edges_source_candidate_id",
+        "ux_observations_source_candidate_id",
+        "ux_entity_merges_candidate_id",
+    ]:
+        assert f'"{index}"' in content
+    assert "unique=True" in content

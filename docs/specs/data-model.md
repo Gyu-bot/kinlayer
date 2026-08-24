@@ -718,3 +718,9 @@ Planner proposals transition `pending -> planning -> ready`. Apply execution use
 `proposed -> allowed|blocked` and `allowed|failed -> executing -> executed|failed`. Consolidation
 creates one accepted replacement candidate and supersedes sources in the same transaction. Rollback
 leaves original candidates pending.
+
+Canonical tables with `source_candidate_id` use partial unique indexes for non-null values;
+`entity_merges.candidate_id` has the same guard. Candidate acceptance also takes a shared row lock and
+refreshes stale identity-map state before any insert. `executed/verified` is a second post-commit
+state transition after fresh exact reconciliation; unavailable reconciliation remains
+`failed/verification_unknown` and resume never rewrites the canonical row.

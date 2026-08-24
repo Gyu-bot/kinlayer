@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import text
 
@@ -109,6 +110,46 @@ def test_candidate_payload_schemas_cover_supported_types() -> None:
                 **common,
             }
         )
+
+
+def test_stale_manual_accept_reloads_candidate_and_writes_once(client, database_url) -> None:
+    person = create_person(client, "Casey Race")
+    episode = create_episode(client)
+    created = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "observation",
+            "target_entity_id": person["id"],
+            "payload": {
+                "subject_entity_id": person["id"],
+                "observation_type": "communication_preference",
+                "content": "Alex prefers concise follow-ups.",
+                "claim_type": "preference",
+                "occurred_at": "2026-08-24T00:00:00Z",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex prefers concise follow-ups.",
+                }
+            ],
+            "confidence": 0.9,
+            "created_by": "ai_agent",
+        },
+    ).json()
+    factory = create_session_maker(Settings(database_url=database_url))
+    with factory() as first_session, factory() as stale_session:
+        first = first_session.get(Candidate, created["id"])
+        stale = stale_session.get(Candidate, created["id"])
+        stale_session.commit()
+        CandidateService(first_session).accept_candidate(first)
+        with pytest.raises(HTTPException) as exc_info:
+            CandidateService(stale_session).accept_candidate(stale)
+        assert exc_info.value.status_code == 409
+        assert stale_session.scalar(
+            text("select count(*) from observations where source_candidate_id = :candidate_id"),
+            {"candidate_id": created["id"]},
+        ) == 1
 
 
 def test_candidate_create_validates_payload_and_stores_evidence(client) -> None:

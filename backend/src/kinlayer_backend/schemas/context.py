@@ -1,14 +1,18 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from kinlayer_backend.schemas.common import APIModel
 from kinlayer_backend.schemas.entities import AliasRead, EntityFactRead, EntityRead
 from kinlayer_backend.schemas.relationships import EdgeRead, ObservationRead
 
 
-class ContextRetrieveRequest(APIModel):
+class ContextRequestModel(APIModel):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+class ContextRetrieveRequest(ContextRequestModel):
     query: str
     entity_hints: list[str] = Field(default_factory=list)
     focal_entity_id: str | None = None

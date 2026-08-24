@@ -109,6 +109,7 @@ class CurationRepository:
             .where(Candidate.id.in_(candidate_ids))
             .order_by(Candidate.id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         ).all()
 
     def count_decisions(self, run_id: str, status: str) -> int:

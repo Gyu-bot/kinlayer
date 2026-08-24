@@ -217,8 +217,13 @@ class ContextService:
         return target or entity
 
     def _retrieve(self, payload: dict[str, Any]) -> RetrievalResult:
+        query = " ".join(
+            value.strip()
+            for value in [payload["query"], payload.get("situation")]
+            if isinstance(value, str) and value.strip()
+        )
         return self.retrieval.retrieve(
-            query=payload["query"],
+            query=query,
             entity_hints=payload.get("entity_hints") or [],
             focal_entity_id=payload.get("focal_entity_id"),
             query_embedding=payload.get("query_embedding"),

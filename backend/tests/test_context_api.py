@@ -166,6 +166,35 @@ def test_context_pack_policy_buckets_and_no_final_advice_or_drafts(client) -> No
     assert response.json()["debug"]["score_weights"]
 
 
+def test_context_requests_reject_unknown_legacy_fields(client) -> None:
+    retrieve = client.post(
+        "/api/context/retrieve",
+        json={"query": "Casey", "situation_text": "silently ignored before"},
+    )
+    pack = client.post(
+        "/api/context/pack",
+        json={"query": "Casey", "include_pending_recent": True},
+    )
+    assert retrieve.status_code == 422
+    assert pack.status_code == 422
+
+
+def test_context_pack_uses_situation_text_in_retrieval(client) -> None:
+    casey = create_person(client, "Casey Situation Synthetic")
+    response = client.post(
+        "/api/context/pack",
+        json={
+            "query": "help",
+            "situation": "Casey Situation Synthetic scheduling",
+        },
+    )
+    assert response.status_code == 200
+    assert any(
+        item["entity_id"] == casey["id"]
+        for item in response.json()["context_pack"]["matched_entities"]
+    )
+
+
 def test_context_pack_medium_direct_surface_uses_conditional_policy(client) -> None:
     alex = create_person(client, "Alex Kim")
     create_observation(client, alex["id"], "Alex likes concise status updates.")
@@ -450,6 +479,30 @@ def test_provisional_context_is_opt_in_separate_and_not_write_evidence(client) -
         )
         assert blocked.status_code == 201
 
+    contact_content = "As of 2026-08-24, Casey's email is casey@example.test."
+    contact_episode = create_episode(client, contact_content, actor="user")
+    contact = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "observation",
+            "target_entity_id": casey["id"],
+            "payload": {
+                "subject_entity_id": casey["id"],
+                "observation_type": "communication_preference",
+                "content": contact_content,
+                "claim_type": "preference",
+                "sensitivity": "low",
+                "ai_use_policy": "cautious_use",
+                "occurred_at": "2026-08-24T00:00:00Z",
+            },
+            "evidence": [{"episode_id": contact_episode["id"], "excerpt": contact_content}],
+            "confidence": 0.9,
+            "sensitivity": "low",
+            "created_by": "ai_agent",
+        },
+    )
+    assert contact.status_code == 201
+
     default_card = client.get(f"/api/entities/{casey['id']}/context-card").json()
     provisional_card = client.get(
         f"/api/entities/{casey['id']}/context-card",
@@ -472,6 +525,10 @@ def test_provisional_context_is_opt_in_separate_and_not_write_evidence(client) -
     assert item["label"] == "provisional"
     assert item["review_status"] == "unreviewed"
     assert item["write_evidence_eligible"] is False
+    assert contact.json()["id"] not in {
+        provisional["candidate_id"] for provisional in provisional_card["provisional_context"]
+    }
+    assert contact_content not in str(provisional_card["provisional_context"])
     assert pack["provisional_context"][0]["candidate_id"] == candidate.json()["id"]
 
 

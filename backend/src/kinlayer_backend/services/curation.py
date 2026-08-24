@@ -2,6 +2,8 @@ from collections import defaultdict
 from copy import deepcopy
 from datetime import UTC, datetime
 from datetime import timedelta
+import hashlib
+import re
 from typing import Any
 
 from fastapi import HTTPException
@@ -26,6 +28,10 @@ from kinlayer_backend.schemas.curation import (
     CurationRunCreate,
     CurationRunStatus,
     CurationSourcePackRequest,
+    RESERVED_CURATION_KEYS,
+    RESERVED_CURATION_KEY_TOKENS,
+    RESERVED_CURATION_MARKERS,
+    validate_bounded_curation_json,
 )
 from kinlayer_backend.services.agent_write_filter import AgentWriteFilter
 from kinlayer_backend.services.candidates import CandidateService
@@ -82,6 +88,24 @@ HIGH_IMPACT_TERMS = {
 MAX_POLICY_EVIDENCE_EXCERPT_CHARS = 500
 MAX_TARGET_ALIASES = 10
 MAX_TARGET_OBSERVATIONS = 20
+MAX_SOURCE_PAYLOAD_STRING_CHARS = 500
+MAX_SOURCE_PAYLOAD_LIST_ITEMS = 20
+MAX_SOURCE_PAYLOAD_BYTES = 8192
+CONTACT_TERMS = {
+    "phone",
+    "email",
+    "e-mail",
+    "address",
+    "contact",
+    "telephone",
+    "mobile number",
+    "전화",
+    "이메일",
+    "주소",
+    "연락처",
+}
+EMAIL_PATTERN = re.compile(r"\b[^\s@]+@[^\s@]+\.[^\s@]+\b", re.IGNORECASE)
+PHONE_PATTERN = re.compile(r"(?<!\d)(?:\+?\d[\d -]{7,}\d)(?!\d)")
 
 
 class CurationService:
@@ -137,9 +161,10 @@ class CurationService:
     def build_source_pack(self, request: CurationSourcePackRequest) -> dict[str, Any]:
         cursor_at = request.cursor.created_at if request.cursor else None
         cursor_id = request.cursor.candidate_id if request.cursor else None
+        created_after = request.as_of - timedelta(days=request.max_age_days)
         rows = self.repository.pending_candidates(
             as_of=request.as_of,
-            created_after=request.as_of - timedelta(days=request.max_age_days),
+            created_after=created_after,
             cursor_at=cursor_at,
             cursor_id=cursor_id,
             limit=request.limit + 1,
@@ -184,7 +209,11 @@ class CurationService:
         completed = candidates[-1] if candidates else None
         return {
             "as_of": request.as_of,
-            "cursor_started": request.cursor.model_dump() if request.cursor else None,
+            "cursor_started": (
+                request.cursor.model_dump()
+                if request.cursor
+                else {"created_at": created_after, "candidate_id": ""}
+            ),
             "cursor_completed": (
                 {"created_at": completed.created_at, "candidate_id": completed.id}
                 if completed
@@ -200,12 +229,75 @@ class CurationService:
                 "max_excerpt_chars": request.max_excerpt_chars,
                 "max_target_aliases": MAX_TARGET_ALIASES,
                 "max_target_observations": MAX_TARGET_OBSERVATIONS,
+                "max_source_payload_string_chars": MAX_SOURCE_PAYLOAD_STRING_CHARS,
+                "max_source_payload_bytes": MAX_SOURCE_PAYLOAD_BYTES,
             },
             "diagnostics": {
                 "selection": "pending_candidates_keyset",
                 "evidence_policy": "user_authored_only",
             },
         }
+
+    def validate_run_source_window(self, payload: CurationRunCreate) -> None:
+        decision_candidate_ids = {
+            candidate_id
+            for decision in payload.decisions
+            for candidate_id in decision.candidate_ids
+        }
+        if not decision_candidate_ids:
+            return
+        if (
+            payload.cursor_started_at is None
+            or payload.cursor_started_id is None
+            or payload.cursor_completed_at is None
+            or payload.cursor_completed_id is None
+        ):
+            raise api_error(
+                409,
+                "source_pack_snapshot_mismatch",
+                "Non-empty plans require a complete source-pack cursor window.",
+            )
+        rows = self.repository.pending_candidates(
+            as_of=payload.cursor_completed_at,
+            created_after=payload.cursor_started_at,
+            cursor_at=payload.cursor_started_at,
+            cursor_id=payload.cursor_started_id,
+            limit=payload.input_candidate_count + 1,
+        )
+        source_candidate_ids = [candidate.id for candidate in rows]
+        completed = rows[-1] if rows else None
+        if (
+            len(rows) != payload.input_candidate_count
+            or not completed
+            or (completed.created_at, completed.id)
+            != (payload.cursor_completed_at, payload.cursor_completed_id)
+        ):
+            raise api_error(
+                409,
+                "source_pack_snapshot_mismatch",
+                "Run cursor/count does not match the current pending source-pack window.",
+            )
+        if not decision_candidate_ids.issubset(source_candidate_ids):
+            raise api_error(
+                409,
+                "candidate_outside_source_pack",
+                "A decision references a candidate outside the source-pack window.",
+            )
+        payload.diagnostics.update(
+            {
+                "source_pack_candidate_count": len(source_candidate_ids),
+                "source_pack_candidate_ids_hash": hashlib.sha256(
+                    "\n".join(source_candidate_ids).encode()
+                ).hexdigest(),
+                "source_pack_window": {
+                    "started_at": payload.cursor_started_at.isoformat(),
+                    "started_id": payload.cursor_started_id,
+                    "completed_at": payload.cursor_completed_at.isoformat(),
+                    "completed_id": payload.cursor_completed_id,
+                },
+            }
+        )
+        validate_bounded_curation_json(payload.diagnostics, max_bytes=8192)
 
     def evaluate_run(self, run: CurationRun) -> CurationRun:
         if run.status != "pending":
@@ -235,11 +327,12 @@ class CurationService:
         if run.status == "completed":
             for decision in run.decisions:
                 if decision.status == "executed":
-                    self._verify_execution(
-                        decision,
-                        self.repository.candidates_by_ids(decision.candidate_ids),
-                        decision.canonical_record_ref,
-                    )
+                    self._reconcile_committed(decision.id)
+            self.session.expire_all()
+            run = self.repository.get_run(run.id)
+            if any(decision.status not in {"executed", "blocked"} for decision in run.decisions):
+                run.status = "partial"
+                self.session.commit()
             return self.repository.get_run(run.id)
         if run.status not in {"ready", "executing", "partial", "failed"}:
             raise api_error(409, "invalid_status_transition", "Curation run is not executable.")
@@ -251,13 +344,17 @@ class CurationService:
         for decision_id in [decision.id for decision in run.decisions]:
             self._execute_decision(decision_id)
 
+        self.session.expire_all()
         run = self.repository.get_run(run.id)
         executed_count = self.repository.count_decisions(run.id, "executed")
         blocked_count = self.repository.count_decisions(run.id, "blocked")
-        failed_count = self.repository.count_decisions(run.id, "failed")
         run.executed_decision_count = executed_count
         run.blocked_decision_count = blocked_count
-        run.status = "partial" if failed_count else "completed"
+        run.status = (
+            "completed"
+            if executed_count + blocked_count == run.planned_decision_count
+            else "partial"
+        )
         run.completed_at = datetime.now(UTC)
         self.session.commit()
         return self.repository.get_run(run.id)
@@ -276,19 +373,29 @@ class CurationService:
             or candidate.payload.get("observation_type") not in AUTO_OBSERVATION_TYPES
             or candidate.payload.get("ai_use_policy", "cautious_use")
             in RESTRICTED_AI_USE_POLICIES
+            or self._has_high_impact_content(str(candidate.payload.get("content") or ""))
             or not candidate.evidence
             or any(self._evidence_reasons(evidence) for evidence in candidate.evidence)
         ):
             return False
         validation = self._candidate_validation(candidate)
-        return not validation["errors"] and not validation["warnings"]
+        return (
+            bool(validation["safe_payload"])
+            and not validation["errors"]
+            and not validation["warnings"]
+        )
 
     def _execute_decision(self, decision_id: str) -> None:
-        decision = self.repository.get_decision(decision_id, for_update=True)
+        decision = self.repository.get_decision(decision_id)
         if not decision or decision.status in {"blocked", "executed"}:
+            return
+        if decision.canonical_record_ref:
+            self.session.rollback()
+            self._reconcile_committed(decision_id)
             return
         if decision.status not in {"allowed", "failed"}:
             return
+        decision = self.repository.get_decision(decision_id, for_update=True)
         candidates = self.repository.lock_candidates(decision.candidate_ids)
         if decision.target_entity_id:
             self.session.scalar(
@@ -303,6 +410,7 @@ class CurationService:
             self.session.commit()
             return
 
+        canonical_ref: str | None = None
         try:
             decision.status = "executing"
             decision.api_error_code = None
@@ -332,20 +440,78 @@ class CurationService:
                 replacement_candidate_id=replacement_candidate_id,
             )
             decision.canonical_record_ref = canonical_ref
-            decision.readback_status = "verified"
+            decision.readback_status = "verification_unknown"
             decision.readback_summary = summary
-            decision.status = "executed"
-            decision.executed_at = datetime.now(UTC)
             self.session.commit()
         except Exception as exc:
             self.session.rollback()
-            failed = self.repository.get_decision(decision_id)
+            if self._reconcile_committed(decision_id):
+                return
+            self._mark_execution_failed(decision_id, exc)
+            return
+        self._reconcile_committed(decision_id)
+
+    def _reconcile_committed(self, decision_id: str) -> bool:
+        with Session(bind=self.session.get_bind(), expire_on_commit=False) as fresh_session:
+            service = CurationService(fresh_session)
+            decision = service.repository.get_decision(decision_id)
+            if not decision or not decision.canonical_record_ref:
+                return False
+            run = service.repository.get_run(decision.run_id)
+            if not run or run.mode != "apply":
+                return False
+            candidates = service.repository.candidates_by_ids(decision.candidate_ids)
+            replacement_candidate_id = decision.readback_summary.get("replacement_candidate_id")
+            try:
+                summary = self._postcommit_verify(
+                    service,
+                    decision,
+                    candidates,
+                    replacement_candidate_id,
+                )
+            except HTTPException as exc:
+                decision.status = "failed"
+                decision.readback_status = "failed"
+                decision.api_error_code = self._execution_error_code(exc)
+                fresh_session.commit()
+                return False
+            except Exception:
+                decision.status = "failed"
+                decision.readback_status = "verification_unknown"
+                decision.api_error_code = "verification_unknown"
+                fresh_session.commit()
+                return False
+            decision.readback_summary = summary
+            decision.readback_status = "verified"
+            decision.status = "executed"
+            decision.api_error_code = None
+            decision.executed_at = datetime.now(UTC)
+            fresh_session.commit()
+            return True
+
+    def _postcommit_verify(
+        self,
+        service: "CurationService",
+        decision: CurationDecision,
+        candidates: list[Candidate],
+        replacement_candidate_id: str | None,
+    ) -> dict[str, Any]:
+        return service._verify_execution(
+            decision,
+            candidates,
+            decision.canonical_record_ref,
+            replacement_candidate_id=replacement_candidate_id,
+        )
+
+    def _mark_execution_failed(self, decision_id: str, exc: Exception) -> None:
+        with Session(bind=self.session.get_bind(), expire_on_commit=False) as fresh_session:
+            failed = CurationRepository(fresh_session).get_decision(decision_id)
             if not failed:
-                raise
+                raise exc
             failed.status = "failed"
             failed.api_error_code = self._execution_error_code(exc)
             failed.readback_status = None
-            self.session.commit()
+            fresh_session.commit()
 
     def _execute_accept(
         self,
@@ -481,6 +647,8 @@ class CurationService:
     ) -> dict[str, Any]:
         if not canonical_ref:
             raise api_error(409, "readback_failed", "Canonical record reference is missing.")
+        if decision.canonical_record_ref and decision.canonical_record_ref != canonical_ref:
+            raise api_error(409, "readback_failed", "Decision canonical reference differs.")
         prefix, _separator, record_id = canonical_ref.partition(":")
         evidence_episode_ids: list[str] = []
         target_entity_id = decision.target_entity_id
@@ -551,6 +719,22 @@ class CurationService:
         }[decision.action]
         if any(status not in expected_statuses for status in source_statuses.values()):
             raise api_error(409, "readback_failed", "Candidate state readback failed.")
+        if decision.action in {"accept_existing", "edit_accept_existing"} and any(
+            candidate.canonical_record_ref != canonical_ref for candidate in source_candidates
+        ):
+            raise api_error(409, "readback_failed", "Source candidate canonical ref differs.")
+        if decision.action == "consolidate_accept":
+            replacement = (
+                self.session.get(Candidate, replacement_candidate_id)
+                if replacement_candidate_id
+                else None
+            )
+            if (
+                not replacement
+                or replacement.status != "accepted"
+                or replacement.canonical_record_ref != canonical_ref
+            ):
+                raise api_error(409, "readback_failed", "Replacement candidate readback failed.")
         target = self.session.get(Entity, target_entity_id) if target_entity_id else None
         return {
             "canonical_record_ref": canonical_ref,
@@ -558,7 +742,11 @@ class CurationService:
             "record_id": record_id,
             "target_entity_id": target_entity_id,
             "target_entity": (
-                {"id": target.id, "display_name": target.display_name, "status": target.status}
+                {
+                    "id": target.id,
+                    "display_name": self._safe_source_text(target.display_name),
+                    "status": target.status,
+                }
                 if target
                 else None
             ),
@@ -632,8 +820,11 @@ class CurationService:
         if policies & RESTRICTED_AI_USE_POLICIES:
             reasons.append("restricted_ai_use_policy")
 
-        content = str(proposed.get("content") or "").strip()
-        if any(term in content.casefold() for term in HIGH_IMPACT_TERMS):
+        contents = [
+            str(proposed.get("content") or "").strip(),
+            *(str(candidate.payload.get("content") or "").strip() for candidate in ordered),
+        ]
+        if any(self._has_high_impact_content(content) for content in contents):
             reasons.append("high_impact_content")
         if observation_type in TEMPORAL_OBSERVATION_TYPES and not any(
             proposed.get(field) for field in ("occurred_at", "valid_from", "valid_to")
@@ -659,6 +850,8 @@ class CurationService:
             validation = self._candidate_validation(candidate)
             reasons.extend(issue["code"] for issue in validation["errors"])
             reasons.extend(issue["code"] for issue in validation["warnings"])
+            if candidate.payload and not validation["safe_payload"]:
+                reasons.append("unsafe_candidate_payload")
         proposal_validation = self._proposal_validation(ordered[0], proposed)
         reasons.extend(issue["code"] for issue in proposal_validation["errors"])
         reasons.extend(issue["code"] for issue in proposal_validation["warnings"])
@@ -690,7 +883,10 @@ class CurationService:
             return f"entity:{candidate.target_entity_id}", None
         name = candidate.payload.get("canonical_name") or candidate.payload.get("display_name")
         if candidate.candidate_type == "new_entity" and isinstance(name, str) and name.strip():
-            normalized = normalize_name(name)
+            safe_name = self._safe_source_text(name)
+            if not safe_name or safe_name == "[redacted]":
+                return f"candidate:{candidate.id}", None
+            normalized = normalize_name(safe_name)
             return f"unresolved:{normalized}", normalized
         return f"candidate:{candidate.id}", None
 
@@ -731,19 +927,19 @@ class CurationService:
             "id": candidate.id,
             "candidate_type": candidate.candidate_type,
             "target_entity_id": candidate.target_entity_id,
-            "payload": candidate.payload,
+            "payload": validation["safe_payload"],
             "confidence": float(candidate.confidence),
             "sensitivity": candidate.sensitivity,
             "suggested_action": candidate.suggested_action,
             "status": candidate.status,
             "created_at": candidate.created_at,
             "evidence": evidence_items,
-            "validation_errors": validation["errors"],
-            "validation_warnings": validation["warnings"],
-            "normalizations": validation["normalizations"],
+            "validation_errors": self._safe_issue_projection(validation["errors"]),
+            "validation_warnings": self._safe_issue_projection(validation["warnings"]),
+            "normalizations": self._safe_issue_projection(validation["normalizations"]),
         }
 
-    def _candidate_validation(self, candidate: Candidate) -> dict[str, list[dict[str, Any]]]:
+    def _candidate_validation(self, candidate: Candidate) -> dict[str, Any]:
         result = AgentWriteFilter(self.session).validate(
             "candidate",
             {
@@ -770,11 +966,87 @@ class CurationService:
                 "supersedes_record_ref": candidate.supersedes_record_ref,
             },
         )
+        schema_failed = any(issue["code"] == "schema_validation_failed" for issue in result["errors"])
+        original_projection = self._safe_source_payload(candidate.payload)
+        errors = list(result["errors"])
+        if candidate.payload and not original_projection:
+            errors.append(
+                {
+                    "code": "unsafe_candidate_payload",
+                    "message": "Candidate payload was redacted by the curation boundary.",
+                    "field": "payload",
+                }
+            )
+        raw_safe_payload = (
+            {}
+            if schema_failed or (candidate.payload and not original_projection)
+            else (result.get("validated_payload") or {}).get("payload", {})
+        )
         return {
-            "errors": result["errors"],
+            "errors": errors,
             "warnings": result["warnings"],
             "normalizations": result["normalizations_applied"],
+            "safe_payload": self._safe_source_payload(raw_safe_payload),
         }
+
+    def _safe_source_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        unsafe = False
+
+        def project(value: Any, depth: int = 0) -> Any:
+            nonlocal unsafe
+            if depth > 5:
+                unsafe = True
+                return None
+            if value is None or isinstance(value, bool | int | float):
+                return value
+            if isinstance(value, str):
+                normalized = re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_")
+                if any(marker in normalized for marker in RESERVED_CURATION_MARKERS):
+                    unsafe = True
+                    return None
+                return value[:MAX_SOURCE_PAYLOAD_STRING_CHARS]
+            if isinstance(value, list):
+                return [
+                    project(item, depth + 1)
+                    for item in value[:MAX_SOURCE_PAYLOAD_LIST_ITEMS]
+                ]
+            if isinstance(value, dict):
+                projected = {}
+                for key, item in list(value.items())[:MAX_SOURCE_PAYLOAD_LIST_ITEMS]:
+                    normalized_key = re.sub(r"[^a-z0-9]+", "_", str(key).casefold()).strip("_")
+                    if (
+                        normalized_key in RESERVED_CURATION_KEYS
+                        or normalized_key.replace("_", "") in RESERVED_CURATION_KEY_TOKENS
+                    ):
+                        unsafe = True
+                        continue
+                    projected[str(key)[:80]] = project(item, depth + 1)
+                return projected
+            unsafe = True
+            return None
+
+        projected = project(payload)
+        if unsafe or not isinstance(projected, dict):
+            return {}
+        if len(str(projected).encode()) > MAX_SOURCE_PAYLOAD_BYTES:
+            return {}
+        return projected
+
+    @staticmethod
+    def _safe_issue_projection(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            {
+                key: value[:500] if isinstance(value, str) else value
+                for key, value in item.items()
+                if key in {"code", "message", "field"}
+            }
+            for item in items[:20]
+        ]
+
+    def _safe_source_text(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return self._safe_source_payload({"value": value}).get("value", "[redacted]")
 
     def _proposal_validation(
         self,
@@ -835,16 +1107,21 @@ class CurationService:
         return {
             "entity": {
                 "id": entity.id,
-                "display_name": entity.display_name,
-                "canonical_name": entity.canonical_name,
+                "display_name": self._safe_source_text(entity.display_name),
+                "canonical_name": self._safe_source_text(entity.canonical_name),
                 "status": entity.status,
             },
-            "aliases": [{"id": alias.id, "alias": alias.alias} for alias in aliases],
+            "aliases": [
+                {"id": alias.id, "alias": self._safe_source_text(alias.alias)}
+                for alias in aliases
+            ],
             "observations": [
                 {
                     "record_ref": f"observations:{observation.id}",
                     "observation_type": observation.observation_type,
-                    "content": observation.content,
+                    "content": self._safe_source_payload(
+                        {"content": observation.content}
+                    ).get("content", "[redacted]"),
                     "claim_type": observation.claim_type,
                     "valid_from": observation.valid_from,
                     "valid_to": observation.valid_to,
@@ -898,6 +1175,19 @@ class CurationService:
             "exact_canonical_duplicate_refs": sorted(exact_refs),
             "canonical_conflict_refs": sorted(conflict_refs),
         }
+
+    @staticmethod
+    def _has_high_impact_content(content: str) -> bool:
+        normalized = content.casefold()
+        phone_match = PHONE_PATTERN.search(content)
+        return (
+            any(term in normalized for term in HIGH_IMPACT_TERMS | CONTACT_TERMS)
+            or EMAIL_PATTERN.search(content) is not None
+            or (
+                phone_match is not None
+                and sum(character.isdigit() for character in phone_match.group()) >= 9
+            )
+        )
 
     def _canonical_policy_signals(
         self,

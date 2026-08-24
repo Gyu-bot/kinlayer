@@ -65,6 +65,7 @@ def create_curation_run(
         )
     _require_policy_version(request, payload.policy_version)
     service = CurationService(session)
+    service.validate_run_source_window(payload)
     return service.evaluate_run(service.create_run(payload))
 
 

@@ -1296,9 +1296,14 @@ POST /api/curation/runs/{run_id}/resume
 Source packs use an exclusive `(created_at,candidate_id)` cursor, fixed `as_of`, and explicit
 candidate/evidence/excerpt budgets. They contain bounded user-authored excerpts, compact target
 context, validation diagnostics, and exact duplicate/conflict signals, never episode bodies or raw
-provider/session data. Run submission persists proposals and recomputes `allowed`/`blocked` from
+provider/session data. Candidate payloads are bounded typed projections. The first pack returns a
+server-derived lower-bound `cursor_started`; non-empty plans must echo that start, the completed
+cursor, and input count, and may reference only candidates re-derived inside that pending window.
+Run diagnostics/proposals reject nested reserved raw/session/transcript/tool keys and over-limit JSON.
+Run submission persists proposals and recomputes `allowed`/`blocked` from
 stored state. `shadow` never executes. `apply` commits canonical writes, source states, evidence,
-decision status, and exact readback atomically.
+and an `executing/verification_unknown` decision atomically, then marks `executed/verified` only after
+fresh exact post-commit reconciliation. Phone/email/address/contact-like content is never automatic.
 
 Context-card query `include_provisional=true` and context-pack field `include_provisional=true`
 return eligible pending observations only in a separate `provisional_context` array.

@@ -1,14 +1,100 @@
+import json
+import math
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from kinlayer_backend.schemas.common import APIModel, ListResponse
 
 
 class CurationModel(APIModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid", str_strip_whitespace=True)
+
+
+CURATION_DIAGNOSTICS_MAX_BYTES = 8192
+CURATION_PROPOSED_PAYLOAD_MAX_BYTES = 16384
+CURATION_JSON_MAX_DEPTH = 6
+CURATION_JSON_MAX_NODES = 256
+CURATION_JSON_MAX_STRING_CHARS = 2000
+RESERVED_CURATION_KEYS = {
+    "raw_prompt",
+    "raw_provider_response",
+    "provider_response",
+    "raw_transcript",
+    "transcript",
+    "session",
+    "session_body",
+    "session_content",
+    "session_data",
+    "session_history",
+    "session_transcript",
+    "raw_session",
+    "tool",
+    "tools",
+    "tool_call",
+    "tool_calls",
+    "tool_output",
+    "tool_result",
+}
+RESERVED_CURATION_MARKERS = {
+    "raw_prompt",
+    "raw_provider_response",
+    "provider_response",
+    "raw_transcript",
+}
+RESERVED_CURATION_KEY_TOKENS = {
+    key.replace("_", "") for key in RESERVED_CURATION_KEYS
+}
+
+
+def validate_bounded_curation_json(value: dict[str, Any], *, max_bytes: int) -> dict[str, Any]:
+    nodes = 0
+
+    def visit(item: Any, depth: int) -> None:
+        nonlocal nodes
+        nodes += 1
+        if nodes > CURATION_JSON_MAX_NODES:
+            raise ValueError("Curation JSON contains too many values.")
+        if depth > CURATION_JSON_MAX_DEPTH:
+            raise ValueError("Curation JSON is nested too deeply.")
+        if item is None or isinstance(item, bool | int):
+            return
+        if isinstance(item, float):
+            if not math.isfinite(item):
+                raise ValueError("Curation JSON floats must be finite.")
+            return
+        if isinstance(item, str):
+            if len(item) > CURATION_JSON_MAX_STRING_CHARS:
+                raise ValueError("Curation JSON string is too long.")
+            normalized = re.sub(r"[^a-z0-9]+", "_", item.casefold()).strip("_")
+            if any(marker in normalized for marker in RESERVED_CURATION_MARKERS):
+                raise ValueError("Curation JSON contains reserved raw-content markers.")
+            return
+        if isinstance(item, list):
+            for child in item:
+                visit(child, depth + 1)
+            return
+        if isinstance(item, dict):
+            for key, child in item.items():
+                if not isinstance(key, str) or len(key) > 80:
+                    raise ValueError("Curation JSON keys must be bounded strings.")
+                normalized_key = re.sub(r"[^a-z0-9]+", "_", key.casefold()).strip("_")
+                if (
+                    normalized_key in RESERVED_CURATION_KEYS
+                    or normalized_key.replace("_", "") in RESERVED_CURATION_KEY_TOKENS
+                ):
+                    raise ValueError("Curation JSON contains a reserved raw-content key.")
+                visit(child, depth + 1)
+            return
+        raise ValueError("Curation JSON must contain JSON-compatible values only.")
+
+    visit(value, 0)
+    if len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()) > max_bytes:
+        raise ValueError("Curation JSON exceeds the byte limit.")
+    return value
 
 
 class CurationMode(StrEnum):
@@ -127,14 +213,22 @@ class CurationPlanner(CurationModel):
 class CurationDecisionCreate(CurationModel):
     action: CurationAction
     risk_level: CurationRiskLevel
-    candidate_ids: list[str] = Field(min_length=1)
+    candidate_ids: list[str] = Field(min_length=1, max_length=200)
     target_entity_id: str | None = None
     proposed_payload: dict[str, Any] = Field(default_factory=dict)
-    evidence_episode_ids: list[str] = Field(default_factory=list)
-    reason_codes: list[str] = Field(default_factory=list)
+    evidence_episode_ids: list[str] = Field(default_factory=list, max_length=200)
+    reason_codes: list[str] = Field(default_factory=list, max_length=50)
     policy_version: str = Field(min_length=1, max_length=120)
     idempotency_key: str = Field(min_length=1, max_length=240)
     planner: CurationPlanner
+
+    @field_validator("proposed_payload")
+    @classmethod
+    def validate_proposed_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return validate_bounded_curation_json(
+            value,
+            max_bytes=CURATION_PROPOSED_PAYLOAD_MAX_BYTES,
+        )
 
 
 class CurationRunCreate(CurationModel):
@@ -144,9 +238,14 @@ class CurationRunCreate(CurationModel):
     cursor_completed_at: datetime | None = None
     cursor_completed_id: str | None = None
     policy_version: str = Field(min_length=1, max_length=120)
-    input_candidate_count: int = Field(default=0, ge=0)
+    input_candidate_count: int = Field(default=0, ge=0, le=200)
     diagnostics: dict[str, Any] = Field(default_factory=dict)
-    decisions: list[CurationDecisionCreate] = Field(default_factory=list)
+    decisions: list[CurationDecisionCreate] = Field(default_factory=list, max_length=200)
+
+    @field_validator("diagnostics")
+    @classmethod
+    def validate_diagnostics(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return validate_bounded_curation_json(value, max_bytes=CURATION_DIAGNOSTICS_MAX_BYTES)
 
     @model_validator(mode="after")
     def validate_cursor_and_plan(self) -> "CurationRunCreate":
@@ -157,8 +256,14 @@ class CurationRunCreate(CurationModel):
         if self.cursor_completed_at is not None:
             if self.cursor_started_at is None:
                 raise ValueError("A completed cursor requires a started cursor.")
-            if (self.cursor_completed_at, self.cursor_completed_id) < (
-                self.cursor_started_at,
+            started_at = self.cursor_started_at
+            completed_at = self.cursor_completed_at
+            if started_at.tzinfo is not None:
+                started_at = started_at.astimezone(UTC).replace(tzinfo=None)
+            if completed_at.tzinfo is not None:
+                completed_at = completed_at.astimezone(UTC).replace(tzinfo=None)
+            if (completed_at, self.cursor_completed_id) < (
+                started_at,
                 self.cursor_started_id,
             ):
                 raise ValueError("The completed cursor cannot precede the started cursor.")
@@ -194,6 +299,14 @@ class CurationDecisionRead(CurationModel):
     updated_at: datetime
     executed_at: datetime | None = None
 
+    @field_validator("proposed_payload")
+    @classmethod
+    def validate_read_proposed_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return validate_bounded_curation_json(
+            value,
+            max_bytes=CURATION_PROPOSED_PAYLOAD_MAX_BYTES,
+        )
+
 
 class CurationRunSummaryRead(CurationModel):
     id: str
@@ -217,6 +330,11 @@ class CurationRunSummaryRead(CurationModel):
     completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("diagnostics")
+    @classmethod
+    def validate_read_diagnostics(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return validate_bounded_curation_json(value, max_bytes=CURATION_DIAGNOSTICS_MAX_BYTES)
 
 
 class CurationRunRead(CurationRunSummaryRead):

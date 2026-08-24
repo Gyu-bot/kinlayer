@@ -308,12 +308,19 @@ The profile-local, provider-neutral adapter performs exactly this sequence:
 5. Stop in `shadow`; in explicitly activated `apply`, call `/execute`, then `/resume` after partial or
    interrupted work. Persist only cursor and run ID as adapter continuity state.
 
+For every non-empty plan, copy the returned `cursor_started`, `cursor_completed`, and
+`input_candidate_count` into the run fields unchanged. Kinlayer re-derives that pending window and
+rejects any out-of-window candidate ID or cursor/count drift before persistence.
+
 Source-pack response shape:
 
 ```json
 {
   "as_of": "2026-08-25T00:05:00Z",
-  "cursor_started": null,
+  "cursor_started": {
+    "created_at": "2026-07-26T00:05:00Z",
+    "candidate_id": ""
+  },
   "cursor_completed": {
     "created_at": "2026-08-25T00:04:00Z",
     "candidate_id": "candidate-b"
@@ -365,7 +372,9 @@ Source-pack response shape:
     "max_evidence_per_candidate": 5,
     "max_excerpt_chars": 500,
     "max_target_aliases": 10,
-    "max_target_observations": 20
+    "max_target_observations": 20,
+    "max_source_payload_string_chars": 500,
+    "max_source_payload_bytes": 8192
   },
   "diagnostics": {
     "selection": "pending_candidates_keyset",
