@@ -331,6 +331,54 @@ def test_archive_exact_canonical_duplicate_creates_no_second_record(session: Ses
     assert session.scalar(select(func.count()).select_from(Observation)) == 1
 
 
+def test_archive_exact_duplicate_blocks_mixed_candidate_set(session: Session) -> None:
+    entity = setup_person(session)
+    exact = add_candidate(
+        session,
+        entity,
+        "As of 2026-08-24, Casey prefers concise scheduling.",
+        "thread-mixed-exact",
+    )
+    different = add_candidate(
+        session,
+        entity,
+        "As of 2026-08-24, Casey prefers voice notes.",
+        "thread-mixed-different",
+    )
+    canonical = Observation(
+        subject_entity_id=entity.id,
+        observation_type="communication_preference",
+        content=exact.payload["content"],
+        claim_type="preference",
+        sensitivity="low",
+        ai_use_policy="cautious_use",
+        status="active",
+        occurred_at=datetime(2026, 8, 24, tzinfo=UTC),
+        created_by="user",
+    )
+    session.add(canonical)
+    session.commit()
+    service, run = create_run(
+        session,
+        [exact, different],
+        action="archive_exact_duplicate",
+        proposed_payload={
+            **exact.payload,
+            "canonical_record_ref": f"observations:{canonical.id}",
+        },
+        key="execute:mixed-duplicate",
+    )
+
+    decision = run.decisions[0]
+    assert decision.status == "blocked"
+    assert "duplicate_not_exact" in decision.reason_codes
+    assert session.get(Candidate, exact.id).status == "pending"
+    assert session.get(Candidate, different.id).status == "pending"
+    with pytest.raises(HTTPException) as exc_info:
+        service._execute_duplicate_archive(decision, [exact, different])
+    assert exc_info.value.detail["error"]["code"] == "duplicate_not_exact"
+
+
 def test_exact_readback_rejects_wrong_canonical_content(session: Session) -> None:
     entity = setup_person(session)
     candidate = add_candidate(

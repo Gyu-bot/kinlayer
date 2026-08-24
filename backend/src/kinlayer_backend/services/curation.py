@@ -435,6 +435,12 @@ class CurationService:
         decision: CurationDecision,
         candidates: list[Candidate],
     ) -> str:
+        proposed_fingerprint = self._candidate_fingerprint(decision.proposed_payload)
+        if proposed_fingerprint is None or any(
+            self._candidate_fingerprint(candidate.payload) != proposed_fingerprint
+            for candidate in candidates
+        ):
+            raise api_error(409, "duplicate_not_exact", "Source candidates are not exact duplicates.")
         requested_ref = decision.proposed_payload.get("canonical_record_ref")
         if isinstance(requested_ref, str) and requested_ref.startswith("observations:"):
             observation = self.session.get(Observation, requested_ref.split(":", 1)[1])
@@ -662,9 +668,17 @@ class CurationService:
         duplicate_signals = self._canonical_policy_signals(ordered, proposed)
         if decision.action == "archive_exact_duplicate":
             fingerprints = {self._candidate_fingerprint(candidate.payload) for candidate in ordered}
+            proposed_fingerprint = self._candidate_fingerprint(proposed)
+            all_match_proposed = (
+                proposed_fingerprint is not None
+                and fingerprints == {proposed_fingerprint}
+            )
             if not (
-                "exact_canonical_duplicate" in duplicate_signals
-                or (len(ordered) >= 2 and len(fingerprints) == 1 and None not in fingerprints)
+                all_match_proposed
+                and (
+                    "exact_canonical_duplicate" in duplicate_signals
+                    or len(ordered) >= 2
+                )
             ):
                 reasons.append("duplicate_not_exact")
         else:
