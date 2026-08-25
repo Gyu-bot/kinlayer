@@ -12,6 +12,7 @@ from kinlayer_backend.models import (
     Base,
     Candidate,
     CandidateEvidence,
+    CurationDecision,
     Entity,
     Episode,
     Observation,
@@ -19,6 +20,7 @@ from kinlayer_backend.models import (
 )
 from kinlayer_backend.schemas.curation import CurationRunCreate
 from kinlayer_backend.services.curation import CurationService
+from kinlayer_backend.services.candidates import CandidateService
 from kinlayer_backend.services.ontology import seed_ontology_values
 
 NOW = datetime(2026, 8, 25, tzinfo=UTC)
@@ -94,6 +96,42 @@ def add_candidate(session: Session, entity: Entity, content: str, source_ref: st
     return candidate
 
 
+def add_new_person_candidate(session: Session, name: str, source_ref: str) -> Candidate:
+    content = f"I met {name} yesterday."
+    episode = Episode(
+        source_type="agent_conversation",
+        source_ref=source_ref,
+        body_excerpt=f"prefix {content} suffix",
+        body_hash=f"sha256:{source_ref}",
+        actor="user",
+        occurred_at=NOW - timedelta(hours=1),
+        sensitivity="low",
+        retention_policy="excerpt_only",
+    )
+    candidate = Candidate(
+        candidate_type="new_entity",
+        payload={"entity_type": "person", "display_name": name},
+        confidence=0.9,
+        sensitivity="low",
+        suggested_action="accept",
+        status="pending",
+        created_by="ai_agent",
+    )
+    session.add_all([episode, candidate])
+    session.flush()
+    session.add(
+        CandidateEvidence(
+            candidate_id=candidate.id,
+            episode_id=episode.id,
+            excerpt=content,
+            confidence=0.9,
+        )
+    )
+    session.commit()
+    session.refresh(candidate)
+    return candidate
+
+
 def create_run(
     session: Session,
     candidates: list[Candidate],
@@ -139,6 +177,33 @@ def create_run(
     return service, service.evaluate_run(run)
 
 
+def test_execution_blocks_candidate_changed_after_run_creation(session: Session) -> None:
+    entity = setup_person(session)
+    candidate = add_candidate(
+        session,
+        entity,
+        "As of 2026-08-24, Casey prefers concise scheduling.",
+        "thread-stale-execution",
+    )
+    service, run = create_run(
+        session,
+        [candidate],
+        action="accept_existing",
+        proposed_payload=candidate.payload,
+        key="execute:stale-snapshot",
+    )
+    candidate.payload = {**candidate.payload, "content": "Changed after review."}
+    session.commit()
+
+    executed = service.execute_run(run)
+
+    decision = executed.decisions[0]
+    assert decision.status == "blocked"
+    assert "source_candidate_changed" in decision.reason_codes
+    assert session.get(Candidate, candidate.id).status == "pending"
+    assert session.scalar(select(func.count()).select_from(Observation)) == 0
+
+
 def test_accept_existing_executes_once_and_resume_only_reads_back(session: Session) -> None:
     entity = setup_person(session)
     candidate = add_candidate(
@@ -170,6 +235,39 @@ def test_accept_existing_executes_once_and_resume_only_reads_back(session: Sessi
     resumed = service.resume_run(executed)
     assert resumed.decisions[0].canonical_record_ref == decision.canonical_record_ref
     assert session.scalar(select(func.count()).select_from(Observation)) == observation_count
+
+
+def test_named_new_person_executes_once_with_candidate_evidence_preserved(
+    session: Session,
+) -> None:
+    candidate = add_new_person_candidate(session, "Riley Chen", "thread-new-person")
+    service, run = create_run(
+        session,
+        [candidate],
+        action="accept_existing",
+        proposed_payload=candidate.payload,
+        key="execute:new-person",
+    )
+
+    executed = service.execute_run(run)
+    decision = executed.decisions[0]
+    entity_id = decision.canonical_record_ref.split(":", 1)[1]
+    entity = session.get(Entity, entity_id)
+
+    assert decision.status == "executed"
+    assert decision.readback_status == "verified"
+    assert decision.canonical_record_ref == f"entities:{entity.id}"
+    assert entity.display_name == "Riley Chen"
+    assert decision.readback_summary["target_entity_id"] == entity.id
+    assert decision.readback_summary["evidence_episode_ids"] == [
+        candidate.evidence[0].episode_id
+    ]
+    assert session.get(Candidate, candidate.id).status == "accepted"
+    assert session.scalar(select(func.count()).select_from(Entity)) == 1
+
+    resumed = service.resume_run(executed)
+    assert resumed.decisions[0].canonical_record_ref == f"entities:{entity.id}"
+    assert session.scalar(select(func.count()).select_from(Entity)) == 1
 
 
 def test_database_rejects_duplicate_canonical_source_candidate(session: Session) -> None:
@@ -360,6 +458,66 @@ def test_commit_ack_loss_reconciles_without_second_canonical_write(
     assert result.decisions[0].readback_status == "verified"
     assert session.scalar(select(func.count()).select_from(Observation)) == 1
     assert service.resume_run(result).status == "completed"
+    assert session.scalar(select(func.count()).select_from(Observation)) == 1
+
+
+def test_lock_after_check_race_reconciles_other_executor_commit(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entity = setup_person(session)
+    candidate = add_candidate(
+        session,
+        entity,
+        "As of 2026-08-24, Casey prefers concise scheduling.",
+        "thread-lock-race",
+    )
+    service, run = create_run(
+        session,
+        [candidate],
+        action="accept_existing",
+        proposed_payload=candidate.payload,
+        key="execute:lock-race",
+    )
+    run.status = "executing"
+    session.commit()
+    decision_id = run.decisions[0].id
+    original_get = service.repository.get_decision
+    raced = False
+
+    def get_with_competing_commit(identifier: str, *, for_update: bool = False):
+        nonlocal raced
+        if for_update and not raced:
+            raced = True
+            with Session(bind=session.get_bind(), expire_on_commit=False) as other:
+                other_candidate = other.get(Candidate, candidate.id)
+                canonical = CandidateService(other).accept_candidate(
+                    other_candidate,
+                    resolution_note="curation:accept_existing",
+                    resolved_by="system",
+                    commit=False,
+                ).canonical_record_ref
+                other_decision = other.get(CurationDecision, decision_id)
+                other_decision.status = "executing"
+                other_decision.canonical_record_ref = canonical
+                other_decision.readback_status = "verification_unknown"
+                other_decision.readback_summary = {
+                    "canonical_record_ref": canonical,
+                    "replacement_candidate_id": None,
+                }
+                other.commit()
+            session.expire_all()
+        return original_get(identifier, for_update=for_update)
+
+    monkeypatch.setattr(service.repository, "get_decision", get_with_competing_commit)
+    service._execute_decision(decision_id)
+    session.expire_all()
+    reconciled = service.repository.get_decision(decision_id)
+
+    assert raced is True
+    assert reconciled.status == "executed"
+    assert reconciled.readback_status == "verified"
+    assert session.get(Candidate, candidate.id).status == "accepted"
     assert session.scalar(select(func.count()).select_from(Observation)) == 1
 
 

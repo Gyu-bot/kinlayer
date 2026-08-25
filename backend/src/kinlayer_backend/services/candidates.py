@@ -26,7 +26,6 @@ from kinlayer_backend.models import (
     ObservationEvidence,
 )
 from kinlayer_backend.repositories.candidates import CandidateRepository
-from kinlayer_backend.repositories.entities import EntityRepository
 from kinlayer_backend.schemas.candidates import PAYLOAD_MODELS
 from kinlayer_backend.services.entities import (
     EntityService,
@@ -34,6 +33,7 @@ from kinlayer_backend.services.entities import (
     JsonValue,
     validate_common,
 )
+from kinlayer_backend.services.entity_guards import lock_active_entities
 from kinlayer_backend.services.ontology import is_allowed_registry_value
 from kinlayer_backend.services.relationships import RelationshipService
 from kinlayer_backend.services.structured_facts import (
@@ -381,14 +381,14 @@ class CandidateService:
 
     def _write_alias(self, candidate: Candidate) -> str:
         payload = candidate.payload
-        entity = self._entity(payload["entity_id"])
         alias_payload = {
             "alias": payload["alias"],
             "confidence": payload.get("confidence", candidate.confidence),
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,
         }
-        alias = EntityRepository(self.session).add_alias(entity.id, alias_payload, commit=False)
+        entity = self._entity(payload["entity_id"])
+        alias = EntityService(self.session).create_alias(entity, alias_payload, commit=False)
         return f"entity_aliases:{alias.id}"
 
     def _write_profile_field(self, candidate: Candidate) -> str:
@@ -477,8 +477,12 @@ class CandidateService:
         return f"observations:{observation.id}"
 
     def _write_merge(self, candidate: Candidate) -> str:
-        source = self._entity(candidate.payload["source_entity_id"])
-        target = self._entity(candidate.payload["target_entity_id"])
+        entities = lock_active_entities(
+            self.session,
+            [candidate.payload["source_entity_id"], candidate.payload["target_entity_id"]],
+        )
+        source = entities[candidate.payload["source_entity_id"]]
+        target = entities[candidate.payload["target_entity_id"]]
         if source.id == target.id:
             raise api_error(422, "validation_error", "Merge source and target must differ.")
         if source.system_role == "self" or target.system_role == "self":

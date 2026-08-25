@@ -117,7 +117,8 @@ candidate pending
 → candidate.canonical_record_ref = <table>:<id>
 ```
 
-Batch review / changeset apply is not MVP.
+General batch review / changeset apply is not MVP. The reconciliation API is a narrow exception for
+bounded, user-confirmed identity groups with exact stale fencing and atomic allowlisted outcomes.
 
 ---
 
@@ -566,13 +567,20 @@ groups exact targets or exact normalized unresolved names, and includes only bou
 evidence. Similar spellings remain separate review cases.
 
 Kinlayer revalidates status/type, target, ontology, warnings, evidence ownership, temporal scope,
-sensitivity, AI-use policy, duplicates/conflicts, and pattern episode count. First-release automatic
-promotion is limited to safe existing-person observations. `consolidate_accept` preserves the union
+sensitivity, AI-use policy, duplicates/conflicts, and pattern episode count. Automatic promotion is
+limited to safe existing-person observations plus a single specific named-person `new_entity` whose
+name is supported by linked user-authored evidence. The named-person exception rejects protected
+self names/aliases, pronouns, generic relationship nouns, honorific-only and role/title-only labels,
+blank or one-character names, exact active entity/alias collisions, and any unresolved identity,
+conflict, schema, or evidence reason. Fuzzy similarity alone schedules reconciliation and does not
+block creation. `consolidate_accept` preserves the union
 of evidence in one replacement candidate and canonical observation. Exact duplicate archival retains
 an exact canonical record or deterministic oldest pending candidate. Retry/resume verifies the saved
 reference and never writes a second record.
 
 Manual accept/edit-accept and curation execution use one shared `FOR UPDATE` candidate boundary.
-Stale callers must reload and lose with HTTP 409 after another caller canonicalizes first. Partial
+After acquiring locks, curation refreshes run, decision, and candidate state. An executor that finds
+already committed work performs exact readback instead of overwriting it; other stale callers reload
+and lose with HTTP 409. Partial
 unique canonical-source indexes are the DB fallback; actual PostgreSQL lock contention remains a
 service-backed release gate.

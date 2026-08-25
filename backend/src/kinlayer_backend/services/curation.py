@@ -36,6 +36,12 @@ from kinlayer_backend.schemas.curation import (
 from kinlayer_backend.services.agent_write_filter import AgentWriteFilter
 from kinlayer_backend.services.candidates import CandidateService
 from kinlayer_backend.services.ontology import normalize_name
+from kinlayer_backend.services.candidate_snapshots import (
+    candidate_evidence_digest,
+    candidate_payload_digest,
+    candidate_snapshot,
+    entity_digest,
+)
 
 RUN_TRANSITIONS = {
     "pending": {"planning", "failed"},
@@ -61,6 +67,20 @@ AUTO_ACTIONS = {
     "consolidate_accept",
     "archive_exact_duplicate",
 }
+NON_PERSON_NAME_TERMS = {
+    "he", "her", "hers", "him", "his", "i", "it", "me", "my", "she", "their",
+    "them", "they", "we", "you", "그", "그녀", "그분", "그 사람", "나", "너", "저",
+    "가족", "남자친구", "동료", "배우자", "부모", "사장", "선생", "선생님", "아내",
+    "아빠", "애인", "엄마", "여자친구", "친구", "파트너", "남편",
+}
+ROLE_TITLE_TERMS = {
+    "ceo", "chief", "coach", "director", "doctor", "dr", "engineer", "manager",
+    "president", "professor", "teacher", "과장", "과장님", "대리", "대리님", "대표",
+    "대표님", "박사", "부장", "부장님", "사장", "사장님", "상무", "상무님", "선생",
+    "선생님", "의사", "이사", "이사님", "임원", "임원님", "전무", "전무님", "차장",
+    "차장님", "팀장", "팀장님", "회장", "회장님",
+}
+UNRESOLVED_NEW_ENTITY_REASON_MARKERS = ("identity", "conflict", "schema", "evidence")
 AUTO_OBSERVATION_TYPES = {
     "communication_preference",
     "relationship_pattern",
@@ -123,7 +143,15 @@ class CurationService:
                     "duplicate_idempotency_key",
                     "Curation decision idempotency_key already exists.",
                 )
-            decision_payloads.append(decision.model_dump(exclude={"planner"}))
+            decision_payload = decision.model_dump(mode="json", exclude={"planner"})
+            if not decision_payload["expected_candidates"]:
+                candidates = self.repository.candidates_by_ids(decision.candidate_ids)
+                if len(candidates) == len(decision.candidate_ids):
+                    decision_payload["expected_candidates"] = [
+                        candidate_snapshot(self.session, candidate)
+                        for candidate in sorted(candidates, key=lambda item: item.id)
+                    ]
+            decision_payloads.append(decision_payload)
         run_payload = payload.model_dump(exclude={"decisions"})
         run_payload.update(
             status="pending",
@@ -328,6 +356,17 @@ class CurationService:
                 409,
                 "source_pack_candidate_coverage_mismatch",
                 "Every source-pack candidate must appear in exactly one decision.",
+            )
+        expected_snapshots = [
+            item.model_dump(mode="json")
+            for decision in payload.decisions
+            for item in decision.expected_candidates
+        ]
+        if self._candidate_snapshot_mismatch(rows, expected_snapshots):
+            raise api_error(
+                409,
+                "source_pack_candidate_changed",
+                "A source-pack candidate changed after review.",
             )
         payload.diagnostics.update(
             {
@@ -544,6 +583,39 @@ class CurationService:
             and not validation["warnings"]
         )
 
+    def _candidate_snapshot_mismatch(
+        self,
+        candidates: list[Candidate],
+        expected_items: list[dict[str, Any]],
+    ) -> bool:
+        expected = {str(item.get("id") or ""): item for item in expected_items}
+        if set(expected) != {candidate.id for candidate in candidates}:
+            return True
+        for candidate in candidates:
+            reviewed = expected[candidate.id]
+            actual = candidate_snapshot(self.session, candidate)
+            if any(
+                actual[field] != reviewed.get(field)
+                for field in ("status", "payload_digest", "evidence_digest")
+            ):
+                return True
+            reviewed_at = reviewed.get("updated_at")
+            if isinstance(reviewed_at, str):
+                try:
+                    reviewed_at = datetime.fromisoformat(reviewed_at.replace("Z", "+00:00"))
+                except ValueError:
+                    return True
+            actual_at = candidate.updated_at
+            if actual_at.tzinfo is None:
+                actual_at = actual_at.replace(tzinfo=UTC)
+            if not isinstance(reviewed_at, datetime):
+                return True
+            if reviewed_at.tzinfo is None:
+                reviewed_at = reviewed_at.replace(tzinfo=UTC)
+            if actual_at.astimezone(UTC) != reviewed_at.astimezone(UTC):
+                return True
+        return False
+
     def _execute_decision(self, decision_id: str) -> None:
         decision = self.repository.get_decision(decision_id)
         if not decision or decision.status in {"blocked", "executed"}:
@@ -554,14 +626,46 @@ class CurationService:
             return
         if decision.status not in {"allowed", "failed"}:
             return
+        # The first read is intentionally unlocked. Expire it before the locking read so
+        # an executor that waited on another transaction cannot act on its stale identity-map
+        # copy after the other executor commits.
+        self.session.expire(decision)
         decision = self.repository.get_decision(decision_id, for_update=True)
+        if not decision:
+            self.session.rollback()
+            return
         candidates = self.repository.lock_candidates(decision.candidate_ids)
+        run = self.session.scalar(
+            select(CurationRun)
+            .where(CurationRun.id == decision.run_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if decision.canonical_record_ref or decision.status == "executed":
+            self.session.rollback()
+            self._reconcile_committed(decision_id)
+            return
+        if (
+            not run
+            or run.mode != "apply"
+            or run.status not in {"executing", "partial", "failed"}
+            or decision.status not in {"allowed", "failed"}
+        ):
+            self.session.rollback()
+            return
         if decision.target_entity_id:
             self.session.scalar(
                 select(Entity)
                 .where(Entity.id == decision.target_entity_id)
                 .with_for_update()
             )
+        if self._candidate_snapshot_mismatch(candidates, decision.expected_candidates):
+            decision.status = "blocked"
+            decision.reason_codes = list(
+                dict.fromkeys([*decision.reason_codes, "source_candidate_changed"])
+            )
+            self.session.commit()
+            return
         reasons = self._policy_reasons(decision)
         if reasons:
             decision.status = "blocked"
@@ -866,6 +970,23 @@ class CurationService:
                 )
             ):
                 raise api_error(409, "readback_failed", "Retained candidate readback failed.")
+        elif prefix == "entities" and decision.action == "accept_existing":
+            entity = self.session.get(Entity, record_id)
+            payload = decision.proposed_payload
+            if (
+                len(source_candidates) != 1
+                or source_candidates[0].candidate_type != "new_entity"
+                or not entity
+                or entity.status != "active"
+                or entity.entity_type != "person"
+                or normalize_name(entity.display_name)
+                != normalize_name(str(payload.get("display_name") or ""))
+                or normalize_name(entity.canonical_name or entity.display_name)
+                != normalize_name(str(payload.get("canonical_name") or payload.get("display_name") or ""))
+            ):
+                raise api_error(409, "readback_failed", "Canonical entity readback failed.")
+            target_entity_id = entity.id
+            evidence_episode_ids = sorted(decision.evidence_episode_ids)
         else:
             raise api_error(409, "readback_failed", "Unsupported canonical readback reference.")
 
@@ -904,7 +1025,11 @@ class CurationService:
                 {
                     "id": target.id,
                     "display_name": self._safe_source_text(target.display_name),
+                    "canonical_name": self._safe_source_text(target.canonical_name or ""),
+                    "entity_type": target.entity_type,
                     "status": target.status,
+                    "updated_at": target.updated_at.isoformat(),
+                    "entity_digest": entity_digest(target),
                 }
                 if target
                 else None
@@ -939,6 +1064,9 @@ class CurationService:
             return reasons
         if any(candidate.status != "pending" for candidate in ordered):
             reasons.append("candidate_not_pending")
+        if all(candidate.candidate_type == "new_entity" for candidate in ordered):
+            reasons.extend(self._new_entity_policy_reasons(decision, ordered))
+            return list(dict.fromkeys(reasons))
         if any(candidate.candidate_type != "observation" for candidate in ordered):
             reasons.append("unsupported_candidate_type")
             return list(dict.fromkeys(reasons))
@@ -1037,6 +1165,108 @@ class CurationService:
             reasons.extend(duplicate_signals)
         return list(dict.fromkeys(reasons))
 
+    def _new_entity_policy_reasons(
+        self,
+        decision: CurationDecision,
+        candidates: list[Candidate],
+    ) -> list[str]:
+        if decision.action != "accept_existing" or len(candidates) != 1:
+            return ["new_entity_requires_single_accept"]
+        candidate = candidates[0]
+        payload = candidate.payload
+        reasons: list[str] = []
+        if decision.target_entity_id is not None or candidate.target_entity_id is not None:
+            reasons.append("target_entity_mismatch")
+        if decision.proposed_payload != payload:
+            reasons.append("new_entity_payload_inference_not_allowed")
+        if payload.get("entity_type") != "person":
+            reasons.append("new_entity_person_required")
+
+        display_name = payload.get("display_name")
+        canonical_name = payload.get("canonical_name") or display_name
+        name = display_name.strip() if isinstance(display_name, str) else ""
+        normalized = normalize_name(name) if name else ""
+        if len(name) <= 1:
+            reasons.append("specific_person_name_required")
+        elif self._is_non_person_name(normalized):
+            reasons.append("specific_person_name_required")
+
+        validation = self._candidate_validation(candidate)
+        reasons.extend(issue["code"] for issue in validation["errors"])
+        reasons.extend(issue["code"] for issue in validation["warnings"])
+        if candidate.payload and not validation["safe_payload"]:
+            reasons.append("unsafe_candidate_payload")
+        if any(
+            marker in code.casefold()
+            for code in decision.reason_codes
+            for marker in UNRESOLVED_NEW_ENTITY_REASON_MARKERS
+        ):
+            reasons.append("unresolved_new_entity_reason")
+
+        evidence_ids = {evidence.episode_id for evidence in candidate.evidence}
+        if not evidence_ids or set(decision.evidence_episode_ids) != evidence_ids:
+            reasons.append("evidence_episode_set_mismatch")
+        supporting_user_evidence = [
+            evidence
+            for evidence in candidate.evidence
+            if evidence.episode
+            and evidence.episode.actor == "user"
+            and not self._evidence_reasons(evidence)
+            and normalized
+            and normalized in normalize_name(evidence.excerpt or "")
+        ]
+        if not supporting_user_evidence:
+            reasons.append("user_name_evidence_required")
+
+        protected_names = set()
+        self_entity = self.session.scalar(
+            select(Entity).where(Entity.system_role == "self", Entity.status == "active")
+        )
+        if self_entity:
+            protected_names.update(
+                normalize_name(value)
+                for value in (self_entity.display_name, self_entity.canonical_name)
+                if value
+            )
+            protected_names.update(
+                alias.normalized_alias or normalize_name(alias.alias)
+                for alias in self.session.scalars(
+                    select(EntityAlias).where(
+                        EntityAlias.entity_id == self_entity.id,
+                        EntityAlias.status == "active",
+                    )
+                )
+            )
+        if normalized and normalized in protected_names:
+            reasons.append("protected_self")
+
+        active_names = {
+            normalize_name(value)
+            for entity in self.session.scalars(select(Entity).where(Entity.status == "active"))
+            for value in (entity.display_name, entity.canonical_name)
+            if value
+        }
+        active_names.update(
+            alias.normalized_alias or normalize_name(alias.alias)
+            for alias in self.session.scalars(
+                select(EntityAlias)
+                .join(Entity, Entity.id == EntityAlias.entity_id)
+                .where(EntityAlias.status == "active", Entity.status == "active")
+            )
+        )
+        if normalized and normalized in active_names:
+            reasons.append("exact_active_identity_collision")
+        if canonical_name and normalize_name(str(canonical_name)) != normalized:
+            reasons.append("new_entity_payload_inference_not_allowed")
+        return reasons
+
+    @staticmethod
+    def _is_non_person_name(normalized: str) -> bool:
+        if normalized in NON_PERSON_NAME_TERMS or normalized in ROLE_TITLE_TERMS:
+            return True
+        tokens = set(re.findall(r"[\w가-힣]+", normalized, flags=re.UNICODE))
+        return bool(tokens) and tokens <= ROLE_TITLE_TERMS
+
     def _group_key(self, candidate: Candidate) -> tuple[str, str | None]:
         if candidate.target_entity_id:
             return f"entity:{candidate.target_entity_id}", None
@@ -1092,6 +1322,9 @@ class CurationService:
             "suggested_action": candidate.suggested_action,
             "status": candidate.status,
             "created_at": candidate.created_at,
+            "updated_at": candidate.updated_at,
+            "payload_digest": candidate_payload_digest(candidate),
+            "evidence_digest": candidate_evidence_digest(self.session, candidate.id),
             "evidence": evidence_items,
             "validation_errors": self._safe_issue_projection(validation["errors"]),
             "validation_warnings": self._safe_issue_projection(validation["warnings"]),

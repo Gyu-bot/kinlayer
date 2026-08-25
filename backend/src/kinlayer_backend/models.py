@@ -420,6 +420,37 @@ class CandidateEvidence(Base):
         return self.episode.actor if self.episode else None
 
 
+class ReconciliationAction(Base, TimestampMixin):
+    __tablename__ = "reconciliation_actions"
+    __table_args__ = (
+        UniqueConstraint("resolution_id", name="uq_reconciliation_actions_resolution_id"),
+        CheckConstraint(
+            "status in ('pending', 'committed_unverified', 'verified', 'verification_failed')",
+            name="ck_reconciliation_actions_status",
+        ),
+        Index("ix_reconciliation_actions_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    resolution_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="pending", nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(71), nullable=False)
+    candidate_ids: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    expected_candidates: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    expected_entities: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    source_entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id"))
+    target_entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id"))
+    primary_entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id"))
+    derived_candidate_ids: Mapped[list] = mapped_column(JSON_TYPE, default=list, nullable=False)
+    confirmation_episode_id: Mapped[str | None] = mapped_column(ForeignKey("episodes.id"))
+    outcome_canonical_refs: Mapped[list] = mapped_column(JSON_TYPE, default=list, nullable=False)
+    readback_summary: Mapped[dict | None] = mapped_column(JSON_TYPE)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class CurationRun(Base, TimestampMixin):
     __tablename__ = "curation_runs"
     __table_args__ = (
@@ -511,6 +542,7 @@ class CurationDecision(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(40), default="proposed")
     risk_level: Mapped[str] = mapped_column(String(40), nullable=False)
     candidate_ids: Mapped[list] = mapped_column(JSON_TYPE, default=list)
+    expected_candidates: Mapped[list] = mapped_column(JSON_TYPE, default=list)
     target_entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id"))
     proposed_payload: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
     evidence_episode_ids: Mapped[list] = mapped_column(JSON_TYPE, default=list)

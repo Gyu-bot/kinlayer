@@ -218,6 +218,12 @@ KINLAYER_API_URL=http://127.0.0.1:8765 scripts/smoke-acceptance-cli.sh
 KINLAYER_API_TOKEN=원하는-로컬-토큰
 ```
 
+관계 reconciliation 액션 API는 일반 API 토큰과 분리된
+`KINLAYER_RECONCILIATION_TOKEN`을 사용합니다. 이 값이 비어 있으면
+`/api/reconciliation/actions` POST/GET은 비활성화되며, 일반
+`KINLAYER_API_TOKEN`만으로는 접근할 수 없습니다. 토큰은 응답이나
+시스템 설정 조회에 노출되지 않습니다.
+
 토큰을 켠 경우에만 Web UI의 `/settings`에서 같은 값을 Local API token으로 저장해야 관계 데이터 화면을 볼 수 있습니다. token 값은 저장 후 다시 표시되지 않습니다.
 
 ## OpenAI embedding 설정

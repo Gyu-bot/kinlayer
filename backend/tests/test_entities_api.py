@@ -1,3 +1,30 @@
+def test_inactive_entity_rejects_new_alias_and_fact(client) -> None:
+    entity = client.post(
+        "/api/entities",
+        json={"entity_type": "person", "display_name": "Inactive Parent", "created_by": "user"},
+    ).json()
+    deleted = client.delete(f"/api/entities/{entity['id']}")
+    assert deleted.status_code == 200
+
+    alias = client.post(
+        f"/api/entities/{entity['id']}/aliases",
+        json={"alias": "Should Fail", "created_by": "user"},
+    )
+    fact = client.post(
+        "/api/entity-facts",
+        json={
+            "entity_id": entity["id"],
+            "fact_type": "memo",
+            "content": "Should fail",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    )
+
+    assert alias.status_code == 409
+    assert fact.status_code == 409
+
+
 def test_entity_alias_and_fact_lifecycle(client) -> None:
     created = client.post(
         "/api/entities",

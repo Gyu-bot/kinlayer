@@ -202,6 +202,9 @@ class CurationSourceCandidateRead(CurationModel):
     suggested_action: str | None = None
     status: str
     created_at: datetime
+    updated_at: datetime
+    payload_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    evidence_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     evidence: list[CurationSourceEvidenceRead]
     validation_errors: list[dict[str, Any]]
     validation_warnings: list[dict[str, Any]]
@@ -235,10 +238,21 @@ class CurationPlanner(CurationModel):
     version: str = Field(min_length=1, max_length=120)
 
 
+class CurationExpectedCandidate(CurationModel):
+    id: str
+    status: str
+    updated_at: datetime
+    payload_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    evidence_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
 class CurationDecisionCreate(CurationModel):
     action: CurationAction
     risk_level: CurationRiskLevel
     candidate_ids: list[str] = Field(min_length=1, max_length=200)
+    expected_candidates: list[CurationExpectedCandidate] = Field(
+        default_factory=list, max_length=200
+    )
     target_entity_id: str | None = None
     proposed_payload: dict[str, Any] = Field(default_factory=dict)
     evidence_episode_ids: list[str] = Field(default_factory=list, max_length=200)
@@ -246,6 +260,15 @@ class CurationDecisionCreate(CurationModel):
     policy_version: str = Field(min_length=1, max_length=120)
     idempotency_key: str = Field(min_length=1, max_length=240)
     planner: CurationPlanner
+
+    @model_validator(mode="after")
+    def validate_expected_candidates(self) -> "CurationDecisionCreate":
+        expected_ids = [item.id for item in self.expected_candidates]
+        if len(expected_ids) != len(set(expected_ids)):
+            raise ValueError("expected_candidates ids must be unique.")
+        if expected_ids and set(expected_ids) != set(self.candidate_ids):
+            raise ValueError("expected_candidates must exactly match candidate_ids.")
+        return self
 
     @field_validator("proposed_payload")
     @classmethod
@@ -310,6 +333,7 @@ class CurationDecisionRead(CurationModel):
     status: CurationDecisionStatus
     risk_level: CurationRiskLevel
     candidate_ids: list[str]
+    expected_candidates: list[CurationExpectedCandidate]
     target_entity_id: str | None = None
     proposed_payload: dict[str, Any]
     evidence_episode_ids: list[str]

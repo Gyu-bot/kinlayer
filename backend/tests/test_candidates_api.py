@@ -1596,6 +1596,39 @@ def test_merge_candidate_rejects_self_and_same_entity(client) -> None:
     assert protected.json()["error"]["code"] == "forbidden"
 
 
+def test_alias_candidate_accept_rejects_inactive_parent(client) -> None:
+    entity = create_person(client, "Archived Alias Target")
+    episode = create_episode(client)
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "alias",
+            "target_entity_id": entity["id"],
+            "payload": {"entity_id": entity["id"], "alias": "Archived Target Alias"},
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Archived Alias Target uses another name.",
+                    "confidence": 0.9,
+                }
+            ],
+            "confidence": 0.9,
+            "created_by": "user",
+        },
+    )
+    assert candidate.status_code == 201
+    assert client.delete(f"/api/entities/{entity['id']}").status_code == 200
+
+    accepted = client.post(f"/api/candidates/{candidate.json()['id']}/accept")
+
+    assert accepted.status_code == 409
+    assert accepted.json()["error"]["code"] == "conflict"
+    pending = client.get(f"/api/candidates/{candidate.json()['id']}").json()
+    assert pending["status"] == "pending"
+    aliases = client.get(f"/api/entities/{entity['id']}/aliases").json()
+    assert aliases["total"] == 0
+
+
 def test_merge_candidate_accept_deprecates_duplicate_aliases_and_self_edges(client) -> None:
     target = create_person(client, "Alex Kim")
     source = create_person(client, "Alex K.")

@@ -17,6 +17,7 @@ from kinlayer_backend.schemas.curation import (
     CurationSourcePackRequest,
 )
 from kinlayer_backend.services.curation import CurationService
+from kinlayer_backend.services.candidate_snapshots import candidate_snapshot
 
 
 def run_payload(**overrides):
@@ -102,6 +103,7 @@ def test_curation_models_define_durable_fields_constraints_and_indexes(database_
         "status",
         "risk_level",
         "candidate_ids",
+        "expected_candidates",
         "target_entity_id",
         "proposed_payload",
         "evidence_episode_ids",
@@ -458,6 +460,7 @@ def test_service_source_window_requires_exact_once_candidate_coverage(session: S
     session.add_all(candidates)
     session.commit()
     ordered = sorted(candidates, key=lambda candidate: (candidate.created_at, candidate.id))
+    snapshots = {candidate.id: candidate_snapshot(session, candidate) for candidate in candidates}
     packed_ids = [candidate.id for candidate in ordered[:2]]
     outside_id = ordered[2].id
     cursor_started = {"created_at": ordered[0].created_at, "candidate_id": ""}
@@ -486,6 +489,7 @@ def test_service_source_window_requires_exact_once_candidate_coverage(session: S
                         "action": action,
                         "risk_level": "low",
                         "candidate_ids": candidate_ids,
+                        "expected_candidates": [snapshots[candidate_id] for candidate_id in candidate_ids if candidate_id in snapshots],
                         "target_entity_id": None,
                         "proposed_payload": {},
                         "evidence_episode_ids": [],

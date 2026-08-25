@@ -26,6 +26,24 @@ def empty_plan(mode: str) -> dict:
     }
 
 
+def expected_from_pack(pack: dict, candidate_ids: list[str]) -> list[dict]:
+    by_id = {
+        candidate["id"]: {
+            key: candidate[key]
+            for key in (
+                "id",
+                "status",
+                "updated_at",
+                "payload_digest",
+                "evidence_digest",
+            )
+        }
+        for group in pack.get("groups", [])
+        for candidate in group.get("candidates", [])
+    }
+    return [by_id[candidate_id] for candidate_id in candidate_ids if candidate_id in by_id]
+
+
 def persisted_recovery_run(
     client: TestClient,
     *,
@@ -183,6 +201,57 @@ def test_nested_raw_or_unbounded_curation_json_never_persists(database_url: str)
         assert "provider_request" not in readback
 
 
+def test_run_rejects_candidate_changed_after_source_pack_review(database_url: str) -> None:
+    with curation_client(database_url, "shadow") as client:
+        with client.app.state.session_factory() as session:
+            candidate = Candidate(
+                candidate_type="new_entity",
+                payload={"entity_type": "person", "display_name": "Reviewed Name"},
+                confidence=0.8,
+                sensitivity="low",
+                status="pending",
+                created_by="user",
+            )
+            session.add(candidate)
+            session.commit()
+
+        pack = client.post("/api/curation/source-packs", json={"limit": 1}).json()
+        candidate_id = pack["groups"][0]["candidates"][0]["id"]
+        plan = {
+            "mode": "shadow",
+            "cursor_started_at": pack["cursor_started"]["created_at"],
+            "cursor_started_id": pack["cursor_started"]["candidate_id"],
+            "cursor_completed_at": pack["cursor_completed"]["created_at"],
+            "cursor_completed_id": pack["cursor_completed"]["candidate_id"],
+            "policy_version": "curation-policy-v1",
+            "input_candidate_count": 1,
+            "decisions": [
+                {
+                    "action": "defer",
+                    "risk_level": "low",
+                    "candidate_ids": [candidate_id],
+                    "expected_candidates": expected_from_pack(pack, [candidate_id]),
+                    "target_entity_id": None,
+                    "proposed_payload": {},
+                    "evidence_episode_ids": [],
+                    "reason_codes": [],
+                    "policy_version": "curation-policy-v1",
+                    "idempotency_key": "changed-after-pack",
+                    "planner": {"name": "test", "model": None, "version": "v1"},
+                }
+            ],
+        }
+        with client.app.state.session_factory() as session:
+            changed = session.get(Candidate, candidate_id)
+            changed.payload = {**changed.payload, "display_name": "Changed Name"}
+            session.commit()
+
+        response = client.post("/api/curation/runs", json=plan)
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "source_pack_candidate_changed"
+
+
 def test_run_rejects_decision_candidate_outside_server_source_window(database_url: str) -> None:
     with curation_client(database_url, "shadow") as client:
         with client.app.state.session_factory() as session:
@@ -218,6 +287,7 @@ def test_run_rejects_decision_candidate_outside_server_source_window(database_ur
                     "action": "defer",
                     "risk_level": "low",
                     "candidate_ids": [outside_id],
+                    "expected_candidates": expected_from_pack(pack, [outside_id]),
                     "target_entity_id": None,
                     "proposed_payload": {},
                     "evidence_episode_ids": [],
@@ -236,6 +306,7 @@ def test_run_rejects_decision_candidate_outside_server_source_window(database_ur
             assert session.query(CurationRun).count() == 0
 
         plan["decisions"][0]["candidate_ids"] = [packed_id]
+        plan["decisions"][0]["expected_candidates"] = expected_from_pack(pack, [packed_id])
         plan["decisions"][0]["idempotency_key"] = "inside-pack"
         accepted = client.post("/api/curation/runs", json=plan)
         assert accepted.status_code == 201
@@ -287,6 +358,7 @@ def test_api_source_window_requires_complete_exact_once_coverage(database_url: s
                         "action": action,
                         "risk_level": "low",
                         "candidate_ids": candidate_ids,
+                        "expected_candidates": expected_from_pack(pack, candidate_ids),
                         "target_entity_id": None,
                         "proposed_payload": {},
                         "evidence_episode_ids": [],

@@ -1,5 +1,6 @@
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+import hmac
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -17,6 +18,7 @@ from kinlayer_backend.api.embeddings import router as embeddings_router
 from kinlayer_backend.api.entities import router as entities_router
 from kinlayer_backend.api.graph import router as graph_router
 from kinlayer_backend.api.ontology import router as ontology_router
+from kinlayer_backend.api.reconciliation import router as reconciliation_router
 from kinlayer_backend.api.errors import (
     error_response,
     http_exception_handler,
@@ -31,6 +33,7 @@ from kinlayer_backend.services.entities import EntityService
 from kinlayer_backend.services.ontology import seed_ontology_values
 
 PUBLIC_PATHS = {"/api/system/health", "/api/system/version"}
+RECONCILIATION_PATH_PREFIX = "/api/reconciliation/"
 LOCAL_WEB_ORIGIN_REGEX = (
     r"^https?://("
     r"localhost|"
@@ -76,7 +79,18 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
         request: Request,
         call_next: Callable[[Request], Awaitable[Any]],
     ):
-        if (
+        if request.url.path.startswith(RECONCILIATION_PATH_PREFIX):
+            if request.method == "OPTIONS":
+                return await call_next(request)
+            if not settings.reconciliation_token:
+                return error_response(404, "not_found", "Reconciliation routes are disabled.")
+            expected = f"Bearer {settings.reconciliation_token}"
+            provided = request.headers.get("authorization", "")
+            if not hmac.compare_digest(provided, expected):
+                return error_response(
+                    401, "unauthorized", "Bearer reconciliation token is required."
+                )
+        elif (
             settings.api_token
             and request.method != "OPTIONS"
             and request.url.path not in PUBLIC_PATHS
@@ -98,6 +112,7 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
     app.include_router(ontology_router)
     app.include_router(agent_operations_router)
     app.include_router(agent_writes_router)
+    app.include_router(reconciliation_router)
 
     return app
 

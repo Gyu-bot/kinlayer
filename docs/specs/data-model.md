@@ -709,7 +709,8 @@ Rules:
 
 `curation_runs` stores mode/status, stable cursor tuples, immutable policy version, planner metadata,
 counts, bounded diagnostics, and timestamps. `curation_decisions` stores allowlisted action/status,
-candidate and episode IDs, proposed typed payload, deterministic reasons, global idempotency key,
+candidate and episode IDs, exact reviewed candidate status/version/payload/evidence snapshots,
+proposed typed payload, deterministic reasons, global idempotency key,
 canonical reference, and bounded readback. Neither stores raw prompts, transcripts, sessions, or
 provider responses.
 
@@ -724,3 +725,35 @@ Canonical tables with `source_candidate_id` use partial unique indexes for non-n
 refreshes stale identity-map state before any insert. `executed/verified` is a second post-commit
 state transition after fresh exact reconciliation; unavailable reconciliation remains
 `failed/verification_unknown` and resume never rewrites the canonical row.
+
+## Reconciliation action ledger
+
+`reconciliation_actions` is the durable boundary for grouped, user-confirmed identity resolution.
+It stores a unique resolution/idempotency key and request fingerprint, action/status, bounded
+candidate IDs and exact reviewed snapshots, bounded expected entity snapshots/digests, optional
+source, target, and retained/derived entity IDs, a
+bounded confirmation episode reference, canonical outcome references, compact readback summary,
+error code, and timestamps. Status moves from intent to `committed_unverified` and then `verified`;
+a readback outage never rolls back or replays an already committed canonical mutation.
+Mapping stores and locks the exact reviewed target entity snapshot. Merge/archive lock parent entity
+rows, while dependent alias/fact/edge/observation/merge writers acquire the same ordered active-parent
+locks before insert or reactivation, preventing context from appearing after an empty-archive check.
+
+The table must not contain raw question/reply text, full sessions, prompts, provider payloads, or
+model output. Candidate rows are locked in stable ID order. Candidate changes, confirmation episode,
+canonical writes, and ledger outcome references share one transaction; exact post-commit readback
+uses a fresh session.
+
+Entity cleanup uses the same ledger with empty candidate inputs. `merge_existing_entities` locks
+the exact source and target person snapshots in ID order, creates and accepts one internal
+user-explicit merge candidate in the transaction, and verifies the redirect, active target, merge
+row, confirmation evidence, audit, and transferred context. `archive_existing_entity` soft-deletes
+only an empty active non-self person produced by a user-reviewed `new_entity` candidate. Active
+aliases, facts, edges, observations, related-observation membership, or merge dependencies fail
+closed and require merge or correction.
+
+Normal curation may automatically accept a single `new_entity` only for a specific named person
+supported by linked user-authored evidence and with no self, role/title, pronoun, generic-name,
+exact active name/alias, schema, evidence, identity, or conflict reason. Fuzzy similarity alone is
+not a blocker. Executors refresh run, decision, and candidates after acquiring locks; work already
+committed by another executor is reconciled/read back instead of being overwritten.

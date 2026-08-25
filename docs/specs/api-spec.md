@@ -1303,9 +1303,14 @@ server-derived pending candidate set, and every candidate must appear in exactly
 Partial coverage, duplicate membership, out-of-window IDs, and count drift return HTTP 409 before
 any run or decision is persisted. A consolidate decision may contain multiple candidates, but those
 candidates cannot appear in another decision. An empty window requires zero count and zero decisions.
+Every non-empty decision also carries the exact reviewed candidate status, `updated_at`, payload
+digest, and evidence digest. Kinlayer compares those snapshots before run persistence and again
+after execution locks are acquired; drift returns `source_pack_candidate_changed` or blocks the
+decision as `source_candidate_changed` before canonical mutation.
 Reason codes are `source_pack_candidate_coverage_mismatch`, `duplicate_candidate_membership`,
 `candidate_outside_source_pack`, `source_pack_count_mismatch`,
-`source_pack_snapshot_mismatch`, and `source_pack_empty_run_mismatch`.
+`source_pack_snapshot_mismatch`, `source_pack_candidate_changed`, and
+`source_pack_empty_run_mismatch`.
 
 `POST /api/curation/source-packs` accepts optional `upper_cursor`. Selection is the full tuple window
 `cursor < (created_at,candidate_id) <= upper_cursor`; `upper_cursor` must be greater than the effective
@@ -1336,3 +1341,54 @@ still requires server mode `apply`; disabled mode and stale policy versions fail
 
 Context-card query `include_provisional=true` and context-pack field `include_provisional=true`
 return eligible pending observations only in a separate `provisional_context` array.
+
+## Reconciliation actions
+
+```text
+GET  /api/reconciliation/entity-snapshots?limit=200&offset=0
+POST /api/reconciliation/actions
+GET  /api/reconciliation/actions/{action_id}
+```
+
+These routes are disabled unless `KINLAYER_RECONCILIATION_TOKEN` is configured and both require
+that dedicated bearer credential. They are exempt from the broad `KINLAYER_API_TOKEN` boundary so
+the reconciliation credential is sufficient for this narrow surface.
+
+`GET .../entity-snapshots` returns a bounded page of active person entities with only `id`,
+entity/name fields, status, `updated_at`, and the backend-computed exact entity digest used by
+reconciliation preconditions. It rejects pages larger than 200; a caller that cannot review the
+complete bounded set must fail closed instead of silently comparing a partial person graph.
+
+POST accepts a closed, bounded request containing a unique `resolution_id`, one allowlisted action,
+the exact candidate ID set and reviewed status/`updated_at`/canonical-payload and evidence SHA-256
+digests, optional target/name fields, a bounded resolution note, and a user-explicit confirmation
+source. Unknown fields, unbounded collections/text, non-user sources, and malformed hashes are
+rejected. Durable rows contain only those bounded controls and compact outcomes; raw Discord
+questions or replies, transcripts, prompts, provider payloads, and model output are forbidden.
+
+The actions are `reject_candidates`, `map_to_existing_entity`, `confirm_new_entity_group`,
+`rename_and_accept_new_entity`, `merge_existing_entities`, and `archive_existing_entity`. Existing
+candidate action shapes remain unchanged and lock candidates in ID order. Entity cleanup actions
+use empty candidate lists plus bounded exact entity status/`updated_at`/entity digests and lock
+entities in ID order. Mapping requires one exact reviewed active non-self target snapshot and locks
+that target in the same transaction. Group confirmation deterministically retains one pending
+`new_entity`, creates exactly one person through the canonical candidate writer, and supersedes the
+rest. Rename does the same after validating the supplied stable person name. Protected-self names
+and aliases, pronouns, relationship nouns, honorific-only labels, and role/title-only labels cannot
+be created, renamed, or mapped as people.
+
+Existing-entity merge requires distinct active non-system person source and target IDs. It creates
+exactly one internal user-explicit typed merge candidate with the canonical merge defaults, accepts
+it atomically, and records candidate, merge, evidence, audit, canonical, and context readback.
+Archive requires one active non-self person created through the reviewed `new_entity` path and no
+active aliases, facts, edges, observations, related-observation memberships, or merge dependencies;
+otherwise the request fails closed and requires merge or correction. Archive uses canonical entity
+soft-delete semantics and verifies deletion/deprecation and absence from active context.
+
+The unique resolution ID is also the idempotency key. Reuse with the same normalized fingerprint
+returns the same action; reuse with different input returns `409`. Any mismatch in the locked
+candidate snapshot returns `409` without mutation. Mutation commits with
+`committed_unverified`, after which a fresh database session reads candidates, canonical entity,
+candidate evidence, and context projection. Readback failure preserves `committed_unverified`;
+POST retry and GET perform readback only and never replay canonical writes. Successful readback
+returns `verified` plus every candidate status/reference and compact entity/evidence/context data.

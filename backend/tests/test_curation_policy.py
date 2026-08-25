@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_db_engine
@@ -10,6 +10,7 @@ from kinlayer_backend.models import (
     Candidate,
     CandidateEvidence,
     Entity,
+    EntityAlias,
     Episode,
     Observation,
 )
@@ -20,6 +21,7 @@ from kinlayer_backend.schemas.curation import (
 )
 from kinlayer_backend.repositories.curation import CurationRepository
 from kinlayer_backend.services.curation import CurationService
+from kinlayer_backend.services.candidate_snapshots import candidate_snapshot
 from kinlayer_backend.services.ontology import seed_ontology_values
 
 AS_OF = datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
@@ -124,11 +126,61 @@ def add_observation_candidate(
     return candidate
 
 
+def add_new_person_candidate(
+    session: Session,
+    name: str,
+    *,
+    actor: str = "user",
+    excerpt: str | None = None,
+    reason_codes: list[str] | None = None,
+) -> tuple[Candidate, dict]:
+    evidence_text = excerpt if excerpt is not None else f"I met {name} yesterday."
+    episode = add_episode(
+        session,
+        actor=actor,
+        excerpt=evidence_text,
+        source_ref=f"new-person-{name}-{actor}",
+    )
+    candidate = Candidate(
+        candidate_type="new_entity",
+        payload={"entity_type": "person", "display_name": name},
+        confidence=0.8,
+        sensitivity="low",
+        suggested_action="accept",
+        status="pending",
+        created_by="ai_agent",
+        created_at=AS_OF - timedelta(minutes=5),
+        updated_at=AS_OF - timedelta(minutes=5),
+    )
+    session.add(candidate)
+    session.flush()
+    session.add(
+        CandidateEvidence(
+            candidate_id=candidate.id,
+            episode_id=episode.id,
+            excerpt=evidence_text,
+            confidence=0.9,
+        )
+    )
+    session.commit()
+    session.refresh(candidate)
+    return candidate, decision_payload(
+        candidate,
+        f"new-person:{name}:{actor}",
+        target_entity_id=None,
+        proposed_payload=candidate.payload,
+        reason_codes=reason_codes or [],
+    )
+
+
 def decision_payload(candidate: Candidate, key: str, **overrides) -> dict:
+    session = object_session(candidate)
+    assert session is not None
     payload = {
         "action": "accept_existing",
         "risk_level": "low",
         "candidate_ids": [candidate.id],
+        "expected_candidates": [candidate_snapshot(session, candidate)],
         "target_entity_id": candidate.target_entity_id,
         "proposed_payload": candidate.payload,
         "evidence_episode_ids": [item.episode_id for item in candidate.evidence],
@@ -404,12 +456,123 @@ def test_policy_allows_only_safe_user_grounded_observations_and_persists_reasons
     assert "high_sensitivity" in by_key["policy:sensitive"].reason_codes
     assert "missing_temporal_scope" in by_key["policy:transient"].reason_codes
     assert "target_entity_mismatch" in by_key["policy:mixed-subject"].reason_codes
-    assert "unsupported_candidate_type" in by_key["policy:structural"].reason_codes
+    assert "specific_person_name_required" in by_key["policy:structural"].reason_codes
     assert all(
         decision.status == "blocked"
         for key, decision in by_key.items()
         if key not in {"policy:safe", "policy:grounded-pattern"}
     )
+
+
+def test_named_user_evidenced_person_is_auto_promotable_despite_fuzzy_name(
+    session: Session,
+) -> None:
+    add_person(session, "Alexandra Stone")
+    candidate, decision = add_new_person_candidate(session, "Alex Stone")
+    run = CurationService(session).create_run(
+        CurationRunCreate.model_validate(
+            {
+                "mode": "shadow",
+                "policy_version": "curation-policy-v1",
+                "input_candidate_count": 1,
+                "decisions": [decision],
+            }
+        )
+    )
+
+    evaluated = CurationService(session).evaluate_run(run)
+
+    assert evaluated.decisions[0].status == "allowed"
+    assert candidate.status == "pending"
+
+
+@pytest.mark.parametrize(
+    ("name", "excerpt"),
+    [
+        ("", "I met someone yesterday."),
+        ("A", "I met A yesterday."),
+        ("they", "They called yesterday."),
+        ("친구", "친구가 전화했어."),
+        ("Director", "The Director called yesterday."),
+        ("팀장님", "팀장님이 전화했어."),
+        ("전무님", "전무님과 가족 이야기를 했어."),
+    ],
+)
+def test_new_person_auto_promotion_excludes_non_specific_names(
+    session: Session,
+    name: str,
+    excerpt: str,
+) -> None:
+    _candidate, decision = add_new_person_candidate(session, name, excerpt=excerpt)
+    run = CurationService(session).create_run(
+        CurationRunCreate.model_validate(
+            {
+                "mode": "shadow",
+                "policy_version": "curation-policy-v1",
+                "input_candidate_count": 1,
+                "decisions": [decision],
+            }
+        )
+    )
+
+    evaluated = CurationService(session).evaluate_run(run)
+
+    assert evaluated.decisions[0].status == "blocked"
+    assert "specific_person_name_required" in evaluated.decisions[0].reason_codes
+
+
+def test_new_person_auto_promotion_blocks_self_alias_exact_collision_and_unresolved_reason(
+    session: Session,
+) -> None:
+    protected = add_person(session, "Current User")
+    protected.system_role = "self"
+    protected.is_system = True
+    session.add(
+        EntityAlias(
+            entity_id=protected.id,
+            alias="Me Myself",
+            normalized_alias="me myself",
+            status="active",
+            created_by="user",
+        )
+    )
+    add_person(session, "Exact Existing")
+    session.commit()
+    inputs = [
+        add_new_person_candidate(session, "Me Myself"),
+        add_new_person_candidate(session, "Exact Existing"),
+        add_new_person_candidate(
+            session,
+            "Novel Person",
+            reason_codes=["ambiguous_identity"],
+        ),
+        add_new_person_candidate(
+            session,
+            "No Source Match",
+            excerpt="I met somebody yesterday.",
+        ),
+    ]
+    run = CurationService(session).create_run(
+        CurationRunCreate.model_validate(
+            {
+                "mode": "shadow",
+                "policy_version": "curation-policy-v1",
+                "input_candidate_count": len(inputs),
+                "decisions": [decision for _candidate, decision in inputs],
+            }
+        )
+    )
+
+    evaluated = CurationService(session).evaluate_run(run)
+    by_name = {
+        decision.proposed_payload["display_name"]: set(decision.reason_codes)
+        for decision in evaluated.decisions
+    }
+
+    assert "protected_self" in by_name["Me Myself"]
+    assert "exact_active_identity_collision" in by_name["Exact Existing"]
+    assert "unresolved_new_entity_reason" in by_name["Novel Person"]
+    assert "user_name_evidence_required" in by_name["No Source Match"]
 
 
 @pytest.mark.parametrize(

@@ -220,6 +220,40 @@ def test_edge_patch_rejects_relation_type_endpoint_mismatch(client, database_url
     assert patched.json()["error"]["message"] == "Relation endpoint entity types do not match."
 
 
+def test_inactive_entity_rejects_new_edge_and_observation(client) -> None:
+    inactive = create_person(client, "Inactive Relationship Parent")
+    active = create_person(client, "Active Relationship Parent")
+    assert client.delete(f"/api/entities/{inactive['id']}").status_code == 200
+
+    edge = client.post(
+        "/api/edges",
+        json={
+            "from_entity_id": inactive["id"],
+            "to_entity_id": active["id"],
+            "relation_type": "client_contact",
+            "claim_text": "Should fail.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    )
+    observation = client.post(
+        "/api/observations",
+        json={
+            "subject_entity_id": active["id"],
+            "related_entities": [
+                {"entity_id": inactive["id"], "role": "related", "confidence": 0.9}
+            ],
+            "observation_type": "recent_interaction",
+            "content": "Should fail.",
+            "claim_type": "fact",
+            "created_by": "user",
+        },
+    )
+
+    assert edge.status_code == 409
+    assert observation.status_code == 409
+
+
 def test_observation_lifecycle_stores_related_entities_and_soft_deletes(client) -> None:
     subject = create_person(client, "Subject")
     related = create_person(client, "Related")

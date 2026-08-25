@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     api_port: int = 8765
     api_url: str = "http://127.0.0.1:8765"
     api_token: str | None = None
+    reconciliation_token: str | None = None
     database_url: str = "postgresql+psycopg://kinlayer:kinlayer@127.0.0.1:15432/kinlayer"
     bootstrap_self: bool = False
     self_name: str = "Self"
@@ -43,6 +44,7 @@ class Settings(BaseSettings):
     def apply_embedding_defaults(self) -> "Settings":
         for field_name in (
             "api_token",
+            "reconciliation_token",
             "embedding_provider",
             "embedding_api_url",
             "embedding_api_key",

@@ -202,6 +202,46 @@ def test_curation_migration_applies_to_an_empty_database(database_url: str) -> N
     assert {"curation_runs", "curation_decisions"} <= set(inspect(engine).get_table_names())
 
 
+def test_reconciliation_migration_defines_bounded_durable_ledger() -> None:
+    migration = Path("backend/alembic/versions/20260825_0009_reconciliation_actions.py")
+    content = migration.read_text()
+
+    assert 'down_revision: str | None = "20260825_0008"' in content
+    assert '"reconciliation_actions"' in content
+    for column in [
+        "resolution_id",
+        "action_type",
+        "status",
+        "request_fingerprint",
+        "candidate_ids",
+        "expected_candidates",
+        "expected_entities",
+        "source_entity_id",
+        "target_entity_id",
+        "primary_entity_id",
+        "derived_candidate_ids",
+        "confirmation_episode_id",
+        "outcome_canonical_refs",
+        "readback_summary",
+        "error_code",
+        "committed_at",
+        "verified_at",
+    ]:
+        assert f'"{column}"' in content
+    assert '"uq_reconciliation_actions_resolution_id"' in content
+    assert 'postgresql.JSONB()' in content
+    assert 'op.add_column(\n        "curation_decisions"' in content
+    assert '"expected_candidates"' in content
+    for forbidden in [
+        "discord_payload",
+        "question_text",
+        "reply_text",
+        "session_content",
+        "raw_prompt",
+        "model_output",
+    ]:
+        assert forbidden not in content
+
 def test_candidate_canonicalization_guard_migration_defines_unique_indexes() -> None:
     migration = Path(
         "backend/alembic/versions/20260825_0008_unique_candidate_canonicalization.py"
