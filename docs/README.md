@@ -16,6 +16,7 @@ This directory keeps project documentation that should not live at the repositor
 - `plans/relationship-curation-cycle.md`: approved periodic candidate curation and canonical-promotion implementation plan.
 - `kinlayer-roadmap.md`: Korean user-facing roadmap for directing implementation.
 - `agents/agent-integration-notes.md`: agent integration and post-turn boundary notes.
+- `agents/kinlayer-client-helper.md`: deterministic read-only helper commands and configuration.
 - `agents/agent-write-instruction-pack.md`: copy/paste-ready write guidance for agents, skills, plugins, MCP adapters, and runtime hooks.
 
 Agent write boundary summary: AI agents interpret current-turn user-authored text and propose
