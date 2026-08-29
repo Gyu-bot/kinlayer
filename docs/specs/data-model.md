@@ -1,5 +1,9 @@
 # Kinlayer Data Model
 
+`ReconciliationAction` uses existing JSON ledger fields for compact context commitments and verified outcomes;
+raw replies and prior excerpts are not stored there. Canonical context rows retain exact Episode evidence.
+This contract requires no `0011` migration.
+
 - Status: Draft v0.1
 - Parent PRD: `prd.md`
 - Related docs: `ontology-design.md`, `candidate-lifecycle-and-payload.md`, `context-output-contract.md`
@@ -647,6 +651,12 @@ sensitivity
 ai_use_policy
 ```
 
+Reconciliation-derived context never downgrades these fields. Exact current-reply claims persist as
+at least `medium` with `cautious_use`. Prepared user-evidence claims inherit the most restrictive
+effective sensitivity across the medium floor, candidate, and Episode, and preserve any stricter
+candidate AI-use policy. The reconciliation action's compact context manifest commits those values,
+and fresh readback compares the derived candidate payload and canonical row exactly.
+
 Computed retrieval-time buckets:
 
 ```text
@@ -729,12 +739,36 @@ state transition after fresh exact reconciliation; unavailable reconciliation re
 ## Reconciliation action ledger
 
 `reconciliation_actions` is the durable boundary for grouped, user-confirmed identity resolution.
+
+`enrichment_authorizations` is the durable, closed authority ledger for conversational enrichment.
+It stores an opaque authorization reference, stage idempotency fingerprint, one subject, exact
+backend entity snapshots, immutable compiled slots and bounded slot states, status, expiry, and
+timestamps. Stage readback derives one per-authorization answer capability from a server secret;
+the plaintext capability is never stored in the ledger. It never stores question text, reply text,
+chat metadata, prompts, model output, tokens, or transcripts.
+
+`enrichment_answer_actions` stores one idempotent answer resolution, its authorization FK,
+fingerprint, compact slot outcomes, derived candidate IDs, episode/canonical references, an immutable
+compact `source_snapshot`, readback state, errors, and timestamps. For actions with known answers the
+snapshot contains only source type/ref/actor/time, retention policy, the bounded known-evidence bundle
+hash, known slot IDs, and per-slot evidence digests. The bounded bundle itself lives only in the user
+Episode; exact per-known-slot evidence lives in CandidateEvidence and the corresponding canonical
+evidence row. For all-unknown/skip actions `source_snapshot` and `episode_id` are null and no Episode,
+candidate, canonical, or evidence row is created. Raw full replies, questions, bridge markers/tokens,
+Discord/provider payloads, prompts, model output, and transcripts are forbidden.
+These tables are separate from `reconciliation_actions`, so the identity reconciliation GET cannot
+read or verify enrichment actions.
 It stores a unique resolution/idempotency key and request fingerprint, action/status, bounded
 candidate IDs and exact reviewed snapshots, bounded expected entity snapshots/digests, optional
 source, target, and retained/derived entity IDs, a
 bounded confirmation episode reference, canonical outcome references, compact readback summary,
 error code, and timestamps. Status moves from intent to `committed_unverified` and then `verified`;
 a readback outage never rolls back or replays an already committed canonical mutation.
+The existing compact `readback_summary` also stores exactly one HMAC-authenticated PCR answer
+binding in the action transaction. The request fingerprint equals its canonical action digest;
+fresh readback revalidates the separate-key MAC, resolution/action fields, and digest before returning
+the binding. Only question/item identifiers, item/agenda/action/context digests, version, and MAC are
+stored—no question text, prior excerpts, source handles, bearer, or commitment key.
 Mapping stores and locks the exact reviewed target entity snapshot. Merge/archive lock parent entity
 rows, while dependent alias/fact/edge/observation/merge writers acquire the same ordered active-parent
 locks before insert or reactivation, preventing context from appearing after an empty-archive check.
@@ -743,6 +777,13 @@ The table must not contain raw question/reply text, full sessions, prompts, prov
 model output. Candidate rows are locked in stable ID order. Candidate changes, confirmation episode,
 canonical writes, and ledger outcome references share one transaction; exact post-commit readback
 uses a fresh session.
+
+For rename reconciliation with `relationship_to_self`, the existing source-entity field records the
+internally resolved protected-self endpoint, `derived_candidate_ids` includes the accepted
+`relationship_edge` candidate, and outcome references include its canonical edge. This is an action
+contract change only and requires no new migration. Verification fails closed unless candidate,
+confirmation evidence, canonical edge linkage, endpoints, relation type, claim text, and canonical
+reference all match exactly.
 
 Entity cleanup uses the same ledger with empty candidate inputs. `merge_existing_entities` locks
 the exact source and target person snapshots in ID order, creates and accepts one internal

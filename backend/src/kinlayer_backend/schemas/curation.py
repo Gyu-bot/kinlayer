@@ -187,6 +187,7 @@ class CurationSourceEvidenceRead(CurationModel):
     source_ref: str | None = None
     body_hash: str
     actor: str
+    sensitivity: str
     occurred_at: datetime | None = None
     ingested_at: datetime
     created_at: datetime

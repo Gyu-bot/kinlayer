@@ -1305,6 +1305,7 @@ class CurationService:
                     "source_ref": episode.source_ref,
                     "body_hash": episode.body_hash,
                     "actor": episode.actor,
+                    "sensitivity": episode.sensitivity,
                     "occurred_at": episode.occurred_at,
                     "ingested_at": episode.ingested_at,
                     "created_at": evidence.created_at,

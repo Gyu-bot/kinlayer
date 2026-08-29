@@ -39,6 +39,7 @@ def candidate_evidence_digest(session: Session, candidate_id: str) -> str:
                 "source_ref": episode.source_ref,
                 "body_hash": episode.body_hash,
                 "actor": episode.actor,
+                "sensitivity": episode.sensitivity,
             }
             for evidence, episode in rows
         ]

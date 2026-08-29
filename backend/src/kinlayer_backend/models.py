@@ -451,6 +451,61 @@ class ReconciliationAction(Base, TimestampMixin):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class EnrichmentAuthorization(Base, TimestampMixin):
+    __tablename__ = "enrichment_authorizations"
+    __table_args__ = (
+        UniqueConstraint("authorization_ref", name="uq_enrichment_authorizations_ref"),
+        UniqueConstraint("stage_idempotency_key", name="uq_enrichment_authorizations_stage_key"),
+        CheckConstraint(
+            "status in ('open', 'partially_answered', 'completed', 'expired', 'cancelled')",
+            name="ck_enrichment_authorizations_status",
+        ),
+        Index("ix_enrichment_authorizations_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    authorization_ref: Mapped[str] = mapped_column(String(120), nullable=False)
+    stage_idempotency_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    stage_fingerprint: Mapped[str] = mapped_column(String(71), nullable=False)
+    topic: Mapped[str] = mapped_column(String(80), nullable=False)
+    subject_entity_id: Mapped[str] = mapped_column(ForeignKey("entities.id"), nullable=False)
+    entity_snapshots: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    slots: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    slot_states: Mapped[dict] = mapped_column(JSON_TYPE, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="open", nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EnrichmentAnswerAction(Base, TimestampMixin):
+    __tablename__ = "enrichment_answer_actions"
+    __table_args__ = (
+        UniqueConstraint("resolution_id", name="uq_enrichment_answer_actions_resolution_id"),
+        CheckConstraint(
+            "status in ('pending', 'committed_unverified', 'verified', 'verification_failed')",
+            name="ck_enrichment_answer_actions_status",
+        ),
+        Index("ix_enrichment_answer_actions_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    resolution_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    authorization_id: Mapped[str] = mapped_column(
+        ForeignKey("enrichment_authorizations.id"), nullable=False
+    )
+    request_fingerprint: Mapped[str] = mapped_column(String(71), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="pending", nullable=False)
+    slot_outcomes: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    derived_candidate_ids: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    episode_id: Mapped[str | None] = mapped_column(ForeignKey("episodes.id"))
+    canonical_refs: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    source_snapshot: Mapped[dict | None] = mapped_column(JSON_TYPE)
+    readback_summary: Mapped[dict | None] = mapped_column(JSON_TYPE)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class CurationRun(Base, TimestampMixin):
     __tablename__ = "curation_runs"
     __table_args__ = (

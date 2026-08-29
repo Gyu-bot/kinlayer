@@ -79,11 +79,15 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
         request: Request,
         call_next: Callable[[Request], Awaitable[Any]],
     ):
-        if request.url.path.startswith(RECONCILIATION_PATH_PREFIX):
+        enrichment_answer_path = RECONCILIATION_PATH_PREFIX + "enrichment-answers"
+        is_enrichment_answer = request.url.path == enrichment_answer_path or request.url.path.startswith(
+            enrichment_answer_path + "/"
+        )
+        if request.url.path.startswith(RECONCILIATION_PATH_PREFIX) and not settings.reconciliation_token:
+            return error_response(404, "not_found", "Reconciliation routes are disabled.")
+        if request.url.path.startswith(RECONCILIATION_PATH_PREFIX) and not is_enrichment_answer:
             if request.method == "OPTIONS":
                 return await call_next(request)
-            if not settings.reconciliation_token:
-                return error_response(404, "not_found", "Reconciliation routes are disabled.")
             expected = f"Bearer {settings.reconciliation_token}"
             provided = request.headers.get("authorization", "")
             if not hmac.compare_digest(provided, expected):
@@ -91,6 +95,8 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
                     401, "unauthorized", "Bearer reconciliation token is required."
                 )
         elif (
+            not is_enrichment_answer
+            and
             settings.api_token
             and request.method != "OPTIONS"
             and request.url.path not in PUBLIC_PATHS

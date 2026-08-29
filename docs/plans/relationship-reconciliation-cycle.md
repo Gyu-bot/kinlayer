@@ -1,5 +1,9 @@
 # Relationship Reconciliation & Clarification Cycle
 
+One authenticated reply resolves identity and every clear bounded same-person context claim together. Prior
+promotion accepts only original user-authored evidence locked to the reviewed candidate snapshot, never an
+assistant summary. Do not ask the user to repeat authenticated text; report only freshly verified categories.
+
 **Status:** Approved for implementation
 **Approved by user:** 2026-08-25
 **Kinlayer branch:** `codex/kinlayer-reconciliation-cycle`
@@ -17,13 +21,27 @@ pending candidates + recent canonical changes
 → self-resolve only deterministic no-question cases
 → group genuinely unresolved questions by person/identity issue
 → deliver each question through Hermes' native Discord send engine and persist its message ID
-→ user replies to that exact Discord message
-→ Hermes interprets the reply into an allowlisted answer plan
+→ user replies naturally to that exact Discord message
+→ Hermes interprets the whole reply as an ordinary conversational turn, separating reconciliation intent, new information, follow-up needs, and any other requested action
 → Kinlayer applies user-confirmed candidate/entity corrections
 → candidate, canonical record, evidence, and context readback
 ```
 
 The user must not review candidates one by one. Questions are exceptions after evidence review, not the normal curation path.
+
+### Conversational user experience
+
+Reconciliation is a generative dialogue, not a form, decision tree, or scripted chatbot.
+
+- Hermes reviews the current anomaly, exact source sessions, bounded same-name history, and existing Kinlayer context, then writes a fresh natural-language Korean question suited to that specific situation.
+- The user-visible Discord message contains only that natural question. Batch IDs, item IDs, message IDs, nonces, fingerprints, internal option names, action names, receipts, and validation instructions remain private implementation state.
+- The user answers in unrestricted natural language. A reply may resolve the original ambiguity, add new person/relationship information, correct the premise, request a different action, ask a question back, or combine several of these.
+- Hermes handles the reply as a real conversation. It may ask a natural follow-up when needed, perform ordinary authorized Hermes actions, route new durable person information through the normal Kinlayer candidate/correction path, and submit only the reconciliation mutations that the backend can verify safely.
+- A natural follow-up sent by Hermes becomes the next private reply anchor for the same open review. The plugin carries the binding forward using authoritative own-message reply metadata plus a private content digest; the user must never be told to reply again to an older technical anchor.
+- All unresolved items for one person/identity issue are combined into one context-specific generated question. Different internal items must not leak as multiple form-like prompts merely because they have different action options.
+- Closed option/action schemas remain an internal execution boundary for canonical mutations; they are never the user's input format and must not reduce the conversation to selecting a code.
+- Native Discord reply metadata authenticates who answered which question. Authentication metadata must not shape or leak into the visible wording.
+- A verified reconciliation reply is not globally excluded from post-turn extraction. Internal metadata is stripped, while the user's clean natural-language content remains eligible for ordinary evidence routing so additional information is not lost.
 
 Named-person creation is intentionally permissive: a pending `new_entity` backed by user-authored evidence may be promoted automatically when it contains a specific proper name and deterministic guards find no self, role-title, pronoun, or exact-existing-identity conflict. The review cycle repairs later duplicates through verified merge/mapping actions instead of requiring approval before every person exists.
 
@@ -72,24 +90,33 @@ Named-person creation is intentionally permissive: a pending `new_entity` backed
 ### Hermes personal-context-router
 
 - Read-only anomaly collection and compact review snapshots.
-- Local notification/reply state needed only for dedupe and delivery handshake.
+- Domain question state, closed answer compilation, Kinlayer apply/readback, and bridge-spec handoff.
 - CLI commands used by cron and the dedicated Discord channel session.
-- Validation of batch/item IDs, target channel, authorized user, allowed answer options, and bounded source metadata.
+- Validation of item snapshots, attached bridge conversation ID, allowed answer options, and bounded source metadata.
+- No Discord send, message-ID receipt, native-reply authentication, bot token, or session switching.
+
+### Standalone proactive-conversation bridge
+
+- Owns Discord delivery/ACK recovery, message IDs, exact route/owner validation, native-reply
+  authentication, and the current Hermes session lease.
+- Supplies private adapter context with the attached bridge conversation ID and PCR question reference.
+- Stores no Kinlayer candidate/entity/domain payload.
 
 ### Scheduled Hermes agent
 
 - Calls reconciliation prepare.
 - Reads exact source sessions via `session_search` and performs at most one bounded name query per review item.
 - Produces a closed review plan.
-- Calls reconciliation stage and delivery.
-- Delivery uses Hermes' existing send engine (`hermes send`/`send_message_tool`) and stores the returned Discord `message_id`; it does not rely on cron final-response delivery for correlation.
-- The cron delivery target is local/silent so the scheduled agent cannot duplicate the plugin-owned question sends.
+- Calls PCR stage, standalone bridge stage, PCR attach, then standalone bridge deliver.
+- Uses the exact silence contract after bridge delivery so cron final-response delivery cannot duplicate
+  the question.
 
 ### Dedicated Discord channel session
 
-- A `pre_gateway_dispatch` plugin hook authenticates the native Discord reply reference against the persisted outbound `message_id`, exact channel ID, guild/user allowlist, and question nonce before the main turn.
-- The hook claims the inbound reply message once and rewrites the turn with bounded verified review metadata; copied text or a bare marker is never sufficient authority.
-- The main turn reads the staged item through plugin CLI.
+- The standalone bridge authenticates the native reply against its exact outbound message, route,
+  owner, and one-time claim before the main turn, then attaches the current session lease.
+- The main turn requires private bridge adapter context and reads the staged PCR item through plugin CLI;
+  copied text or a bare marker is never sufficient authority.
 - Converts the user’s answer into an allowlisted answer plan.
 - Calls plugin CLI apply.
 - Reports verified result or asks a narrower follow-up without mutation.
@@ -154,7 +181,7 @@ Closed request fields:
 ```json
 {
   "resolution_id": "stable idempotency key",
-  "action": "reject_candidates | map_to_existing_entity | confirm_new_entity_group | rename_and_accept_new_entity | merge_existing_entities | archive_existing_entity",
+  "action": "reject_candidates | map_to_existing_entity | confirm_new_entity_group | accept_existing_entity_observation_group | rename_and_accept_new_entity | merge_existing_entities | archive_existing_entity",
   "candidate_ids": ["..."],
   "expected_candidates": [
     {
@@ -194,6 +221,7 @@ Requirements:
 - Every candidate must still match the exact reviewed status/version/payload/evidence snapshot or already match the exact requested terminal state from an earlier retry.
 - `map_to_existing_entity` requires one exact reviewed active target entity snapshot, locks that target with the candidates, and records a record reference on all resolved candidates.
 - `confirm_new_entity_group` accepts one deterministic retained candidate, creates exactly one canonical entity, and supersedes the other group members in one transaction.
+- `accept_existing_entity_observation_group` requires one or more exact pending observation candidates plus the exact snapshot of their common active non-system person target. After candidate locks, it derives the union of that target, every observation subject, and every related entity and locks the full union once in globally sorted ID order before accepting every candidate through the canonical observation writer in one transaction. It creates or supersedes no entity.
 - `rename_and_accept_new_entity` edits one retained payload with user-provided bounded name, accepts it, and supersedes duplicates in one transaction.
 - `reject_candidates` rejects all specified candidates atomically.
 - Protected self can never be newly created, renamed, or merged.
@@ -202,6 +230,11 @@ Requirements:
 - Persist no raw Discord question, raw reply, full session text, or model output.
 
 Execution persists the action intent first, performs the candidate/entity changes and action outcome refs in one transaction, commits as `committed_unverified`, then opens a fresh DB session for exact candidate/canonical/evidence/context readback. A retry after commit performs readback only. A reused idempotency key with another request fingerprint returns `409`.
+
+Before that intent lookup, Kinlayer requires exactly one PCR answer binding signed with a separate
+deployment secret, not the reconciliation bearer. The binding covers the actual question/item,
+full agenda, resolution/action body, and exact context claims. It is stored with the same ledger row,
+revalidated and returned by fresh readback, and cannot be substituted by a bearer-only caller.
 
 The existing curation executor must also re-check decision/candidate/run state after acquiring its locks. If another executor already committed the decision, reconcile/read back it instead of re-evaluating or overwriting its status. This is required before named `new_entity` promotion can be safely enabled.
 
@@ -233,9 +266,12 @@ State contains only:
 - schema version;
 - last scanned candidate/canonical cursor;
 - review fingerprints and bounded item metadata;
-- active staged delivery set with question IDs, item IDs, allowed options, target guild/channel/user, question nonce/version, and staged time;
-- delivery state (`planned`, `sending`, `delivered`, `awaiting_reply`, `claimed`, `applying`, `committed_unverified`, `verified_applied`, `delivery_failed`, `stale`, `expired`);
-- mandatory Discord question message ID, reply message IDs, Kinlayer `resolution_id`s, and compact verified outcomes;
+- active staged delivery set with question IDs, item IDs, allowed options, exact route/owner,
+  standalone bridge conversation ID/key, and staged time;
+- domain state (`staged`, `awaiting_reply`, `applying`, `committed_unverified`,
+  `verified_applied`, `stale`, `expired`, `cancelled`);
+- Kinlayer `resolution_id`s and compact verified outcomes. Discord message IDs, reply IDs,
+  claim tokens, nonces, and delivery receipts belong only to the standalone bridge state;
 - cooldown/suppression timestamps.
 
 Never store full sessions, full provider outputs, chain of thought, secrets, or unbounded user replies.
@@ -248,12 +284,16 @@ Extend `hermes context-router`:
 
 ```text
 reconciliation-prepare [--quiet-no-change]
-reconciliation-stage --plan-file <json>
-reconciliation-deliver --delivery-set-id <id>
+reconciliation-stage --plan-file <json> --bridge-spec-file <json>
+reconciliation-attach-bridge --question-id <id> --conversation-id <id>
 reconciliation-question --question-id <id>
-reconciliation-apply --question-id <id> --claim-token <token> --answers-file <json>
+reconciliation-apply --question-id <id> --bridge-conversation-id <id> --answers-file <json>
+reconciliation-cancel --question-id <id>
 reconciliation-status
 ```
+
+`reconciliation-deliver` is deprecated and fail-closed; it returns `bridge_required` without
+sending. Delivery is owned by the standalone proactive-conversation bridge.
 
 ### Prepare
 
@@ -262,6 +302,8 @@ reconciliation-status
 - Apply only deterministic no-question cleanup through Kinlayer and verify it.
 - Output no more than a bounded set of review candidates for the scheduled agent.
 - Include source session IDs/search terms but no raw full-session bodies.
+- Expose only raw-free candidate evidence commitments and opaque handles; exact excerpts are not
+  generic prepare output.
 
 ### Stage
 
@@ -269,32 +311,44 @@ reconciliation-status
 - Require the scheduled agent to state which exact source sessions and name query were checked.
 - Reject questions answerable from the inspected evidence.
 - Group candidates that concern the same person/identity issue into one question.
+- For every multi-record identity item, require one closed `record_summaries` object per prepared
+  record in canonical order: exact internal `record_id`, exact snapshot `record_digest`, and one
+  bounded natural `summary`. Validate the bindings against the prepared candidate/entity snapshots;
+  keep summaries as private visible grounding only and never treat them as evidence. Never expose
+  the IDs or digests.
+- Optionally accept at most six closed `prepared_context_claims` per question item. Stage privately
+  revalidates the exact candidate snapshot and user-authored evidence through the token-gated
+  candidate-evidence endpoint, requires one unique exact excerpt substring, derives offsets and
+  effective policy, discards the excerpt, and persists only typed commitments bound to the item.
+- Consume every source-bearing plan once from a bounded mode-0700 directory/mode-0600 regular file,
+  unlinking it after both successful and failed stage consumption.
 - No fixed three-question limit. Respect a configurable per-run operational ceiling, a hard safety ceiling, Discord rate limits, and the single-message size limit; carry the rest to the next run without losing priority.
-- Persist `planned` questions and unique opaque nonces before delivery.
+- Persist staged domain questions before bridge handoff.
 
-Marker example:
+### Bridge handoff and delivery
 
-```text
-[KINLAYER-REVIEW batch=<batch-id>]
-```
-
-Each question carries a stable `item=<item-id>` marker and explicit answer options. The marker aids usability and recovery but is not authorization.
-
-### Deliver
-
-- Transition one question at a time from `planned` to `sending` before the external call.
-- Send through Hermes' native send engine to `discord:1541811228530315365` and require a successful JSON result containing the exact `chat_id` and `message_id`.
-- Persist the returned `message_id`, then mark `delivered/awaiting_reply`.
-- On send-ack loss, use the opaque nonce to find the bot's already-created recent channel message before retrying; never blindly duplicate a question.
-- Keep each person-level question in one Discord message. If it would exceed the platform limit, shorten the evidence summary rather than splitting one question across unrelated message IDs.
+- PCR writes one bounded bridge spec only to an explicitly requested validated private mode-0600
+  file. Stage/resume/reissue/status never return it inline.
+- Attach the returned bridge conversation ID to the exact PCR question before delivery.
+- The standalone bridge owns Discord send/ACK recovery, exact native-reply authentication,
+  route/owner matching, message IDs, and session lease. PCR stores no Discord delivery receipt.
+- On unknown delivery, use bridge status/deliver only; never blindly send a second question.
+- Keep each person-level question in one Discord message. If it would exceed the platform limit,
+  shorten the bounded summaries rather than splitting the question.
 
 ### Apply
 
-- Require a claim created by `pre_gateway_dispatch` from an authenticated Discord event whose native `reply_to_message_id` equals the persisted outbound question `message_id`.
-- Require exact configured guild/channel/authorized-user IDs, current inbound Discord message ID, opaque question nonce/version, and one-time claim token.
-- Require a delivered, open question and allow only its item options.
+- Require private bridge context containing adapter key/version plus the exact bridge conversation ID
+  and PCR question reference. Never infer authority from visible text or a copied marker.
+- Require the supplied `--bridge-conversation-id` to equal the ID attached to the open PCR question.
+- Require the same exact ID on the private question-read command and return no agenda for missing,
+  wrong, staged-unattached, terminal, or attention-receipt-mismatched questions.
+- Allow only the question's current item options and fresh candidate/entity snapshots.
 - Permit partial answers; ambiguous items remain open and no mutation occurs for them.
 - Send user-confirmed actions to Kinlayer with stable `resolution_id`s.
+- Merge stage-bound prepared claims automatically with exact current-reply claims, fix current
+  context at medium/cautious, preserve stricter prepared policy, and bind all claims into the one
+  submission/action digest before one PCB proof consume and one backend POST.
 - Read back and persist compact results before reporting success.
 
 ## 8. Discord configuration
@@ -311,7 +365,7 @@ Add a channel prompt that:
 - recognizes the plugin-rewritten verified reconciliation reply context, not copied marker text;
 - fetches the claimed question before interpreting the answer;
 - writes an answers JSON file under `$HERMES_HOME/tmp/personal-context-router/<run>/`;
-- runs `hermes context-router reconciliation-apply` with the one-time claim token;
+- runs `hermes context-router reconciliation-apply` with the private bridge conversation ID;
 - reports only verified actions and any unanswered ambiguity;
 - otherwise treats the channel as normal Kinlayer/personal-context discussion;
 - never accepts a bare marker typed by another user or from another channel.
@@ -320,15 +374,17 @@ Do not make the channel globally free-response unless reply behavior proves a me
 
 ## 9. Scheduler
 
-Create a separate agent-driven cron after deployment.
+Use the existing separate agent-driven cron after deployment.
 
 - Cadence: every 6 hours, offset from canonical curation so the latter finishes first.
-- Cron delivery: `local`; question delivery is performed explicitly by `reconciliation-deliver` so outbound Discord message IDs are captured.
-- Script: thin wrapper under `$HERMES_HOME/scripts/` calling reconciliation prepare.
+- Cron delivery: `local`; the cron stages and delivers through the standalone bridge, then returns
+  the exact silence contract so scheduler delivery cannot duplicate the question.
+- Run reconciliation status first and resume any active PCR/bridge conversation before preparing
+  another review item.
 - Skills: `gyurin-personal-context`, `kinlayer-local`.
 - Toolsets: session search, terminal/file/skills as required.
-- Silent/local final response when `wakeAgent=false` or after explicit question delivery.
-- The cron prompt never reads bot tokens or calls raw Discord REST; the plugin invokes Hermes' native send engine and validates the structured receipt.
+- Silent/local final response when no review is needed or after bridge delivery.
+- The cron prompt never reads bot tokens or calls Discord REST. The standalone bridge owns the send.
 
 ## 10. Current dogfood expectations
 
@@ -351,7 +407,7 @@ The first real review should classify:
 - marker spoof rejection;
 - person-level grouping, dynamic batching, operational safety ceiling, and cooldown;
 - named `new_entity` automatic promotion and role/self/pronoun exclusion;
-- outbound Discord receipt persistence and native reply-reference enforcement;
+- bridge-spec handoff, attachment, and exact native reply-reference enforcement;
 - copied-marker, wrong-author, wrong-channel, stale-reply, and duplicate-inbound rejection;
 - delivery success/failure handshake;
 - partial answers;
@@ -359,7 +415,8 @@ The first real review should classify:
 - deterministic self rejection;
 - grouped candidate transaction rollback and retry idempotency;
 - exact canonical/entity/evidence/context readback;
-- reconciliation replies skipped by ordinary post-turn candidate extraction.
+- reconciliation additions carried once by the closed reconciliation action, never duplicated by
+  ordinary post-turn candidate extraction.
 
 ### Integration
 

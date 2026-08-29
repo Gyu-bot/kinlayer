@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     api_url: str = "http://127.0.0.1:8765"
     api_token: str | None = None
     reconciliation_token: str | None = None
+    reconciliation_commitment_key: str | None = None
     database_url: str = "postgresql+psycopg://kinlayer:kinlayer@127.0.0.1:15432/kinlayer"
     bootstrap_self: bool = False
     self_name: str = "Self"
@@ -45,6 +46,7 @@ class Settings(BaseSettings):
         for field_name in (
             "api_token",
             "reconciliation_token",
+            "reconciliation_commitment_key",
             "embedding_provider",
             "embedding_api_url",
             "embedding_api_key",
@@ -62,6 +64,17 @@ class Settings(BaseSettings):
             self.embedding_api_url = self.embedding_api_url or DEFAULT_OPENAI_EMBEDDING_API_URL
             self.embedding_model = self.embedding_model or DEFAULT_OPENAI_EMBEDDING_MODEL
             self.embedding_dim = self.embedding_dim or DEFAULT_OPENAI_EMBEDDING_DIM
+
+        if (
+            self.reconciliation_token
+            and self.reconciliation_commitment_key == self.reconciliation_token
+        ):
+            raise ValueError("reconciliation commitment key must differ from bearer token")
+        if (
+            self.reconciliation_commitment_key
+            and len(self.reconciliation_commitment_key.encode("utf-8")) < 32
+        ):
+            raise ValueError("reconciliation commitment key must be at least 32 UTF-8 bytes")
 
         return self
 

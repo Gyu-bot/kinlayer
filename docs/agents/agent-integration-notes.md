@@ -1,5 +1,14 @@
 # Kinlayer Agent Integration Notes
 
+Compile one composite reconciliation action per resolved person using exact reply spans or opaque
+manifest-bound user-evidence handles. Never send an independent value/paraphrase, call generic enrichment
+after reconciliation, or consume a second reply proof.
+
+Each action must carry exactly one PCR-generated answer binding signed with the separately protected
+reconciliation commitment key. Agents must never fabricate or edit it. The reconciliation bearer
+authorizes transport but cannot authenticate a question/item/agenda or context-claim substitution;
+Kinlayer verifies and atomically stores the binding, then returns it only on token-gated readback.
+
 - Status: Draft v0.1
 - Scope: Future integration with Hermes/Som, other AI agents, skills, plugins/tools, MCP, and memory-provider hooks
 - Parent PRD: `../specs/prd.md`
@@ -312,6 +321,40 @@ The profile-local, provider-neutral adapter performs exactly this sequence:
    server mode, including after a move from shadow to apply. This recovery writes no candidate or
    canonical state. In explicitly activated `apply`, call `/execute`; use `/resume` for
    ready/executing/partial/failed apply reconciliation only while the server remains in apply.
+
+### Conversational enrichment boundary
+
+PCR may compile one natural, low-risk question into
+`POST /api/reconciliation/enrichment-authorizations`, but model output must never be forwarded as
+the authorization body. PCR selects an existing active confirmed person from existing snapshots or
+context cards and sends only the closed compiler contract. It must not send aliases, new entities,
+merges, corrections, arbitrary IDs/properties/field paths/policies, raw candidate payloads, question
+text, or replies.
+
+Before showing the visible question, trusted PCR must bind the plan subject to the authorization
+subject snapshot. The plan `display_name` must exactly equal snapshot `display_name`, unless PCR
+explicitly selected the snapshot's exact, nonempty `canonical_name` as the visible label. Aliases are
+not accepted as visible labels in v1. A mismatch (for example, a Mina plan paired with Bob's entity
+ID and therefore Bob's snapshot label) or `subject_ambiguous` must fail closed without showing the
+question.
+
+Stage returns a per-authorization answer capability. PCR is the trusted PCB-proof-verifying adapter:
+it stores that capability privately, never exposes it in model-visible status/question/bridge state,
+and supplies it only in `X-Kinlayer-Enrichment-Capability` for answer POST/read GET. The backend does
+not implement PCB reply proof. Capability-secret rotation invalidates outstanding capabilities;
+recovery is a same-body stage retry while the authorization remains open, or a fresh stage after
+expiry.
+
+Kinlayer's canonical and unresolved-candidate gap check is authoritative at both stage and answer.
+An exact matching `pending` or `needs_clarification` candidate returns
+`409 pending_gap_filled`; PCR must stop the proactive flow and must not add caller assertions or raw
+candidate payloads to the authorization request or response handling.
+
+For a later explicit user reply, PCR maps only to the returned slot IDs and sends sorted
+known/unknown/skip answers. Known evidence must be an exact bounded excerpt contained in the single
+known-evidence bundle; never send the full raw reply. Omit the bundle entirely when every answer is
+unknown/skip, which also means no Episode/evidence/candidate/canonical write. Kinlayer, not the
+model, compiles and accepts candidates and performs fresh readback.
    Persist only cursor and run ID as adapter continuity state.
 
 For every non-empty plan, copy the returned `cursor_started`, `cursor_completed`, and
@@ -368,6 +411,7 @@ Source-pack response shape:
         "source_ref": "thread-ref",
         "body_hash": "sha256:hash",
         "actor": "user",
+        "sensitivity": "medium",
         "occurred_at": "2026-08-25T00:00:00Z",
         "ingested_at": "2026-08-25T00:01:00Z",
         "created_at": "2026-08-25T00:03:00Z"
