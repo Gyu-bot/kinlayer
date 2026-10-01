@@ -23,6 +23,7 @@ merge_accept_json="$TMP_DIR/merge-accept.json"
 fact_promote_source_json="$TMP_DIR/fact-promote-source.json"
 fact_promote_invalid_source_json="$TMP_DIR/fact-promote-invalid-source.json"
 fact_promote_json="$TMP_DIR/fact-promote.json"
+curation_plan_json="$TMP_DIR/curation-plan.json"
 
 echo "== Load acceptance fixtures =="
 python3 scripts/load-acceptance-fixtures.py --api-url "$API_URL" > "$fixture_json"
@@ -40,6 +41,45 @@ episode_id="$(read_fixture episodes.pending_candidate)"
 echo "== CLI status and init =="
 uv run kinlayer status --json > "$TMP_DIR/status.json"
 uv run kinlayer init --self-name "Acceptance CLI Self" --json > "$TMP_DIR/init.json"
+
+read -r curation_mode curation_policy_version < <(python3 - <<'PY'
+import json
+import os
+import urllib.request
+
+url = os.environ.get("KINLAYER_API_URL", "http://127.0.0.1:8765").rstrip("/")
+headers = {}
+token = os.environ.get("KINLAYER_API_TOKEN", "")
+if token:
+    headers["Authorization"] = f"Bearer {token}"
+request = urllib.request.Request(f"{url}/api/system/config", headers=headers)
+with urllib.request.urlopen(request, timeout=20) as response:
+    curation = json.loads(response.read().decode())["curation"]
+    print(curation["mode"], curation["policy_version"])
+PY
+)
+if [[ "$curation_mode" != "disabled" ]]; then
+  uv run kinlayer curation prepare --limit 10 --json > "$TMP_DIR/curation-source-pack.json"
+  python3 - "$curation_plan_json" "$curation_mode" "$curation_policy_version" <<'PY'
+import json
+import sys
+
+path, mode, policy_version = sys.argv[1:4]
+open(path, "w").write(json.dumps({
+    "mode": mode,
+    "policy_version": policy_version,
+    "input_candidate_count": 0,
+    "decisions": [],
+}))
+PY
+  uv run kinlayer curation plan-file "$curation_plan_json" --mode "$curation_mode" --json > "$TMP_DIR/curation-run.json"
+  curation_run_id="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['id'])" "$TMP_DIR/curation-run.json")"
+  uv run kinlayer curation show "$curation_run_id" --json > "$TMP_DIR/curation-show.json"
+  if [[ "$curation_mode" == "apply" ]]; then
+    uv run kinlayer curation execute "$curation_run_id" --json > "$TMP_DIR/curation-execute.json"
+    uv run kinlayer curation resume "$curation_run_id" --json > "$TMP_DIR/curation-resume.json"
+  fi
+fi
 
 echo "== CLI people =="
 uv run kinlayer person create \
@@ -84,13 +124,11 @@ payload = {
         "content": "CLI smoke accepted observation.",
         "claim_type": "fact",
         "ai_use_policy": "cautious_use",
-        "sensitivity": "medium",
     },
     "evidence": [
         {"episode_id": episode_id, "excerpt": "CLI smoke accepted observation.", "confidence": 0.9}
     ],
     "confidence": 0.9,
-    "sensitivity": "medium",
     "suggested_action": "review",
     "created_by": "ai_agent",
 }
@@ -125,7 +163,6 @@ def create_fact(content: str) -> dict:
         "content": content,
         "claim_type": "fact",
         "confidence": 0.9,
-        "sensitivity": "medium",
         "ai_use_policy": "cautious_use",
         "created_by": "user",
     }
@@ -148,7 +185,6 @@ uv run kinlayer fact promote "$fact_promote_source_id" \
   --fact-type email \
   --content "cli-smoke@example.com" \
   --field-path profile.email \
-  --sensitivity high \
   --ai-use-policy ask_before_use \
   --json > "$fact_promote_json"
 if uv run kinlayer fact promote "$fact_promote_invalid_source_id" \
@@ -179,7 +215,6 @@ payload = {
         "claim_type": "fact",
     },
     "confidence": 0.5,
-    "sensitivity": "medium",
     "suggested_action": "review",
     "created_by": "ai_agent",
 }
@@ -207,13 +242,11 @@ payload = {
         "content": "CLI smoke edit-accept draft.",
         "claim_type": "fact",
         "ai_use_policy": "cautious_use",
-        "sensitivity": "medium",
     },
     "evidence": [
         {"episode_id": episode_id, "excerpt": "CLI smoke edit-accept draft.", "confidence": 0.9}
     ],
     "confidence": 0.9,
-    "sensitivity": "medium",
     "suggested_action": "review",
     "created_by": "ai_agent",
 }
@@ -233,7 +266,6 @@ payload = {
     "content": "CLI smoke edited accepted observation.",
     "claim_type": "fact",
     "ai_use_policy": "cautious_use",
-    "sensitivity": "medium",
 }
 open(path, "w").write(json.dumps(payload))
 PY
@@ -254,13 +286,11 @@ payload = {
         "content": "CLI smoke rejected candidate.",
         "claim_type": "inference",
         "ai_use_policy": "cautious_use",
-        "sensitivity": "medium",
     },
     "evidence": [
         {"episode_id": episode_id, "excerpt": "CLI smoke rejected candidate.", "confidence": 0.8}
     ],
     "confidence": 0.8,
-    "sensitivity": "medium",
     "suggested_action": "review",
     "created_by": "ai_agent",
 }
@@ -285,13 +315,11 @@ payload = {
         "content": "CLI smoke needs clarification candidate.",
         "claim_type": "inference",
         "ai_use_policy": "cautious_use",
-        "sensitivity": "medium",
     },
     "evidence": [
         {"episode_id": episode_id, "excerpt": "CLI smoke needs clarification candidate.", "confidence": 0.7}
     ],
     "confidence": 0.7,
-    "sensitivity": "medium",
     "suggested_action": "review",
     "created_by": "ai_agent",
 }
@@ -318,7 +346,6 @@ payload = {
             "content": "CLI smoke corrected canonical observation.",
             "claim_type": "fact",
             "confidence": 1,
-            "sensitivity": "medium",
             "ai_use_policy": "cautious_use",
             "recency_weight": 1,
         },

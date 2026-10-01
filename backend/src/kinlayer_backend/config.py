@@ -16,9 +16,14 @@ class Settings(BaseSettings):
     api_port: int = 8765
     api_url: str = "http://127.0.0.1:8765"
     api_token: str | None = None
+    material_import_token: str | None = None
+    reconciliation_token: str | None = None
+    reconciliation_commitment_key: str | None = None
     database_url: str = "postgresql+psycopg://kinlayer:kinlayer@127.0.0.1:15432/kinlayer"
     bootstrap_self: bool = False
     self_name: str = "Self"
+    curation_mode: str = "disabled"
+    curation_policy_version: str = "curation-policy-v1"
     embedding_provider: str | None = Field(default=None)
     embedding_api_url: str | None = Field(default=None)
     embedding_api_key: str | None = Field(default=None)
@@ -30,10 +35,20 @@ class Settings(BaseSettings):
     def normalize_optional_int(cls, value: Any) -> Any:
         return None if value == "" else value
 
+    @field_validator("curation_mode")
+    @classmethod
+    def validate_curation_mode(cls, value: str) -> str:
+        if value not in {"disabled", "shadow", "apply"}:
+            raise ValueError("curation_mode must be disabled, shadow, or apply")
+        return value
+
     @model_validator(mode="after")
     def apply_embedding_defaults(self) -> "Settings":
         for field_name in (
             "api_token",
+            "material_import_token",
+            "reconciliation_token",
+            "reconciliation_commitment_key",
             "embedding_provider",
             "embedding_api_url",
             "embedding_api_key",
@@ -52,6 +67,19 @@ class Settings(BaseSettings):
             self.embedding_model = self.embedding_model or DEFAULT_OPENAI_EMBEDDING_MODEL
             self.embedding_dim = self.embedding_dim or DEFAULT_OPENAI_EMBEDDING_DIM
 
+        if (
+            self.reconciliation_token
+            and self.reconciliation_commitment_key == self.reconciliation_token
+        ):
+            raise ValueError("reconciliation commitment key must differ from bearer token")
+        if (
+            self.reconciliation_commitment_key
+            and len(self.reconciliation_commitment_key.encode("utf-8")) < 32
+        ):
+            raise ValueError("reconciliation commitment key must be at least 32 UTF-8 bytes")
+
+        if self.material_import_token and self.material_import_token in {self.api_token, self.reconciliation_token}:
+            raise ValueError("material import token must be separate from ordinary API/reconciliation tokens")
         return self
 
     @classmethod

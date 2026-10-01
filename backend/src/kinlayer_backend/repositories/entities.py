@@ -48,7 +48,6 @@ class EntityRepository:
         q: str | None = None,
         entity_type: str | None = None,
         status: str | None = None,
-        sensitivity: str | None = None,
         system_role: str | None = None,
         limit: int = 50,
         offset: int = 0,
@@ -70,8 +69,6 @@ class EntityRepository:
             filters.append(Entity.status == status)
         else:
             filters.append(Entity.status == "active")
-        if sensitivity:
-            filters.append(Entity.sensitivity == sensitivity)
         if system_role:
             filters.append(Entity.system_role == system_role)
         if filters:

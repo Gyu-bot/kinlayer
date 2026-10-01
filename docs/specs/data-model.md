@@ -1,5 +1,11 @@
 # Kinlayer Data Model
 
+> Sensitivity is retired. See [retirement and compatibility contract](sensitivity-retirement.md).
+
+`ReconciliationAction` uses existing JSON ledger fields for compact context commitments and verified outcomes;
+raw replies and prior excerpts are not stored there. Canonical context rows retain exact Episode evidence.
+This contract requires no `0011` migration.
+
 - Status: Draft v0.1
 - Parent PRD: `prd.md`
 - Related docs: `ontology-design.md`, `candidate-lifecycle-and-payload.md`, `context-output-contract.md`
@@ -127,7 +133,7 @@ preference
 pattern
 ```
 
-### Sensitivity
+### Legacy sensitivity (retired)
 
 ```text
 low
@@ -170,7 +176,7 @@ entities
 - properties jsonb not null default '{}'
 - confirmation_status text not null default 'confirmed'
 - status text not null default 'active'
-- sensitivity text not null default 'medium'
+- sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - ai_use_policy text not null default 'cautious_use'
 - created_by text not null
 - system_role text nullable              # e.g. self
@@ -245,7 +251,7 @@ entity_facts
 - value jsonb nullable                    # optional structured value
 - claim_type text not null
 - confidence numeric not null
-- sensitivity text not null default 'medium'
+- sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - ai_use_policy text not null default 'cautious_use'
 - status text not null default 'active'
 - valid_from timestamptz nullable
@@ -299,7 +305,7 @@ entity_edges
 - claim_type text not null
 - properties jsonb not null default '{}'
 - confidence numeric not null
-- sensitivity text not null default 'medium'
+- sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - ai_use_policy text not null default 'cautious_use'
 - status text not null default 'active'
 - valid_from timestamptz nullable
@@ -336,7 +342,7 @@ observations
 - content text not null
 - claim_type text not null
 - confidence numeric not null
-- sensitivity text not null default 'medium'
+- sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - ai_use_policy text not null default 'cautious_use'
 - status text not null default 'active'
 - valid_from timestamptz nullable
@@ -408,7 +414,7 @@ episodes
 - actor text not null
 - occurred_at timestamptz nullable
 - ingested_at timestamptz not null
-- sensitivity text not null default 'medium'
+- sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - retention_policy text not null default 'excerpt_only'
 - created_at timestamptz not null
 - updated_at timestamptz not null
@@ -445,7 +451,7 @@ candidates
 - target_entity_id uuid nullable references entities(id)
 - payload jsonb not null
 - confidence numeric not null
-- sensitivity text not null default 'medium'
+- sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - suggested_action text nullable
 - status text not null default 'pending'
 - created_by text not null
@@ -485,7 +491,7 @@ Merge payload fields:
 - `source_entity_id`: possible duplicate entity to retire from active person workflows.
 - `target_entity_id`: canonical entity that should remain active.
 - `merge_plan`: explicit plan for aliases, facts, edges, observations, evidence, and conflicts.
-- `field_conflict_policy`: per-field decisions for display name, canonical name, sensitivity,
+- `field_conflict_policy`: per-field decisions for display name, canonical name,
   AI use policy, profile facts, aliases, active edges, and observations.
 - `merged_entity_ref`: durable reference from the source entity to the target after execution.
 
@@ -567,7 +573,7 @@ allowed_edge_types
 allowed_observation_types
 ```
 
-`ontology_registry_values` stores controlled values by category, including `entity_type`, `fact_type`, `claim_type`, `sensitivity`, `ai_use_policy`, `retention_policy`, `evidence_source_type`, and `candidate_type`.
+`ontology_registry_values` stores controlled values by category, including `entity_type`, `fact_type`, `claim_type`, `ai_use_policy`, `retention_policy`, `evidence_source_type`, and `candidate_type`.
 
 ```text
 ontology_registry_values
@@ -643,9 +649,13 @@ surface bucket
 Stored policy metadata:
 
 ```text
-sensitivity
 ai_use_policy
 ```
+
+Reconciliation-derived context never downgrades AI-use policy. Exact current-reply claims use
+`cautious_use`. Prepared user-evidence claims preserve any stricter candidate AI-use policy.
+The reconciliation action's compact context manifest commits that policy,
+and fresh readback compares the derived candidate payload and canonical row exactly.
 
 Computed retrieval-time buckets:
 
@@ -704,3 +714,87 @@ Rules:
 3. `canonical_record_ref` remains string-based in the form `table:id`.
 4. MVP indexes cover entity type, canonical name, confirmation/status, aliases, facts, edges, observations, episodes, and evidence lookup paths used by current retrieval and smoke checks.
 5. Agent write operation export uses newline-delimited JSON with a manifest followed by bounded operation records.
+
+## 11. Curation State
+
+`curation_runs` stores mode/status, stable cursor tuples, immutable policy version, planner metadata,
+counts, bounded diagnostics, and timestamps. `curation_decisions` stores allowlisted action/status,
+candidate and episode IDs, exact reviewed candidate status/version/payload/evidence snapshots,
+proposed typed payload, deterministic reasons, global idempotency key,
+canonical reference, and bounded readback. Neither stores raw prompts, transcripts, sessions, or
+provider responses.
+
+Planner proposals transition `pending -> planning -> ready`. Apply execution uses
+`ready|partial|failed -> executing -> completed|partial`; decisions use
+`proposed -> allowed|blocked` and `allowed|failed -> executing -> executed|failed`. Consolidation
+creates one accepted replacement candidate and supersedes sources in the same transaction. Rollback
+leaves original candidates pending.
+
+Canonical tables with `source_candidate_id` use partial unique indexes for non-null values;
+`entity_merges.candidate_id` has the same guard. Candidate acceptance also takes a shared row lock and
+refreshes stale identity-map state before any insert. `executed/verified` is a second post-commit
+state transition after fresh exact reconciliation; unavailable reconciliation remains
+`failed/verification_unknown` and resume never rewrites the canonical row.
+
+## Reconciliation action ledger
+
+`reconciliation_actions` is the durable boundary for grouped, user-confirmed identity resolution.
+
+`enrichment_authorizations` is the durable, closed authority ledger for conversational enrichment.
+It stores an opaque authorization reference, stage idempotency fingerprint, one subject, exact
+backend entity snapshots, immutable compiled slots and bounded slot states, status, expiry, and
+timestamps. Stage readback derives one per-authorization answer capability from a server secret;
+the plaintext capability is never stored in the ledger. It never stores question text, reply text,
+chat metadata, prompts, model output, tokens, or transcripts.
+
+`enrichment_answer_actions` stores one idempotent answer resolution, its authorization FK,
+fingerprint, compact slot outcomes, derived candidate IDs, episode/canonical references, an immutable
+compact `source_snapshot`, readback state, errors, and timestamps. For actions with known answers the
+snapshot contains only source type/ref/actor/time, retention policy, the bounded known-evidence bundle
+hash, known slot IDs, and per-slot evidence digests. The bounded bundle itself lives only in the user
+Episode; exact per-known-slot evidence lives in CandidateEvidence and the corresponding canonical
+evidence row. For all-unknown/skip actions `source_snapshot` and `episode_id` are null and no Episode,
+candidate, canonical, or evidence row is created. Raw full replies, questions, bridge markers/tokens,
+Discord/provider payloads, prompts, model output, and transcripts are forbidden.
+These tables are separate from `reconciliation_actions`, so the identity reconciliation GET cannot
+read or verify enrichment actions.
+It stores a unique resolution/idempotency key and request fingerprint, action/status, bounded
+candidate IDs and exact reviewed snapshots, bounded expected entity snapshots/digests, optional
+source, target, and retained/derived entity IDs, a
+bounded confirmation episode reference, canonical outcome references, compact readback summary,
+error code, and timestamps. Status moves from intent to `committed_unverified` and then `verified`;
+a readback outage never rolls back or replays an already committed canonical mutation.
+The existing compact `readback_summary` also stores exactly one HMAC-authenticated PCR answer
+binding in the action transaction. The request fingerprint equals its canonical action digest;
+fresh readback revalidates the separate-key MAC, resolution/action fields, and digest before returning
+the binding. Only question/item identifiers, item/agenda/action/context digests, version, and MAC are
+stored—no question text, prior excerpts, source handles, bearer, or commitment key.
+Mapping stores and locks the exact reviewed target entity snapshot. Merge/archive lock parent entity
+rows, while dependent alias/fact/edge/observation/merge writers acquire the same ordered active-parent
+locks before insert or reactivation, preventing context from appearing after an empty-archive check.
+
+The table must not contain raw question/reply text, full sessions, prompts, provider payloads, or
+model output. Candidate rows are locked in stable ID order. Candidate changes, confirmation episode,
+canonical writes, and ledger outcome references share one transaction; exact post-commit readback
+uses a fresh session.
+
+For rename reconciliation with `relationship_to_self`, the existing source-entity field records the
+internally resolved protected-self endpoint, `derived_candidate_ids` includes the accepted
+`relationship_edge` candidate, and outcome references include its canonical edge. This is an action
+contract change only and requires no new migration. Verification fails closed unless candidate,
+confirmation evidence, canonical edge linkage, endpoints, relation type, claim text, and canonical
+reference all match exactly.
+
+Entity cleanup uses the same ledger with empty candidate inputs. `merge_existing_entities` locks
+the exact source and target person snapshots in ID order, creates and accepts one internal
+user-explicit merge candidate in the transaction, and verifies the redirect, active target, merge
+row, confirmation evidence, audit, and transferred context. `archive_existing_entity` soft-deletes
+only an empty active non-self person produced by a user-reviewed `new_entity` candidate. Active
+aliases, facts, edges, observations, related-observation membership, or merge dependencies fail
+closed and require merge or correction.
+
+Normal curation may automatically accept a single `new_entity` only for a specific named person
+supported by linked user-authored evidence and with no self, role/title, pronoun, generic-name,
+exact active name/alias, schema, evidence, identity, or conflict reason. Fuzzy similarity alone is
+not a blocker. Executors refresh run, decision, and candidates after acquiring locks; work already
+committed by another executor is reconciled/read back instead of being overwritten.

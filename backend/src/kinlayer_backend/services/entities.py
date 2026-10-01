@@ -8,8 +8,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
+from kinlayer_backend.schemas.common import without_legacy_sensitivity
 from kinlayer_backend.models import Entity, EntityAlias, EntityFact, EntityFactEvidence
 from kinlayer_backend.repositories.entities import EntityRepository
+from kinlayer_backend.services.entity_guards import lock_active_entities
 from kinlayer_backend.services.ontology import (
     CONFIRMATION_STATUSES,
     CREATED_BY_VALUES,
@@ -41,7 +43,6 @@ class FactPromotionPayload:
     content: str
     field_path: str | None = None
     value: JsonValue = None
-    sensitivity: str | None = None
     ai_use_policy: str | None = None
     created_by: str = "user"
     source_candidate_id: str | None = None
@@ -55,7 +56,6 @@ class FactPromotionResult:
 
 def validate_common(payload: dict[str, Any], session: Session, fact_type: bool = False) -> None:
     checks = {
-        "sensitivity": allowed_values("sensitivity"),
         "ai_use_policy": allowed_values("ai_use_policy"),
         "claim_type": allowed_values("claim_type"),
         "created_by": CREATED_BY_VALUES,
@@ -94,6 +94,7 @@ class EntityService:
         self.repository = EntityRepository(session)
 
     def create_entity(self, payload: dict[str, Any], commit: bool = True) -> Entity:
+        payload = without_legacy_sensitivity(payload)
         validate_common(payload, self.session)
         if payload.get("system_role") == "self":
             payload["entity_type"] = "person"
@@ -111,6 +112,7 @@ class EntityService:
             raise api_error(409, "conflict", "Entity conflicts with an existing record.") from exc
 
     def patch_entity(self, entity: Entity, payload: dict[str, Any]) -> Entity:
+        payload = without_legacy_sensitivity(payload)
         validate_common(payload, self.session)
         if entity.system_role == "self":
             if payload.get("system_role") != "self" and "system_role" in payload:
@@ -128,12 +130,16 @@ class EntityService:
         self.repository.commit_refresh([entity])
         return entity
 
-    def delete_entity(self, entity: Entity) -> Entity:
+    def delete_entity(self, entity: Entity, commit: bool = True) -> Entity:
+        entity = lock_active_entities(self.session, [entity.id])[entity.id]
         if entity.system_role == "self":
             raise api_error(403, "forbidden", "Protected self cannot be deleted.")
         entity.status = "deleted"
         entity.confirmation_status = "deprecated"
-        self.repository.commit_refresh([entity])
+        if commit:
+            self.repository.commit_refresh([entity])
+        else:
+            self.session.flush()
         return entity
 
     def create_alias(
@@ -143,10 +149,12 @@ class EntityService:
         commit: bool = True,
     ) -> EntityAlias:
         validate_common(payload, self.session)
-        return self.repository.add_alias(entity.id, payload, commit=commit)
+        locked = lock_active_entities(self.session, [entity.id])[entity.id]
+        return self.repository.add_alias(locked.id, payload, commit=commit)
 
     def patch_alias(self, alias: EntityAlias, payload: dict[str, Any]) -> EntityAlias:
         validate_common(payload, self.session)
+        lock_active_entities(self.session, [alias.entity_id])
         if "alias" in payload and payload["alias"]:
             payload["normalized_alias"] = normalize_name(payload["alias"])
         for key, value in payload.items():
@@ -160,17 +168,16 @@ class EntityService:
         return alias
 
     def create_fact(self, payload: dict[str, Any], commit: bool = True) -> EntityFact:
+        payload = without_legacy_sensitivity(payload)
         validate_common(payload, self.session, fact_type=True)
-        entity = self.repository.get_entity(payload["entity_id"])
-        if not entity:
-            raise api_error(404, "not_found", "Entity not found.")
-        if entity.status != "active":
-            raise api_error(409, "conflict", "Entity is not active.")
+        lock_active_entities(self.session, [payload["entity_id"]])
         payload["content"] = _normalized_fact_content(payload["fact_type"], payload["content"])
         return self.repository.add_fact(payload, commit=commit)
 
     def patch_fact(self, fact: EntityFact, payload: dict[str, Any]) -> EntityFact:
+        payload = without_legacy_sensitivity(payload)
         validate_common(payload, self.session, fact_type="fact_type" in payload)
+        lock_active_entities(self.session, [fact.entity_id])
         if "fact_type" in payload or "content" in payload:
             fact_type = payload["fact_type"] if "fact_type" in payload else fact.fact_type
             content = payload["content"] if "content" in payload else fact.content
@@ -235,7 +242,6 @@ class EntityService:
             },
             "claim_type": source.claim_type,
             "confidence": source.confidence,
-            "sensitivity": payload.sensitivity or source.sensitivity,
             "ai_use_policy": payload.ai_use_policy or source.ai_use_policy,
             "status": "active",
             "valid_from": source.valid_from,
@@ -364,7 +370,6 @@ class EntityService:
                         "field_conflict_policy": {
                             "display_name": "keep_target",
                             "canonical_name": "keep_target",
-                            "sensitivity": "use_more_restrictive",
                             "ai_use_policy": "use_more_restrictive",
                         },
                         "risk_notes": top["risk_notes"],
@@ -372,7 +377,6 @@ class EntityService:
                     },
                     "evidence": payload["evidence"],
                     "confidence": top["score"],
-                    "sensitivity": source.sensitivity or "medium",
                     "suggested_action": "review",
                     "created_by": payload.get("created_by") or "ai_agent",
                 }

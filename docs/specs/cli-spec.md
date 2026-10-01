@@ -18,6 +18,12 @@ ops + people bootstrap + candidate/correction workflows + context/debug/graph/em
 
 The CLI should be implemented with Typer.
 
+`kinlayer material-import --file manifest.json --json` validates a bounded, explicitly
+authorized source manifest without persistent writes. Add `--submit` only to create
+pending candidates; the command verifies receipt readback. It uses the separate
+`KINLAYER_MATERIAL_IMPORT_TOKEN`, never automatic post-turn evidence. See
+[authorized material imports](authorized-material-imports.md) for scope and activation.
+
 ---
 
 ## 2. Principles
@@ -101,7 +107,6 @@ MVP options:
 --name TEXT
 --alias TEXT  # repeatable optional
 --note TEXT   # lightweight short note / property
---sensitivity low|medium|high
 --ai-use-policy freely_use|cautious_use|ask_before_use|never_surface
 --json
 ```
@@ -198,7 +203,6 @@ Structured profile fact candidate example:
       "email": "alex@example.com"
     },
     "claim_type": "fact",
-    "sensitivity": "high",
     "ai_use_policy": "ask_before_use"
   },
   "evidence": [
@@ -209,7 +213,6 @@ Structured profile fact candidate example:
     }
   ],
   "confidence": 0.8,
-  "sensitivity": "high",
   "suggested_action": "review",
   "created_by": "ai_agent",
   "supersedes_record_ref": "entity_facts:general-fact-id"
@@ -238,7 +241,6 @@ Options:
 --type observation
 --target-entity-id <entity_id>
 --target <entity_id>
---sensitivity medium
 --json
 ```
 
@@ -323,7 +325,6 @@ Options:
 --fact-type legal_name|birth_date|phone|email|address|organization|role
 --content TEXT
 --field-path TEXT
---sensitivity low|medium|high
 --ai-use-policy freely_use|cautious_use|ask_before_use|never_surface
 --json
 ```
@@ -359,7 +360,6 @@ Structured profile fact correction example:
         "email": "alex.new@example.com"
       },
       "claim_type": "fact",
-      "sensitivity": "high",
       "ai_use_policy": "ask_before_use"
     }
   },
@@ -467,7 +467,6 @@ Options:
 ```bash
 --relation-type TEXT
 --status active
---sensitivity low|medium|high
 --depth 1
 --json
 ```
@@ -502,3 +501,17 @@ import management
 ```
 
 These capabilities exist in HTTP API where relevant and are covered by acceptance smoke scripts.
+## Curation CLI
+
+```text
+kinlayer curation prepare --limit 50 --json
+kinlayer curation plan-file PLAN.json --mode shadow --json
+kinlayer curation execute RUN_ID --json
+kinlayer curation resume RUN_ID --json
+kinlayer curation show RUN_ID --json
+```
+
+These commands reuse the canonical API and existing URL/token settings. The server mode is
+authoritative: `resume` may non-destructively recover persisted `pending|planning` runs in either
+enabled mode, but apply-run execution/reconciliation still requires configured server mode
+`apply`. Context card/pack commands accept `--include-provisional`.

@@ -135,7 +135,7 @@ Sensitive or restricted context can be retrieved for internal use without being 
 
 ### Steps
 
-1. Create observation with `ai_use_policy = never_surface` or high sensitivity.
+1. Create observation with `ai_use_policy = never_surface`.
 2. Run context retrieval/pack for a semantically relevant query.
 3. Inspect context buckets.
 
@@ -349,9 +349,33 @@ and then treated as a single active person by retrieval, context cards, and grap
 
 ---
 
+## Scenario M — Relationship Reconciliation Actions
+
+### Pass Criteria
+
+- The reconciliation POST and GET routes are disabled without their dedicated token and reject a
+  missing, wrong, or broad API token while accepting the dedicated bearer token.
+- Closed-schema, count/text/hash bounds, user-explicit confirmation provenance, and durable privacy
+  exclusions are enforced.
+- Exact reviewed candidate status, timestamp, payload digest, and evidence digest fence stale work;
+  the same resolution/fingerprint is idempotent and a changed fingerprint returns `409`.
+- Reject, map, grouped confirmation, and rename actions are atomic, preserve candidate evidence,
+  return all candidate outcomes, and create at most one entity. Protected self and role-title people
+  cannot be created, renamed, or mapped.
+- A post-commit readback outage leaves `committed_unverified`; a later POST retry or GET verifies in
+  a fresh session without repeating canonical writes.
+- Exact existing-person snapshots can merge into one active target with exactly one internal merge
+  candidate, merge row, confirmation evidence, and audit; retry never replays the merge.
+- A reviewed new person with no canonical context can be archived atomically. Any active context or
+  merge dependency rejects archive and requires merge or correction.
+- Normal curation promotes only user-evidenced specific named people. Self aliases, pronouns,
+  generic relation nouns, honorific/role-only, blank/one-character, exact active name/alias
+  collisions, and unresolved validation reasons remain pending; fuzzy similarity alone does not
+  block. A lock race reconciles the winner's committed result.
+
 ## MVP Exit Bar
 
-The MVP is not done until scenarios A through L pass in a local Docker Compose environment.
+The MVP is not done until scenarios A through M pass in a local Docker Compose environment.
 
 Minimum verification artifacts:
 
@@ -363,4 +387,4 @@ Minimum verification artifacts:
 - `python3 scripts/load-acceptance-fixtures.py` creates protected self, fixture people including a duplicate merge pair, aliases, facts, edges, observations, episodes, evidence, one pending candidate, one accepted candidate, and one correction;
 - `python3 scripts/smoke-acceptance-api.py` verifies API scenarios including entity resolve, duplicate detection, merge candidate acceptance, canonical evidence linkage, explicit correction provenance, corrected context pack behavior, policy buckets, graph, ontology, embeddings, and optional token boundary when `KINLAYER_API_TOKEN` is set;
 - `scripts/smoke-acceptance-cli.sh` verifies CLI status, people, entity resolve, duplicate detection, merge candidate show/accept, candidate submit/list/show/accept/reject/clarify, correction, context/retrieval, graph/debug, and embedding workflows.
-- scenarios A-L are manually or automatically verified.
+- scenarios A-M are manually or automatically verified.

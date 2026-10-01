@@ -37,9 +37,17 @@ async def validation_exception_handler(
     _request: Request,
     exc: RequestValidationError,
 ) -> JSONResponse:
+    safe_errors = [
+        {
+            key: value
+            for key, value in error.items()
+            if key in {"type", "loc", "msg"}
+        }
+        for error in exc.errors()
+    ]
     return error_response(
         422,
         "validation_error",
         "Request validation failed.",
-        {"errors": exc.errors()},
+        {"errors": safe_errors},
     )

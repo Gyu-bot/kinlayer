@@ -137,7 +137,6 @@ class AgentWriteFilter:
         payload.clear()
         payload.update(candidate.model_dump(mode="json"))
         self._check_registry("candidate_type", payload["candidate_type"], "candidate_type")
-        self._check_registry("sensitivity", payload.get("sensitivity", "medium"), "sensitivity")
         suggested_action = payload.get("suggested_action")
         if suggested_action and suggested_action not in SUGGESTED_ACTIONS:
             self._add_error("controlled_value_mismatch", "Invalid suggested_action.", "suggested_action")
@@ -161,7 +160,6 @@ class AgentWriteFilter:
                 "payload.observation_type",
             )
             self._check_registry("claim_type", payload["claim_type"], "payload.claim_type")
-            self._check_registry("sensitivity", payload.get("sensitivity", "medium"), "payload.sensitivity")
             self._check_registry(
                 "ai_use_policy",
                 payload.get("ai_use_policy", "cautious_use"),
@@ -223,7 +221,6 @@ class AgentWriteFilter:
                 payload.get("ai_use_policy", "cautious_use"),
                 "payload.ai_use_policy",
             )
-            self._check_registry("sensitivity", payload.get("sensitivity", "medium"), "payload.sensitivity")
         elif candidate_type == "merge":
             source = self._entity(payload["source_entity_id"], "payload.source_entity_id")
             target = self._entity(payload["target_entity_id"], "payload.target_entity_id")

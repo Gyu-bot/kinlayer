@@ -1,5 +1,14 @@
 # Kinlayer Agent Integration Notes
 
+Compile one composite reconciliation action per resolved person using exact reply spans or opaque
+manifest-bound user-evidence handles. Never send an independent value/paraphrase, call generic enrichment
+after reconciliation, or consume a second reply proof.
+
+Each action must carry exactly one PCR-generated answer binding signed with the separately protected
+reconciliation commitment key. Agents must never fabricate or edit it. The reconciliation bearer
+authorizes transport but cannot authenticate a question/item/agenda or context-claim substitution;
+Kinlayer verifies and atomically stores the binding, then returns it only on token-gated readback.
+
 - Status: Draft v0.1
 - Scope: Future integration with Hermes/Som, other AI agents, skills, plugins/tools, MCP, and memory-provider hooks
 - Parent PRD: `../specs/prd.md`
@@ -294,3 +303,183 @@ MVP should only include:
 - output schemas suitable for tool/plugin/MCP use later.
 
 Skills, Hermes plugins/tools, and runtime hooks are follow-up work after MVP completion.
+
+## Phase 5 Periodic-curator Adapter Contract
+
+The profile-local, provider-neutral adapter performs exactly this sequence:
+
+1. `POST /api/curation/source-packs` with its saved cursor and bounded budgets.
+   For deterministic replay, optionally send `upper_cursor`; Kinlayer returns only
+   `cursor < candidate <= upper_cursor` and computes `has_more` inside that bound.
+2. Only for `needs_source_lookup`, `ambiguous_identity`, or `missing_temporal_scope`, perform a
+   targeted lookup around returned source refs. Submit additional user-authored text through normal
+   episode/candidate APIs and prepare again. Never scan all sessions.
+3. Require the configured model to return one JSON object matching the run schema below.
+4. `POST /api/curation/runs` and inspect Kinlayer's persisted allow/block reasons.
+5. Stop at `ready` in `shadow`. If submission was interrupted with a persisted `pending` or
+   `planning` run, `/resume` may safely complete deterministic plan evaluation under either enabled
+   server mode, including after a move from shadow to apply. This recovery writes no candidate or
+   canonical state. In explicitly activated `apply`, call `/execute`; use `/resume` for
+   ready/executing/partial/failed apply reconciliation only while the server remains in apply.
+
+### Conversational enrichment boundary
+
+PCR may compile one natural, low-risk question into
+`POST /api/reconciliation/enrichment-authorizations`, but model output must never be forwarded as
+the authorization body. PCR selects an existing active confirmed person from existing snapshots or
+context cards and sends only the closed compiler contract. It must not send aliases, new entities,
+merges, corrections, arbitrary IDs/properties/field paths/policies, raw candidate payloads, question
+text, or replies.
+
+Before showing the visible question, trusted PCR must bind the plan subject to the authorization
+subject snapshot. The plan `display_name` must exactly equal snapshot `display_name`, unless PCR
+explicitly selected the snapshot's exact, nonempty `canonical_name` as the visible label. Aliases are
+not accepted as visible labels in v1. A mismatch (for example, a Mina plan paired with Bob's entity
+ID and therefore Bob's snapshot label) or `subject_ambiguous` must fail closed without showing the
+question.
+
+Stage returns a per-authorization answer capability. PCR is the trusted PCB-proof-verifying adapter:
+it stores that capability privately, never exposes it in model-visible status/question/bridge state,
+and supplies it only in `X-Kinlayer-Enrichment-Capability` for answer POST/read GET. The backend does
+not implement PCB reply proof. Capability-secret rotation invalidates outstanding capabilities;
+recovery is a same-body stage retry while the authorization remains open, or a fresh stage after
+expiry.
+
+Kinlayer's canonical and unresolved-candidate gap check is authoritative at both stage and answer.
+An exact matching `pending` or `needs_clarification` candidate returns
+`409 pending_gap_filled`; PCR must stop the proactive flow and must not add caller assertions or raw
+candidate payloads to the authorization request or response handling.
+
+For a later explicit user reply, PCR maps only to the returned slot IDs and sends sorted
+known/unknown/skip answers. Known evidence must be an exact bounded excerpt contained in the single
+known-evidence bundle; never send the full raw reply. Omit the bundle entirely when every answer is
+unknown/skip, which also means no Episode/evidence/candidate/canonical write. Kinlayer, not the
+model, compiles and accepts candidates and performs fresh readback.
+   Persist only cursor and run ID as adapter continuity state.
+
+For every non-empty plan, copy the returned `cursor_started`, `cursor_completed`, and
+`input_candidate_count` into the run fields unchanged. Kinlayer re-derives that pending window and
+requires every returned candidate ID to appear exactly once across all decisions. Do not omit a
+candidate merely because the planner chooses `defer`; emit an explicit defer decision. Do not repeat
+a candidate in multiple decisions. `consolidate_accept` may reference multiple candidates only when
+none also appears elsewhere. Out-of-window IDs, partial coverage, duplicates, count drift, and
+non-empty decisions for an empty window are rejected before persistence.
+
+If a bounded replay window is empty, the adapter may submit an auditable checkpoint only in apply
+mode: zero input, zero decisions, the returned lower cursor plus the requested `upper_cursor` as the
+complete start/end cursor pairs, and
+`diagnostics: {"replay_checkpoint": true}`. Kinlayer re-queries the exact tuple window and returns one
+empty completed run only when no pending candidate exists. Do not use this flag for ordinary empty
+runs, omit bounds, add other diagnostics, or infer emptiness client-side. Execute/resume of the
+completed checkpoint is idempotent and exists only to preserve normal cursor continuity.
+
+Source-pack response shape:
+
+```json
+{
+  "as_of": "2026-08-25T00:05:00Z",
+  "cursor_started": {
+    "created_at": "2026-07-26T00:05:00Z",
+    "candidate_id": ""
+  },
+  "cursor_completed": {
+    "created_at": "2026-08-25T00:04:00Z",
+    "candidate_id": "candidate-b"
+  },
+  "has_more": false,
+  "input_candidate_count": 2,
+  "groups": [{
+    "group_key": "entity:entity-id",
+    "target_entity_id": "entity-id",
+    "unresolved_identity_key": null,
+    "candidates": [{
+      "id": "candidate-a",
+      "candidate_type": "observation",
+      "target_entity_id": "entity-id",
+      "payload": {},
+      "confidence": 0.9,
+      "suggested_action": "accept",
+      "status": "pending",
+      "created_at": "2026-08-25T00:03:00Z",
+      "evidence": [{
+        "candidate_evidence_id": "evidence-link-id",
+        "episode_id": "episode-a",
+        "excerpt": "Bounded user-authored excerpt.",
+        "confidence": 0.9,
+        "source_type": "agent_conversation",
+        "source_ref": "thread-ref",
+        "body_hash": "sha256:hash",
+        "actor": "user",
+        "occurred_at": "2026-08-25T00:00:00Z",
+        "ingested_at": "2026-08-25T00:01:00Z",
+        "created_at": "2026-08-25T00:03:00Z"
+      }],
+      "validation_errors": [],
+      "validation_warnings": [],
+      "normalizations": []
+    }],
+    "target_context": {},
+    "signals": {
+      "exact_pending_duplicate_ids": [],
+      "exact_canonical_duplicate_refs": [],
+      "canonical_conflict_refs": []
+    },
+    "reason_codes": []
+  }],
+  "budgets": {
+    "candidate_limit": 50,
+    "max_age_days": 30,
+    "max_evidence_per_candidate": 5,
+    "max_excerpt_chars": 500,
+    "max_target_aliases": 10,
+    "max_target_observations": 20,
+    "max_source_payload_string_chars": 500,
+    "max_source_payload_bytes": 8192
+  },
+  "diagnostics": {
+    "selection": "pending_candidates_keyset",
+    "evidence_policy": "user_authored_only"
+  }
+}
+```
+
+```json
+{
+  "mode": "shadow",
+  "cursor_started_at": "2026-08-25T00:00:00Z",
+  "cursor_started_id": "candidate-start-id",
+  "cursor_completed_at": "2026-08-25T00:05:00Z",
+  "cursor_completed_id": "candidate-end-id",
+  "policy_version": "curation-policy-v1",
+  "input_candidate_count": 2,
+  "diagnostics": {},
+  "decisions": [{
+    "action": "consolidate_accept",
+    "risk_level": "low",
+    "candidate_ids": ["candidate-a", "candidate-b"],
+    "target_entity_id": "entity-id",
+    "proposed_payload": {
+      "subject_entity_id": "entity-id",
+      "related_entity_ids": [],
+      "observation_type": "communication_preference",
+      "content": "As of 2026-08-24, Casey prefers concise scheduling messages.",
+      "claim_type": "preference",
+      "ai_use_policy": "cautious_use",
+      "occurred_at": "2026-08-24T00:00:00Z"
+    },
+    "evidence_episode_ids": ["episode-a", "episode-b"],
+    "reason_codes": ["same_subject", "overlapping_claims"],
+    "policy_version": "curation-policy-v1",
+    "idempotency_key": "adapter-generated-stable-key",
+    "planner": {
+      "name": "kinlayer-periodic-curator",
+      "model": "provider/model",
+      "version": "adapter-v1"
+    }
+  }]
+}
+```
+
+The adapter must not persist raw prompts, full provider responses, full session bodies, secrets,
+chain-of-thought, tool output, or retrieved memory as evidence. Installation, scheduling, Gateway
+restart, `shadow -> apply`, and live database execution remain separate operator actions.

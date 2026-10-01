@@ -51,7 +51,6 @@ const localApiTokenKey = "kinlayer.apiToken";
 type CreatePersonInput = {
   displayName: string;
   aliases: string[];
-  sensitivity: string;
   aiUsePolicy: string;
   shortNote: string;
   factType: string;
@@ -68,7 +67,6 @@ export type PromoteFactInput = {
   content: string;
   field_path: string;
   value: string;
-  sensitivity: string;
   ai_use_policy: string;
 };
 
@@ -168,7 +166,7 @@ export function formatApiError(error: unknown) {
 
 export async function listPeople(
   query: string,
-  filters: {status?: string; sensitivity?: string} = {},
+  filters: {status?: string} = {},
 ) {
   const params = new URLSearchParams({entity_type: "person", limit: "50"});
   if (query.trim()) {
@@ -176,9 +174,6 @@ export async function listPeople(
   }
   if (filters.status && filters.status !== "all") {
     params.set("status", filters.status);
-  }
-  if (filters.sensitivity && filters.sensitivity !== "all") {
-    params.set("sensitivity", filters.sensitivity);
   }
   return request<ListResponse<Entity>>(`/api/entities?${params.toString()}`);
 }
@@ -254,7 +249,6 @@ export async function createPerson(input: CreatePersonInput) {
       display_name: input.displayName,
       properties: input.shortNote ? {short_note: input.shortNote} : {},
       confirmation_status: "confirmed",
-      sensitivity: input.sensitivity,
       ai_use_policy: input.aiUsePolicy,
       created_by: "user",
     }),
@@ -278,7 +272,6 @@ export async function createPerson(input: CreatePersonInput) {
         content: input.factContent,
         claim_type: "fact",
         confidence: 1,
-        sensitivity: input.sensitivity,
         ai_use_policy: input.aiUsePolicy,
         created_by: "user",
       }),
@@ -299,7 +292,6 @@ export async function createPerson(input: CreatePersonInput) {
       claim_text: input.initialRelationshipNote.trim(),
       claim_type: "fact",
       confidence: 1,
-      sensitivity: input.sensitivity,
       ai_use_policy: input.aiUsePolicy,
       created_by: "user",
     });
@@ -313,7 +305,6 @@ export async function createPerson(input: CreatePersonInput) {
       content: input.initialObservation.trim(),
       claim_type: "fact",
       confidence: 1,
-      sensitivity: input.sensitivity,
       ai_use_policy: input.aiUsePolicy,
       recency_weight: 1,
       created_by: "user",
@@ -374,9 +365,6 @@ export async function listCandidates(filters: CandidateFilters) {
   params.set("limit", "50");
   if (filters.candidate_type && filters.candidate_type !== "all") {
     params.set("candidate_type", filters.candidate_type);
-  }
-  if (filters.sensitivity && filters.sensitivity !== "all") {
-    params.set("sensitivity", filters.sensitivity);
   }
   return request<ListResponse<Candidate>>(`/api/candidates?${params.toString()}`);
 }
@@ -449,9 +437,6 @@ export async function getEgoGraph(entityId: string, filters: GraphFilters) {
   }
   if (filters.status && filters.status !== "active") {
     params.set("status", filters.status);
-  }
-  if (filters.sensitivity && filters.sensitivity !== "all") {
-    params.set("sensitivity", filters.sensitivity);
   }
   return request<EgoGraph>(`/api/graph/ego/${entityId}?${params.toString()}`);
 }

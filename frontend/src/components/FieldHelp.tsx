@@ -13,10 +13,6 @@ export function FieldHelp({label, help}: Props) {
 }
 
 export const helpCopy = {
-  sensitivity: {
-    label: "Sensitivity",
-    help: "이 정보가 얼마나 조심스럽게 다뤄져야 하는지",
-  },
   policy: {
     label: "AI use policy",
     help: "답변에 직접 말해도 되는지, 내부 참고만 해야 하는지",

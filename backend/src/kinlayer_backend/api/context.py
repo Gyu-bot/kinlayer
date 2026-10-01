@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.database import get_session
@@ -28,5 +28,12 @@ def pack_context(payload: ContextPackRequest, session: SessionDep):
 
 
 @router.get("/api/entities/{entity_id}/context-card", response_model=ContextCardResponse)
-def context_card(entity_id: str, session: SessionDep):
-    return ContextService(session).context_card(entity_id)
+def context_card(
+    entity_id: str,
+    session: SessionDep,
+    include_provisional: bool = Query(default=False),
+):
+    return ContextService(session).context_card(
+        entity_id,
+        include_provisional=include_provisional,
+    )

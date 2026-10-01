@@ -2,7 +2,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from kinlayer_backend.schemas.common import APIModel
+from kinlayer_backend.schemas.common import APIModel, PublicReadModel
 
 
 class AgentWriteValidateRequest(APIModel):
@@ -24,7 +24,7 @@ class AgentWriteValidationIssue(APIModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
-class AgentWriteValidationResponse(APIModel):
+class AgentWriteValidationResponse(PublicReadModel):
     accepted: bool
     validated_payload: dict[str, Any]
     normalizations_applied: list[AgentWriteNormalization] = Field(default_factory=list)

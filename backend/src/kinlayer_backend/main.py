@@ -1,5 +1,6 @@
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+import hmac
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -9,13 +10,16 @@ from sqlalchemy import inspect
 
 from kinlayer_backend.api.agent_operations import router as agent_operations_router
 from kinlayer_backend.api.agent_writes import router as agent_writes_router
+from kinlayer_backend.api.material_imports import router as material_imports_router
 from kinlayer_backend.api.candidates import router as candidates_router
 from kinlayer_backend.api.context import router as context_router
+from kinlayer_backend.api.curation import router as curation_router
 from kinlayer_backend.api.corrections import router as corrections_router
 from kinlayer_backend.api.embeddings import router as embeddings_router
 from kinlayer_backend.api.entities import router as entities_router
 from kinlayer_backend.api.graph import router as graph_router
 from kinlayer_backend.api.ontology import router as ontology_router
+from kinlayer_backend.api.reconciliation import router as reconciliation_router
 from kinlayer_backend.api.errors import (
     error_response,
     http_exception_handler,
@@ -30,6 +34,7 @@ from kinlayer_backend.services.entities import EntityService
 from kinlayer_backend.services.ontology import seed_ontology_values
 
 PUBLIC_PATHS = {"/api/system/health", "/api/system/version"}
+RECONCILIATION_PATH_PREFIX = "/api/reconciliation/"
 LOCAL_WEB_ORIGIN_REGEX = (
     r"^https?://("
     r"localhost|"
@@ -75,7 +80,30 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
         request: Request,
         call_next: Callable[[Request], Awaitable[Any]],
     ):
-        if (
+        if request.url.path.startswith("/api/material-imports/"):
+            if not settings.material_import_token:
+                return error_response(404, "not_found", "Material imports are disabled.")
+            if not hmac.compare_digest(request.headers.get("authorization", ""), f"Bearer {settings.material_import_token}"):
+                return error_response(401, "unauthorized", "Material import token is required.")
+            return await call_next(request)
+        enrichment_answer_path = RECONCILIATION_PATH_PREFIX + "enrichment-answers"
+        is_enrichment_answer = request.url.path == enrichment_answer_path or request.url.path.startswith(
+            enrichment_answer_path + "/"
+        )
+        if request.url.path.startswith(RECONCILIATION_PATH_PREFIX) and not settings.reconciliation_token:
+            return error_response(404, "not_found", "Reconciliation routes are disabled.")
+        if request.url.path.startswith(RECONCILIATION_PATH_PREFIX) and not is_enrichment_answer:
+            if request.method == "OPTIONS":
+                return await call_next(request)
+            expected = f"Bearer {settings.reconciliation_token}"
+            provided = request.headers.get("authorization", "")
+            if not hmac.compare_digest(provided, expected):
+                return error_response(
+                    401, "unauthorized", "Bearer reconciliation token is required."
+                )
+        elif (
+            not is_enrichment_answer
+            and
             settings.api_token
             and request.method != "OPTIONS"
             and request.url.path not in PUBLIC_PATHS
@@ -90,12 +118,15 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
     app.include_router(relationships_router)
     app.include_router(embeddings_router)
     app.include_router(candidates_router)
+    app.include_router(material_imports_router)
     app.include_router(corrections_router)
     app.include_router(context_router)
+    app.include_router(curation_router)
     app.include_router(graph_router)
     app.include_router(ontology_router)
     app.include_router(agent_operations_router)
     app.include_router(agent_writes_router)
+    app.include_router(reconciliation_router)
 
     return app
 
@@ -114,7 +145,6 @@ def _ensure_protected_self(session, self_name: str) -> None:
             "system_role": "self",
             "is_system": True,
             "confirmation_status": "confirmed",
-            "sensitivity": "medium",
             "ai_use_policy": "cautious_use",
         }
     )

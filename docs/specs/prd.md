@@ -128,7 +128,7 @@ MVP episodes store:
 - bounded excerpt;
 - body hash;
 - occurred_at / ingested_at;
-- sensitivity / retention policy.
+- retention policy.
 
 Full raw body retention is out of MVP. Reliability should come from correction, supersede, deprecate, evidence links, and retrieval updates.
 
@@ -139,7 +139,6 @@ AI agents may use context internally without directly surfacing it.
 Kinlayer separates:
 
 ```text
-sensitivity = information sensitivity
 ai_use_policy = stored default usage policy
 surface_visibility = retrieval-time computed bucket
 ```
@@ -264,7 +263,7 @@ MVP embeds:
 
 ```text
 observations.content
-query / situation_text at retrieval time
+query, plus optional pack-only situation, at retrieval time
 ```
 
 MVP does not embed:
@@ -531,20 +530,26 @@ Agents send:
 
 ```text
 query
-situation_text
-retrieval_intent
-desired_context
-candidate_entities
+entity_hints
 focal_entity_id optional
-time_window
-include_pending_recent
-max_results
-debug
+query_embedding optional
+include_debug
+limit
+situation optional, context-pack only
+include_provisional, context-pack only
 ```
 
-`situation_text` is the semantic embedding target / normalized situation description.
+`situation` is combined with `query` for context-pack retrieval. Request schemas use
+`extra = forbid`: legacy fields such as `situation_text`, `retrieval_intent`, `desired_context`,
+`candidate_entities`, `time_window`, `include_pending_recent`, `max_results`, and `debug` are
+rejected with HTTP 422 rather than silently ignored.
 
-`situation_tags`, if present, are optional weak hints only. Specific situation understanding should not depend on enum tags.
+Raw retrieval returns `matched_entities`, `observations`, `scores`, `match_reasons`,
+`score_breakdown`, `ambiguity_detected`, and wrapper-level `debug`. Context pack returns
+`{context_pack, debug}`; the inner pack contains `confidence`, `suggested_response_policy`,
+`ambiguity_detected`, `matched_entities`, `buckets`, `recent_context`, `stable_context`, `cautions`,
+`provenance`, and the separate opt-in `provisional_context`. Person context cards use the exact keys
+listed in `context-output-contract.md`.
 
 ### Hybrid retrieval signals
 
@@ -563,7 +568,7 @@ Penalties include:
 
 ```text
 ambiguity
-sensitivity/surface constraints
+surface constraints
 stale/deprecated status
 policy blocks
 ```
@@ -585,7 +590,7 @@ Ambiguity guard prevents/downgrades high confidence when:
 - top1-top2 score gap is small;
 - reference resolution confidence is low;
 - focal_entity_id is absent with pronoun/implicit reference;
-- policy/sensitivity conflicts exist.
+- policy conflicts exist.
 
 Suggested response policy is based on confidence + surface buckets:
 
@@ -708,7 +713,6 @@ edge types
 observation types
 entity_fact types
 claim types
-sensitivity values
 ai_use_policy values
 candidate types
 retrieval/UI filters
@@ -778,8 +782,8 @@ Minimum verification artifacts:
 
 ## 18. Implementation Plan
 
-Implementation planning now lives in `../../.omo/plans/index.md`. The archived
-vertical-slice baseline is preserved at
+The current implementation plan lives in
+`../plans/relationship-curation-cycle.md`. The archived vertical-slice baseline is preserved at
 `../archive/planning/implementation-plan-2026-06-27.md` for historical context
 only.
 
@@ -810,8 +814,7 @@ Each slice must leave the product runnable and verify at least one real workflow
 - `cli-spec.md` — MVP CLI command set and raw API escape hatch.
 - `web-ui-spec.md` — minimal Web UI screens and behavior.
 - `acceptance-scenarios.md` — journey-level MVP acceptance scenarios and exit bar.
-- `../../.omo/plans/index.md` — active execution-plan index.
-- `../../.omo/plans/kinlayer-next-work.md` — next structured profile fact work package.
+- `../plans/relationship-curation-cycle.md` — current approved periodic curation implementation plan.
 - `../archive/planning/implementation-plan-2026-06-27.md` — historical vertical implementation baseline.
 - `../agents/agent-integration-notes.md` — future skill/plugin/tool/MCP/runtime-hook integration notes; non-blocking for MVP.
 
@@ -824,7 +827,7 @@ For implementation work, use this PRD together with:
 ```text
 api-spec.md
 data-model.md
-../../.omo/plans/index.md
+../plans/relationship-curation-cycle.md
 acceptance-scenarios.md
 ```
 

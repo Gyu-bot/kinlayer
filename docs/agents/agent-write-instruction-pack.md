@@ -1,5 +1,7 @@
 # Kinlayer Agent Write Instruction Pack
 
+> Sensitivity is retired. See [retirement and compatibility contract](../specs/sensitivity-retirement.md).
+
 - Status: Draft v0.1
 - Scope: Instructions for AI agents, skills, plugins, MCP adapters, and runtime hooks that write or propose data into Kinlayer
 - Parent docs: `../specs/api-spec.md`, `../specs/candidate-lifecycle-and-payload.md`, `../specs/ontology-design.md`
@@ -28,15 +30,17 @@ Ambiguous or unsupported memory -> no write, or ask for clarification
 2. Never invent controlled values.
 3. Use candidates for inferred agent writes.
 4. Use direct correction apply only for explicit user corrections.
-5. Use evidence only from user-authored source text.
-6. Do not use assistant text, tool output, retrieved context, or your own inference as evidence.
+5. Ordinary automatic post-turn writes use only current-turn user-authored source text.
+6. Explicit user-authorized material imports use only the separate [bounded import contract](../specs/authorized-material-imports.md). Actual human authorship is preserved, never relabeled as `user`. Assistant analysis may be a source-grounded synthesis, never its own evidence. Generic tool output, retrieved context, and inference alone remain ineligible.
 7. Do not create relationship edges for advice, feelings, reply strategy, caution, communication preference, or recent interaction interpretation.
 8. If the target person or old record is ambiguous, do not write a canonical correction.
 9. If the correct ontology value is missing, stop instead of creating a new value.
 10. Verify the API response and surface validation failures as diagnostics, not as rewritten facts.
-11. Do not use optional LLM-assisted background curation unless the user has explicitly approved a
-    separate implementation plan; it remains deferred, disabled by default, review-only, and
-    candidate-producing only.
+11. Periodic relationship curation is implemented but runtime-disabled by default.
+    `../plans/relationship-curation-cycle.md` remains the contract. An external curator may consume
+    only bounded source packs and propose a structured plan; only Kinlayer's deterministic policy and
+    transactional executor may promote an
+    allowlisted decision into canonical state.
 
 Controlled fields include at least:
 
@@ -46,7 +50,6 @@ relation_type
 observation_type
 fact_type
 claim_type
-sensitivity
 ai_use_policy
 entity_type
 source_type
@@ -60,7 +63,7 @@ suggested_action
 Before any write-like call, run this flow.
 
 ```text
-1. Identify the user-authored statement that justifies the write.
+1. Identify current-turn user evidence; for explicit material imports, use the separate manifest/authorization validation and submit operation instead of this ordinary flow.
 2. Resolve the target entity or entities.
 3. Fetch ontology and controlled values.
 4. Classify the proposed memory into one Kinlayer write type.
@@ -174,14 +177,15 @@ Use only active `observation_type` values from the ontology.
 
 ## 7. Evidence Rules
 
-Evidence must be small, attributable, and user-authored.
+Evidence must be small and attributable. Ordinary post-turn evidence must be current-turn user-authored. A user-requested source-material import is a separate operation, not an expansion of ordinary evidence admission.
 
 Allowed evidence:
 
 ```text
 - current-turn user message text;
-- a bounded excerpt from a user-authored source;
-- an imported source excerpt with a stable source reference.
+- explicitly authorized supplied chat/document/transcript or designated external human source,
+  ONLY via /api/material-imports/validate then /submit with its bounded manifest and exact
+  user authorization reference; never an ordinary tool result or arbitrary retrieved memory.
 ```
 
 Disallowed evidence:
@@ -415,7 +419,6 @@ All candidate submissions use this envelope shape:
     }
   ],
   "confidence": 0.72,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -438,8 +441,7 @@ Use `suggested_action: "accept"` only when the user statement is explicit, the t
     "display_name": "Minji",
     "canonical_name": "minji",
     "properties": {},
-    "ai_use_policy": "cautious_use",
-    "sensitivity": "medium"
+    "ai_use_policy": "cautious_use"
   },
   "evidence": [
     {
@@ -449,7 +451,6 @@ Use `suggested_action: "accept"` only when the user statement is explicit, the t
     }
   ],
   "confidence": 0.8,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -474,7 +475,6 @@ Use `suggested_action: "accept"` only when the user statement is explicit, the t
     }
   ],
   "confidence": 0.82,
-  "sensitivity": "low",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -513,7 +513,6 @@ includes them.
       "organization": "Example Corp"
     },
     "claim_type": "fact",
-    "sensitivity": "medium",
     "ai_use_policy": "cautious_use"
   },
   "evidence": [
@@ -524,7 +523,6 @@ includes them.
     }
   ],
   "confidence": 0.88,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -565,7 +563,6 @@ Only use this when `former_coworker` is an active `allowed_edge_types.relation_t
     }
   ],
   "confidence": 0.9,
-  "sensitivity": "medium",
   "suggested_action": "accept",
   "created_by": "ai_agent"
 }
@@ -586,7 +583,6 @@ If the user says "Minji is important to me" or "I should be careful with Minji",
     "content": "Minji prefers concise replies.",
     "claim_type": "preference",
     "ai_use_policy": "cautious_use",
-    "sensitivity": "medium",
     "occurred_at": null,
     "valid_from": null,
     "valid_to": null
@@ -599,7 +595,6 @@ If the user says "Minji is important to me" or "I should be careful with Minji",
     }
   ],
   "confidence": 0.84,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -639,7 +634,6 @@ Preferred discovery flow:
     }
   ],
   "confidence": 0.7,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -665,7 +659,6 @@ Preferred discovery flow:
     }
   ],
   "confidence": 0.8,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -689,8 +682,7 @@ Use `conflict` when the old record or intended replacement is not safe enough fo
         "observation_type": "relationship_context",
         "content": "Minji is currently a client contact, not only a former coworker.",
         "claim_type": "fact",
-        "ai_use_policy": "cautious_use",
-        "sensitivity": "medium"
+        "ai_use_policy": "cautious_use"
       }
     },
     "reason": "Newer user statement is more specific."
@@ -703,7 +695,6 @@ Use `conflict` when the old record or intended replacement is not safe enough fo
     }
   ],
   "confidence": 0.78,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -736,7 +727,6 @@ Use direct correction only when all are true:
       "properties": {},
       "confidence": 0.95,
       "status": "active",
-      "sensitivity": "medium",
       "ai_use_policy": "cautious_use",
       "created_by": "ai_agent"
     }
@@ -771,7 +761,6 @@ Invalid:
     "properties": {}
   },
   "confidence": 0.84,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -797,7 +786,6 @@ Safer alternative when `communication_preference` is an active observation type:
     "content": "Minji prefers short replies.",
     "claim_type": "preference",
     "ai_use_policy": "cautious_use",
-    "sensitivity": "medium",
     "occurred_at": null,
     "valid_from": null,
     "valid_to": null
@@ -810,7 +798,6 @@ Safer alternative when `communication_preference` is an active observation type:
     }
   ],
   "confidence": 0.84,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -966,7 +953,7 @@ Treat UI relationship type, API relation_type, relationship_edge.relation_type, 
 Use candidates for inferred memory. Use /api/corrections/apply only for explicit user corrections with an unambiguous old record.
 Edges are durable structural relationships. Preferences, cautions, feelings, reply strategy, recent interactions, and advice are observations, not edges.
 Observation content must be self-contained. If a useful observation depends on relative time such as "this week", "yesterday", "recently", or "지난번", resolve it against the source timestamp and record an absolute date/range when possible.
-Evidence must be a bounded user-authored excerpt. Never use assistant text, tool output, retrieved context, or guesses as evidence.
+Ordinary post-turn evidence must be a bounded current-turn user-authored excerpt. Explicit user-authorized source material uses only the separate material-import manifest route, preserving the human author and source linkage. Never treat assistant analysis, generic tool output, retrieved context, or guesses as human original evidence.
 If the entity, record, or ontology value is ambiguous or missing, do not write; ask for clarification or return a no-write diagnostic.
 ```
 
@@ -990,4 +977,4 @@ kinlayer_list_recent_write_audit() # future diagnostics
 
 The deterministic service guard should validate schema, registry membership, endpoint entity-type compatibility, evidence presence, and low-risk exact normalization. It should not use an LLM, fuzzy semantic matching, synonym lists, or keyword-based intent rewriting.
 
-LLM-assisted background curation is deferred and disabled by default. If a later plan enables it, the workflow must stay review-only, must never directly write canonical records, and must still pass deterministic validation before creating candidates.
+Periodic curation is implemented but remains `disabled` until a runtime mode is explicitly enabled. The external curator must consume bounded candidate/evidence packs and emit the structured plan in `agent-integration-notes.md`. It must never mutate canonical records directly. Kinlayer executes only deterministic, allowlisted decisions, and every promotion preserves evidence, candidate state transitions, idempotency, transactional rollback, and exact canonical readback. Identity, graph, sensitive, ambiguous, and conflicting changes remain review exceptions.

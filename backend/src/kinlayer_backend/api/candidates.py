@@ -66,7 +66,6 @@ def list_candidates(
     status: str | None = None,
     candidate_type: str | None = None,
     target_entity_id: str | None = None,
-    sensitivity: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
@@ -74,7 +73,6 @@ def list_candidates(
         status=status,
         candidate_type=candidate_type,
         target_entity_id=target_entity_id,
-        sensitivity=sensitivity,
         limit=limit,
         offset=offset,
     )
@@ -158,6 +156,7 @@ def edit_accept_candidate(
             "candidate_edit_accept",
             f"/api/candidates/{candidate_id}/edit-accept",
             exc,
+            attempted_payload=payload.payload,
         )
         raise
     AgentOperationService(session).record_candidate_action(

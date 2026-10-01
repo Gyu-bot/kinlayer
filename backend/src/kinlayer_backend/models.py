@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -118,6 +119,7 @@ class Entity(Base, TimestampMixin):
     properties: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
     confirmation_status: Mapped[str] = mapped_column(String(40), default="confirmed")
     status: Mapped[str] = mapped_column(String(40), default="active")
+    # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
     ai_use_policy: Mapped[str] = mapped_column(String(60), default="cautious_use")
     created_by: Mapped[str] = mapped_column(String(60), nullable=False)
@@ -141,6 +143,13 @@ class EntityAlias(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_entity_aliases_entity_id", "entity_id"),
         Index("ix_entity_aliases_normalized_alias", "normalized_alias"),
+        Index(
+            "ux_entity_aliases_source_candidate_id",
+            "source_candidate_id",
+            unique=True,
+            sqlite_where=text("source_candidate_id is not null"),
+            postgresql_where=text("source_candidate_id is not null"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -161,6 +170,13 @@ class EntityFact(Base, TimestampMixin):
         Index("ix_entity_facts_entity_id", "entity_id"),
         Index("ix_entity_facts_fact_type", "fact_type"),
         Index("ix_entity_facts_status", "status"),
+        Index(
+            "ux_entity_facts_source_candidate_id",
+            "source_candidate_id",
+            unique=True,
+            sqlite_where=text("source_candidate_id is not null"),
+            postgresql_where=text("source_candidate_id is not null"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -170,6 +186,7 @@ class EntityFact(Base, TimestampMixin):
     value: Mapped[dict | None] = mapped_column(JSON_TYPE)
     claim_type: Mapped[str] = mapped_column(String(60), nullable=False)
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), default=1.0)
+    # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
     ai_use_policy: Mapped[str] = mapped_column(String(60), default="cautious_use")
     status: Mapped[str] = mapped_column(String(40), default="active")
@@ -179,6 +196,15 @@ class EntityFact(Base, TimestampMixin):
     created_by: Mapped[str] = mapped_column(String(60), nullable=False)
 
     entity: Mapped[Entity] = relationship(back_populates="facts")
+
+
+class MaterialImport(Base, TimestampMixin):
+    __tablename__ = "material_imports"
+
+    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    request_sha256: Mapped[str] = mapped_column(String(71), unique=True, nullable=False)
+    manifest: Mapped[dict] = mapped_column(JSON_TYPE, nullable=False)
+    candidate_links: Mapped[dict] = mapped_column(JSON_TYPE, default=dict, nullable=False)
 
 
 class Episode(Base, TimestampMixin):
@@ -192,11 +218,13 @@ class Episode(Base, TimestampMixin):
     source_type: Mapped[str] = mapped_column(String(80), nullable=False)
     source_ref: Mapped[str | None] = mapped_column(String(500))
     source_description: Mapped[str | None] = mapped_column(Text)
+    material_import_id: Mapped[str | None] = mapped_column(ForeignKey("material_imports.id"))
     body_excerpt: Mapped[str] = mapped_column(Text, nullable=False)
     body_hash: Mapped[str] = mapped_column(String(120), nullable=False)
     actor: Mapped[str] = mapped_column(String(80), nullable=False)
     occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
     retention_policy: Mapped[str] = mapped_column(String(60), default="excerpt_only")
 
@@ -208,6 +236,13 @@ class EntityEdge(Base, TimestampMixin):
         Index("ix_entity_edges_to_entity_id", "to_entity_id"),
         Index("ix_entity_edges_relation_type", "relation_type"),
         Index("ix_entity_edges_status", "status"),
+        Index(
+            "ux_entity_edges_source_candidate_id",
+            "source_candidate_id",
+            unique=True,
+            sqlite_where=text("source_candidate_id is not null"),
+            postgresql_where=text("source_candidate_id is not null"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -219,6 +254,7 @@ class EntityEdge(Base, TimestampMixin):
     claim_type: Mapped[str] = mapped_column(String(60), nullable=False)
     properties: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), default=1.0)
+    # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
     ai_use_policy: Mapped[str] = mapped_column(String(60), default="cautious_use")
     status: Mapped[str] = mapped_column(String(40), default="active")
@@ -238,6 +274,13 @@ class Observation(Base, TimestampMixin):
         Index("ix_observations_observation_type", "observation_type"),
         Index("ix_observations_status", "status"),
         Index("ix_observations_claim_type", "claim_type"),
+        Index(
+            "ux_observations_source_candidate_id",
+            "source_candidate_id",
+            unique=True,
+            sqlite_where=text("source_candidate_id is not null"),
+            postgresql_where=text("source_candidate_id is not null"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -246,6 +289,7 @@ class Observation(Base, TimestampMixin):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     claim_type: Mapped[str] = mapped_column(String(60), nullable=False)
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), default=1.0)
+    # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
     ai_use_policy: Mapped[str] = mapped_column(String(60), default="cautious_use")
     status: Mapped[str] = mapped_column(String(40), default="active")
@@ -336,6 +380,7 @@ class Candidate(Base, TimestampMixin):
     target_entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id"))
     payload: Mapped[dict] = mapped_column(JSON_TYPE, nullable=False)
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), nullable=False)
+    # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
     suggested_action: Mapped[str | None] = mapped_column(String(80))
     status: Mapped[str] = mapped_column(String(40), default="pending")
@@ -390,6 +435,203 @@ class CandidateEvidence(Base):
     def actor(self) -> str | None:
         return self.episode.actor if self.episode else None
 
+    @property
+    def material_import_id(self) -> str | None:
+        return self.episode.material_import_id if self.episode else None
+
+
+class ReconciliationAction(Base, TimestampMixin):
+    __tablename__ = "reconciliation_actions"
+    __table_args__ = (
+        UniqueConstraint("resolution_id", name="uq_reconciliation_actions_resolution_id"),
+        CheckConstraint(
+            "status in ('pending', 'committed_unverified', 'verified', 'verification_failed')",
+            name="ck_reconciliation_actions_status",
+        ),
+        Index("ix_reconciliation_actions_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    resolution_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="pending", nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(71), nullable=False)
+    candidate_ids: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    expected_candidates: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    expected_entities: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    source_entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id"))
+    target_entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id"))
+    primary_entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id"))
+    derived_candidate_ids: Mapped[list] = mapped_column(JSON_TYPE, default=list, nullable=False)
+    confirmation_episode_id: Mapped[str | None] = mapped_column(ForeignKey("episodes.id"))
+    outcome_canonical_refs: Mapped[list] = mapped_column(JSON_TYPE, default=list, nullable=False)
+    readback_summary: Mapped[dict | None] = mapped_column(JSON_TYPE)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EnrichmentAuthorization(Base, TimestampMixin):
+    __tablename__ = "enrichment_authorizations"
+    __table_args__ = (
+        UniqueConstraint("authorization_ref", name="uq_enrichment_authorizations_ref"),
+        UniqueConstraint("stage_idempotency_key", name="uq_enrichment_authorizations_stage_key"),
+        CheckConstraint(
+            "status in ('open', 'partially_answered', 'completed', 'expired', 'cancelled')",
+            name="ck_enrichment_authorizations_status",
+        ),
+        Index("ix_enrichment_authorizations_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    authorization_ref: Mapped[str] = mapped_column(String(120), nullable=False)
+    stage_idempotency_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    stage_fingerprint: Mapped[str] = mapped_column(String(71), nullable=False)
+    topic: Mapped[str] = mapped_column(String(80), nullable=False)
+    subject_entity_id: Mapped[str] = mapped_column(ForeignKey("entities.id"), nullable=False)
+    entity_snapshots: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    slots: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    slot_states: Mapped[dict] = mapped_column(JSON_TYPE, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="open", nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EnrichmentAnswerAction(Base, TimestampMixin):
+    __tablename__ = "enrichment_answer_actions"
+    __table_args__ = (
+        UniqueConstraint("resolution_id", name="uq_enrichment_answer_actions_resolution_id"),
+        CheckConstraint(
+            "status in ('pending', 'committed_unverified', 'verified', 'verification_failed')",
+            name="ck_enrichment_answer_actions_status",
+        ),
+        Index("ix_enrichment_answer_actions_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    resolution_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    authorization_id: Mapped[str] = mapped_column(
+        ForeignKey("enrichment_authorizations.id"), nullable=False
+    )
+    request_fingerprint: Mapped[str] = mapped_column(String(71), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="pending", nullable=False)
+    slot_outcomes: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    derived_candidate_ids: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    episode_id: Mapped[str | None] = mapped_column(ForeignKey("episodes.id"))
+    canonical_refs: Mapped[list] = mapped_column(JSON_TYPE, nullable=False)
+    source_snapshot: Mapped[dict | None] = mapped_column(JSON_TYPE)
+    readback_summary: Mapped[dict | None] = mapped_column(JSON_TYPE)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CurationRun(Base, TimestampMixin):
+    __tablename__ = "curation_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "mode in ('disabled', 'shadow', 'apply')",
+            name="ck_curation_runs_mode",
+        ),
+        CheckConstraint(
+            "status in ('pending', 'planning', 'ready', 'executing', "
+            "'completed', 'partial', 'failed')",
+            name="ck_curation_runs_status",
+        ),
+        CheckConstraint(
+            "(cursor_started_at is null) = (cursor_started_id is null)",
+            name="ck_curation_runs_started_cursor_pair",
+        ),
+        CheckConstraint(
+            "(cursor_completed_at is null) = (cursor_completed_id is null)",
+            name="ck_curation_runs_completed_cursor_pair",
+        ),
+        CheckConstraint(
+            "cursor_completed_at is null or cursor_started_at is not null",
+            name="ck_curation_runs_completed_cursor_requires_started",
+        ),
+        CheckConstraint(
+            "cursor_completed_at is null or cursor_completed_at > cursor_started_at or "
+            "(cursor_completed_at = cursor_started_at and cursor_completed_id >= cursor_started_id)",
+            name="ck_curation_runs_cursor_order",
+        ),
+        CheckConstraint(
+            "input_candidate_count >= 0 and planned_decision_count >= 0 and "
+            "executed_decision_count >= 0 and blocked_decision_count >= 0",
+            name="ck_curation_runs_nonnegative_counts",
+        ),
+        Index("ix_curation_runs_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    mode: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="pending")
+    cursor_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cursor_started_id: Mapped[str | None] = mapped_column(String(36))
+    cursor_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cursor_completed_id: Mapped[str | None] = mapped_column(String(36))
+    policy_version: Mapped[str] = mapped_column(String(120), nullable=False)
+    planner_name: Mapped[str | None] = mapped_column(String(160))
+    planner_model: Mapped[str | None] = mapped_column(String(240))
+    planner_version: Mapped[str | None] = mapped_column(String(120))
+    input_candidate_count: Mapped[int] = mapped_column(default=0)
+    planned_decision_count: Mapped[int] = mapped_column(default=0)
+    executed_decision_count: Mapped[int] = mapped_column(default=0)
+    blocked_decision_count: Mapped[int] = mapped_column(default=0)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    diagnostics: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    decisions: Mapped[list["CurationDecision"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+
+
+class CurationDecision(Base, TimestampMixin):
+    __tablename__ = "curation_decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "action in ('accept_existing', 'edit_accept_existing', 'consolidate_accept', "
+            "'archive_exact_duplicate', 'mark_needs_clarification', 'defer', "
+            "'recommend_merge_review', 'recommend_conflict_review')",
+            name="ck_curation_decisions_action",
+        ),
+        CheckConstraint(
+            "status in ('proposed', 'allowed', 'blocked', 'executing', 'executed', 'failed')",
+            name="ck_curation_decisions_status",
+        ),
+        CheckConstraint(
+            "risk_level in ('low', 'medium', 'high')",
+            name="ck_curation_decisions_risk_level",
+        ),
+        UniqueConstraint("idempotency_key", name="uq_curation_decisions_idempotency_key"),
+        Index("ix_curation_decisions_run_id", "run_id"),
+        Index("ix_curation_decisions_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(ForeignKey("curation_runs.id"), nullable=False)
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="proposed")
+    risk_level: Mapped[str] = mapped_column(String(40), nullable=False)
+    candidate_ids: Mapped[list] = mapped_column(JSON_TYPE, default=list)
+    expected_candidates: Mapped[list] = mapped_column(JSON_TYPE, default=list)
+    target_entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id"))
+    proposed_payload: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    evidence_episode_ids: Mapped[list] = mapped_column(JSON_TYPE, default=list)
+    reason_codes: Mapped[list] = mapped_column(JSON_TYPE, default=list)
+    policy_version: Mapped[str] = mapped_column(String(120), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(240), nullable=False)
+    canonical_record_ref: Mapped[str | None] = mapped_column(String(120))
+    readback_status: Mapped[str | None] = mapped_column(String(60))
+    readback_summary: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    api_error_code: Mapped[str | None] = mapped_column(String(80))
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    run: Mapped[CurationRun] = relationship(back_populates="decisions")
+
 
 class EntityMerge(Base, TimestampMixin):
     __tablename__ = "entity_merges"
@@ -397,6 +639,13 @@ class EntityMerge(Base, TimestampMixin):
         Index("ix_entity_merges_source_entity_id", "source_entity_id"),
         Index("ix_entity_merges_target_entity_id", "target_entity_id"),
         Index("ix_entity_merges_candidate_id", "candidate_id"),
+        Index(
+            "ux_entity_merges_candidate_id",
+            "candidate_id",
+            unique=True,
+            sqlite_where=text("candidate_id is not null"),
+            postgresql_where=text("candidate_id is not null"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)

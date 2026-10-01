@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import text
 
@@ -109,6 +110,46 @@ def test_candidate_payload_schemas_cover_supported_types() -> None:
                 **common,
             }
         )
+
+
+def test_stale_manual_accept_reloads_candidate_and_writes_once(client, database_url) -> None:
+    person = create_person(client, "Casey Race")
+    episode = create_episode(client)
+    created = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "observation",
+            "target_entity_id": person["id"],
+            "payload": {
+                "subject_entity_id": person["id"],
+                "observation_type": "communication_preference",
+                "content": "Alex prefers concise follow-ups.",
+                "claim_type": "preference",
+                "occurred_at": "2026-08-24T00:00:00Z",
+            },
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Alex prefers concise follow-ups.",
+                }
+            ],
+            "confidence": 0.9,
+            "created_by": "ai_agent",
+        },
+    ).json()
+    factory = create_session_maker(Settings(database_url=database_url))
+    with factory() as first_session, factory() as stale_session:
+        first = first_session.get(Candidate, created["id"])
+        stale = stale_session.get(Candidate, created["id"])
+        stale_session.commit()
+        CandidateService(first_session).accept_candidate(first)
+        with pytest.raises(HTTPException) as exc_info:
+            CandidateService(stale_session).accept_candidate(stale)
+        assert exc_info.value.status_code == 409
+        assert stale_session.scalar(
+            text("select count(*) from observations where source_candidate_id = :candidate_id"),
+            {"candidate_id": created["id"]},
+        ) == 1
 
 
 def test_candidate_create_validates_payload_and_stores_evidence(client) -> None:
@@ -369,6 +410,7 @@ def test_relationship_edge_edit_accept_rejects_invalid_relation_type_and_audits(
     assert operation["candidate_id"] == candidate["id"]
     assert operation["request_summary"]["relation_type"] == "reply_strategy"
     assert operation["diagnostics"]["message"] == "Invalid relation_type."
+    assert client.get(f"/api/candidates/{candidate['id']}").json()["payload"] == candidate["payload"]
     assert client.get("/api/edges", params={"entity_id": alex["id"]}).json()["total"] == 0
 
 
@@ -725,7 +767,7 @@ def test_profile_field_candidate_accept_writes_structured_fact_and_context_card(
     }
     assert fact["claim_type"] == "fact"
     assert fact["confidence"] == 0.8
-    assert fact["sensitivity"] == "high"
+    assert "sensitivity" not in fact
     assert fact["ai_use_policy"] == "ask_before_use"
     assert fact["source_candidate_id"] == candidate.json()["id"]
 
@@ -1552,6 +1594,39 @@ def test_merge_candidate_rejects_self_and_same_entity(client) -> None:
     )
     assert protected.status_code == 403
     assert protected.json()["error"]["code"] == "forbidden"
+
+
+def test_alias_candidate_accept_rejects_inactive_parent(client) -> None:
+    entity = create_person(client, "Archived Alias Target")
+    episode = create_episode(client)
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "alias",
+            "target_entity_id": entity["id"],
+            "payload": {"entity_id": entity["id"], "alias": "Archived Target Alias"},
+            "evidence": [
+                {
+                    "episode_id": episode["id"],
+                    "excerpt": "Archived Alias Target uses another name.",
+                    "confidence": 0.9,
+                }
+            ],
+            "confidence": 0.9,
+            "created_by": "user",
+        },
+    )
+    assert candidate.status_code == 201
+    assert client.delete(f"/api/entities/{entity['id']}").status_code == 200
+
+    accepted = client.post(f"/api/candidates/{candidate.json()['id']}/accept")
+
+    assert accepted.status_code == 409
+    assert accepted.json()["error"]["code"] == "conflict"
+    pending = client.get(f"/api/candidates/{candidate.json()['id']}").json()
+    assert pending["status"] == "pending"
+    aliases = client.get(f"/api/entities/{entity['id']}/aliases").json()
+    assert aliases["total"] == 0
 
 
 def test_merge_candidate_accept_deprecates_duplicate_aliases_and_self_edges(client) -> None:

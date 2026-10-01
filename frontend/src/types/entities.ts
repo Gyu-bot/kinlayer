@@ -6,7 +6,6 @@ export type Entity = {
   properties: Record<string, unknown>;
   confirmation_status: string;
   status: string;
-  sensitivity: string;
   ai_use_policy: string;
   created_by: string;
   system_role: string | null;
@@ -37,7 +36,6 @@ export type EntityFact = {
   value: Record<string, unknown> | null;
   claim_type: string;
   confidence: number;
-  sensitivity: string;
   ai_use_policy: string;
   status: string;
   valid_from: string | null;
@@ -68,7 +66,6 @@ export type EntityEdge = {
   status: string;
   valid_from: string | null;
   valid_to: string | null;
-  sensitivity: string;
   ai_use_policy: string;
   created_by: string;
   invalidated_by_edge_id: string | null;
@@ -96,7 +93,6 @@ export type Observation = {
   content: string;
   claim_type: string;
   confidence: number;
-  sensitivity: string;
   ai_use_policy: string;
   status: string;
   valid_from: string | null;
@@ -228,7 +224,6 @@ export type Ontology = {
   edge_types: EdgeType[];
   observation_types: ObservationType[];
   policies: {
-    sensitivity_levels: RegistryValue[];
     ai_use_policies: RegistryValue[];
     claim_types: RegistryValue[];
     candidate_types: RegistryValue[];

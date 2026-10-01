@@ -4,8 +4,8 @@ Run after `scripts/load-acceptance-fixtures.py` against the local stack.
 
 - `/people`
   - People table loads without visible error.
-  - Search and status/sensitivity filters are visible; status includes `merged`, and sensitivity options come from ontology policy values.
-  - Alias preview, relationship summary, status, sensitivity, and last referenced columns render.
+  - Search and status filters are visible; status includes `merged`.
+  - Alias preview, relationship summary, status, and last referenced columns render.
   - Each person row has an explicit display-name open button that navigates to detail without showing UUIDs.
   - Default active/all review does not show a merged source as a separate active person after merge acceptance.
   - Switching the status filter to `merged` shows the merged source, including its merge target reference when opened.
@@ -13,20 +13,20 @@ Run after `scripts/load-acceptance-fixtures.py` against the local stack.
   - Person form renders.
   - Optional initial relationship and initial observation fields are visible.
   - Initial relationship type options render as ontology labels and submit canonical values.
-  - Profile fact type, initial observation type, sensitivity, and AI use policy options render from ontology and submit canonical values.
+  - Profile fact type, initial observation type, and AI use policy options render from ontology and submit canonical values.
   - Creating a person routes to its detail page.
 - `/people/:id`
   - Fixture person `Acceptance Minji` or the newly created person opens from a direct detail URL.
   - Profile facts, relationships, stable/recent observations, provenance, and policy fields render.
   - Alias, fact, relationship, observation, and provenance controls do not show raw IDs in default labels or button text.
-  - Add relationship uses a related-person selector and ontology-backed relationship type, sensitivity, and AI use policy selectors.
-  - Profile fact creation/edit controls use ontology-backed fact type, sensitivity, and AI use policy selectors.
+  - Add relationship uses a related-person selector and ontology-backed relationship type and AI use policy selectors.
+  - Profile fact creation/edit controls use ontology-backed fact type and AI use policy selectors.
   - Evidence from accepted candidates or corrections appears in the provenance section when present.
   - Opening the merge target after accepting the merge shows the moved source alias and source-side context.
   - Opening the merged source directly remains possible for audit/inspection.
 - `/candidates`
-  - Status, type, and sensitivity filters render; status includes `pending`, `accepted`, `edited_accepted`, `rejected`, `archived`, `needs_clarification`, and `superseded`.
-  - Type and sensitivity options come from ontology policy values.
+  - Status and type filters render; status includes `pending`, `accepted`, `edited_accepted`, `rejected`, `archived`, `needs_clarification`, and `superseded`.
+  - Type options come from ontology policy values.
   - Pending candidates can be selected.
   - Candidate list/detail show summary, type, status, confidence, created_by, suggested_action, target summary, canonical record summary/ref, supersede refs when present, and created timestamp without visible candidate or entity IDs in default list labels.
   - Evidence panel shows excerpt, confidence, episode ID, source type, source ref, source description, body hash, and actor when returned by the API.
@@ -41,7 +41,7 @@ Run after `scripts/load-acceptance-fixtures.py` against the local stack.
   - After accepting a merge candidate, the candidate detail shows a canonical `entities` record summary/ref for the target.
 - `/graph`
   - Ego graph renders from protected self with at least self plus two people.
-  - Entity selector and ontology relation/status/sensitivity filters render, with relation and sensitivity values loaded from ontology.
+  - Entity selector and ontology relation/status filters render, with relation values loaded from ontology.
   - Node and edge detail panels can be opened without visible node or edge UUIDs by default.
   - After merge acceptance, graph views show the canonical target relationship and do not show source and target as two active duplicate people.
 - `/retrieval-debug`

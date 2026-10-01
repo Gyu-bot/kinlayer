@@ -1,5 +1,7 @@
 # Kinlayer
 
+> Sensitivity is retired. See [retirement and compatibility contract](docs/specs/sensitivity-retirement.md).
+
 Kinlayer는 AI 에이전트를 위한 로컬 우선 관계 맥락 레이어입니다.
 
 AI 에이전트가 사람, 관계, 최근 상호작용, 주의할 점 같은 맥락을 대화 속에서 축적하고 다시 꺼내 쓸 수 있도록 돕되, 사용자가 그 맥락을 직접 검토하고 수정하고 제한할 수 있게 만드는 것을 목표로 합니다.
@@ -98,13 +100,13 @@ AI agent = API 또는 CLI를 호출하는 클라이언트
 
 Kinlayer는 대화 원문 전체를 보관하는 시스템이 아닙니다.
 
-MVP에서는 짧은 발췌, 해시, 출처, 발생 시각, 민감도, 보존 정책을 저장합니다. 신뢰성은 정정, supersede, deprecate, evidence link, retrieval update를 통해 확보합니다.
+MVP에서는 짧은 발췌, 해시, 출처, 발생 시각, 보존 정책을 저장합니다. 신뢰성은 정정, supersede, deprecate, evidence link, retrieval update를 통해 확보합니다.
 
 ### 4. AI가 참고하는 것과 직접 말하는 것은 다르다
 
 민감한 정보는 AI가 내부 판단에 참고할 수는 있어도, 사용자에게 그대로 드러내면 안 될 수 있습니다.
 
-Kinlayer는 저장된 민감도와 사용 정책을 바탕으로 검색 시점에 다음 surface bucket을 계산합니다.
+Kinlayer는 저장된 AI 사용 정책을 바탕으로 검색 시점에 다음 surface bucket을 계산합니다.
 
 - `direct_surface`
 - `conditional_surface`
@@ -218,6 +220,12 @@ KINLAYER_API_URL=http://127.0.0.1:8765 scripts/smoke-acceptance-cli.sh
 KINLAYER_API_TOKEN=원하는-로컬-토큰
 ```
 
+관계 reconciliation 액션 API는 일반 API 토큰과 분리된
+`KINLAYER_RECONCILIATION_TOKEN`을 사용합니다. 이 값이 비어 있으면
+`/api/reconciliation/actions` POST/GET은 비활성화되며, 일반
+`KINLAYER_API_TOKEN`만으로는 접근할 수 없습니다. 토큰은 응답이나
+시스템 설정 조회에 노출되지 않습니다.
+
 토큰을 켠 경우에만 Web UI의 `/settings`에서 같은 값을 Local API token으로 저장해야 관계 데이터 화면을 볼 수 있습니다. token 값은 저장 후 다시 표시되지 않습니다.
 
 ## OpenAI embedding 설정
@@ -293,7 +301,7 @@ Settings 화면은 Kinlayer가 현재 어떤 방식으로 동작하는지 보여
 - 브라우저에 로컬 API token이 저장되어 있는지 여부
 - embedding provider, model, dimension, 상태
 - OpenAI-compatible embedding API URL과 API key가 서버에 설정되어 있는지 여부
-- entity type, fact type, relationship type, sensitivity, AI use policy 같은 ontology 값
+- entity type, fact type, relationship type, AI use policy 같은 ontology 값
 
 OpenAI embedding API key 같은 secret 값은 화면에 다시 표시하지 않습니다. Settings는 secret을 저장소나 브라우저에 노출하는 장소가 아니라, 서버가 해당 값을 갖고 있는지 확인하는 제어판입니다.
 
@@ -313,7 +321,7 @@ README는 제품 설명과 기본 설치 흐름을 다룹니다. API 계약, 데
 
 - `docs/README.md`: 문서 구조와 active/archive 구분
 - `docs/specs/prd.md`: 제품 요구사항과 원칙
-- `.omo/plans/index.md`: 실행 계획 SSOT
+- `docs/plans/relationship-curation-cycle.md`: 현재 승인된 관계 후보 curation·canonical 승격 구현 계획
 - `docs/kinlayer-roadmap.md`: 사용자가 구현 지시를 내릴 때 보는 한글 로드맵
 - `docs/specs/api-spec.md`: HTTP API 계약
 - `docs/specs/data-model.md`: 데이터 모델

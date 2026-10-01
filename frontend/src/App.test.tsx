@@ -149,7 +149,7 @@ describe("App route shell", () => {
               {observation_type: "recent_interaction", description: "Recent interaction"},
             ],
             policies: {
-              sensitivity_levels: [{value: "medium", label: "Medium", support_level: "supported"}],
+
               ai_use_policies: [
                 {value: "cautious_use", label: "Cautious use", support_level: "supported"},
               ],
@@ -205,9 +205,7 @@ describe("App route shell", () => {
               {observation_type: "care_point", description: "Care point"},
             ],
             policies: {
-              sensitivity_levels: [
-                {value: "high", label: "High", support_level: "supported"},
-              ],
+
               ai_use_policies: [
                 {value: "ask_before_use", label: "Ask before use", support_level: "supported"},
               ],
@@ -225,8 +223,7 @@ describe("App route shell", () => {
 
     expect(await screen.findByRole("option", {name: "Vendor contact"})).toBeInTheDocument();
     expect(screen.getByLabelText(/Initial relationship type/)).toHaveValue("vendor_contact");
-    expect(screen.getByLabelText(/Sensitivity/)).toHaveValue("high");
-    expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Sensitivity/)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/AI use policy/)).toHaveValue("ask_before_use");
     expect(screen.getByRole("option", {name: "Ask before use"})).toBeInTheDocument();
     expect(screen.getByLabelText(/Profile fact type/)).toHaveValue("birthday");
@@ -272,7 +269,6 @@ describe("App route shell", () => {
               score_breakdown: {semantic: 0.62, lexical: 0.21, recency: 0.08},
               penalties: {},
               surface_bucket: "direct_surface",
-              sensitivity: "medium",
               ai_use_policy: "cautious_use",
               confirmation_status: "confirmed",
               observations: [
@@ -281,7 +277,6 @@ describe("App route shell", () => {
                   content: "민지는 회의 전에 짧은 의제 공유를 선호한다.",
                   score: 0.85,
                   match_reasons: ["semantic_similarity"],
-                  sensitivity: "medium",
                   ai_use_policy: "cautious_use",
                   status: "active",
                 },
@@ -323,7 +318,6 @@ describe("App route shell", () => {
                   score_breakdown: {semantic: 0.62},
                   penalties: {},
                   surface_bucket: "direct_surface",
-                  sensitivity: "medium",
                   ai_use_policy: "cautious_use",
                   confirmation_status: "confirmed",
                   observations: [],
@@ -339,7 +333,6 @@ describe("App route shell", () => {
                 content: "민지는 회의 전에 짧은 의제 공유를 선호한다.",
                 score: 0.85,
                 match_reasons: ["semantic_similarity"],
-                sensitivity: "medium",
                 ai_use_policy: "cautious_use",
                 status: "active",
               },
@@ -432,11 +425,10 @@ describe("App route shell", () => {
     render(<App />);
 
     await screen.findByRole("option", {name: "Friend"});
-    expect(screen.getByText("Sensitivity")).toBeInTheDocument();
+    expect(screen.queryByText("Sensitivity")).not.toBeInTheDocument();
     expect(screen.getByText("AI use policy")).toBeInTheDocument();
     expect(screen.getByText("Initial Relationship")).toBeInTheDocument();
     expect(screen.getByText("Initial Observation")).toBeInTheDocument();
-    expect(screen.getByText("이 정보가 얼마나 조심스럽게 다뤄져야 하는지")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Display name"), {target: {value: "박서연"}});
     fireEvent.change(screen.getByLabelText(/Initial relationship type/), {
       target: {value: "friend"},
@@ -494,7 +486,6 @@ describe("App route shell", () => {
                 content: "Kinlayer Labs",
                 claim_type: "fact",
                 confidence: 1,
-                sensitivity: "medium",
                 ai_use_policy: "cautious_use",
                 status: "active",
                 created_by: "user",
@@ -525,7 +516,6 @@ describe("App route shell", () => {
                   status: "active",
                   valid_from: null,
                   valid_to: null,
-                  sensitivity: "medium",
                   ai_use_policy: "cautious_use",
                   created_by: "user",
                   invalidated_by_edge_id: null,
@@ -633,7 +623,6 @@ describe("App route shell", () => {
                 value: null,
                 claim_type: "fact",
                 confidence: 1,
-                sensitivity: "medium",
                 ai_use_policy: "cautious_use",
                 status: "active",
                 created_by: "user",
@@ -678,7 +667,6 @@ describe("App route shell", () => {
                   status: "active",
                   valid_from: null,
                   valid_to: null,
-                  sensitivity: "medium",
                   ai_use_policy: "cautious_use",
                   created_by: "user",
                   invalidated_by_edge_id: null,
@@ -759,7 +747,6 @@ describe("App route shell", () => {
         value: {kind: "work", email: "old@example.com"},
         claim_type: "fact",
         confidence: 1,
-        sensitivity: "medium",
         ai_use_policy: "cautious_use",
         status: "active",
         created_by: "user",
@@ -781,7 +768,6 @@ describe("App route shell", () => {
         status: "active",
         valid_from: null,
         valid_to: null,
-        sensitivity: "medium",
         ai_use_policy: "cautious_use",
         created_by: "user",
         invalidated_by_edge_id: null,
@@ -824,10 +810,7 @@ describe("App route shell", () => {
               {value: "birthday", label: "Birthday", support_level: "supported"},
             ],
             policies: {
-              sensitivity_levels: [
-                {value: "medium", label: "Medium", support_level: "supported"},
-                {value: "high", label: "High", support_level: "supported"},
-              ],
+
               ai_use_policies: [
                 {value: "cautious_use", label: "Cautious use", support_level: "supported"},
                 {value: "ask_before_use", label: "Ask before use", support_level: "supported"},
@@ -901,18 +884,14 @@ describe("App route shell", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", {level: 1, name: "김민지"})).toBeInTheDocument(),
     );
-    expect(screen.getAllByText("Sensitivity").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Sensitivity")).not.toBeInTheDocument();
     expect(screen.getAllByText("AI use policy").length).toBeGreaterThan(0);
     expect(screen.getByText("Structured Profile Facts")).toBeInTheDocument();
     expect(screen.getByText("General Profile Facts")).toBeInTheDocument();
     expect(screen.getByText("Stable Observations")).toBeInTheDocument();
     expect(screen.getByText("Recent Observations")).toBeInTheDocument();
     expect(screen.getByText("Provenance")).toBeInTheDocument();
-    expect(screen.getAllByText("이 정보가 얼마나 조심스럽게 다뤄져야 하는지").length).toBeGreaterThan(0);
-    const profileSensitivity = screen.getAllByLabelText(/Sensitivity/)[0];
     const profilePolicy = screen.getAllByLabelText(/AI use policy/)[0];
-    expect(profileSensitivity).toHaveValue("medium");
-    expect(within(profileSensitivity).getByRole("option", {name: "High"})).toBeInTheDocument();
     expect(profilePolicy).toHaveValue("cautious_use");
     expect(within(profilePolicy).getByRole("option", {name: "Ask before use"})).toBeInTheDocument();
     expect(screen.getByLabelText(/New structured fact type/)).toHaveValue("email");
@@ -935,9 +914,6 @@ describe("App route shell", () => {
     fireEvent.change(screen.getByLabelText(/New structured fact type/), {
       target: {value: "birthday"},
     });
-    fireEvent.change(screen.getByLabelText(/New structured fact sensitivity/), {
-      target: {value: "high"},
-    });
     fireEvent.change(screen.getByLabelText(/New structured fact AI use policy/), {
       target: {value: "ask_before_use"},
     });
@@ -951,7 +927,7 @@ describe("App route shell", () => {
         const body = JSON.parse(String(init.body));
         return (
           body.fact_type === "birthday" &&
-          body.sensitivity === "high" &&
+          !("sensitivity" in body) &&
           body.ai_use_policy === "ask_before_use"
         );
       }),
@@ -959,7 +935,6 @@ describe("App route shell", () => {
     fireEvent.change(screen.getByLabelText("Fact content email"), {
       target: {value: "updated@example.com"},
     });
-    fireEvent.change(screen.getByLabelText("Fact sensitivity email"), {target: {value: "high"}});
     fireEvent.change(screen.getByLabelText("Fact AI use policy email"), {
       target: {value: "ask_before_use"},
     });
@@ -967,18 +942,12 @@ describe("App route shell", () => {
 
     fireEvent.change(screen.getByLabelText(/Related person/), {target: {value: "person-2"}});
     fireEvent.change(screen.getByLabelText(/Relationship note/), {target: {value: "협업 파트너"}});
-    fireEvent.change(screen.getAllByLabelText(/Relationship sensitivity/)[0], {
-      target: {value: "high"},
-    });
     fireEvent.change(screen.getAllByLabelText(/Relationship AI use policy/)[0], {
       target: {value: "ask_before_use"},
     });
     fireEvent.click(screen.getByRole("button", {name: "Add relationship"}));
     await waitFor(() => expect(screen.getByDisplayValue("협업 파트너")).toBeInTheDocument());
     fireEvent.change(screen.getAllByLabelText("Relationship claim friend")[1], {target: {value: "가까운 친구"}});
-    fireEvent.change(screen.getAllByLabelText("Relationship sensitivity friend")[1], {
-      target: {value: "medium"},
-    });
     fireEvent.change(screen.getAllByLabelText("Relationship AI use policy friend")[1], {
       target: {value: "cautious_use"},
     });
@@ -994,7 +963,7 @@ describe("App route shell", () => {
           return false;
         }
         const body = JSON.parse(String(init.body));
-        return body.sensitivity === "high" && body.ai_use_policy === "ask_before_use";
+        return !("sensitivity" in body) && body.ai_use_policy === "ask_before_use";
       }),
     ).toBe(true);
     expect(
@@ -1003,7 +972,7 @@ describe("App route shell", () => {
           return false;
         }
         const body = JSON.parse(String(init.body));
-        return body.sensitivity === "medium" && body.ai_use_policy === "cautious_use";
+        return !("sensitivity" in body) && body.ai_use_policy === "cautious_use";
       }),
     ).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/entities/person-1/context-card"))).toBe(true);
@@ -1044,9 +1013,7 @@ describe("App route shell", () => {
               {relation_type: "vendor_contact", description: "Vendor contact"},
             ],
             policies: {
-              sensitivity_levels: [
-                {value: "high", label: "High", support_level: "supported"},
-              ],
+
               ai_use_policies: [],
               claim_types: [],
               candidate_types: [],
@@ -1153,7 +1120,6 @@ describe("App route shell", () => {
         value: null,
         claim_type: "fact",
         confidence: 1,
-        sensitivity: "medium",
         ai_use_policy: "cautious_use",
         status: "active",
         valid_from: null,
@@ -1171,7 +1137,6 @@ describe("App route shell", () => {
         value: {field_path: "profile.email", value: "old@example.com"},
         claim_type: "fact",
         confidence: 1,
-        sensitivity: "medium",
         ai_use_policy: "cautious_use",
         status: "active",
         valid_from: null,
@@ -1205,10 +1170,7 @@ describe("App route shell", () => {
               {value: "role", label: "Role", support_level: "supported"},
             ],
             policies: {
-              sensitivity_levels: [
-                {value: "medium", label: "Medium", support_level: "supported"},
-                {value: "high", label: "High", support_level: "supported"},
-              ],
+
               ai_use_policies: [
                 {value: "cautious_use", label: "Cautious use", support_level: "supported"},
                 {value: "ask_before_use", label: "Ask before use", support_level: "supported"},
@@ -1236,7 +1198,6 @@ describe("App route shell", () => {
           },
           claim_type: "fact",
           confidence: 1,
-          sensitivity: body.sensitivity,
           ai_use_policy: body.ai_use_policy,
           status: "active",
           valid_from: null,
@@ -1278,9 +1239,6 @@ describe("App route shell", () => {
     fireEvent.change(screen.getByLabelText("Structured fact content"), {
       target: {value: "Coffee tasting organizer"},
     });
-    fireEvent.change(screen.getByLabelText("Structured fact sensitivity"), {
-      target: {value: "high"},
-    });
     fireEvent.change(screen.getByLabelText("Structured fact AI use policy"), {
       target: {value: "ask_before_use"},
     });
@@ -1299,7 +1257,7 @@ describe("App route shell", () => {
         return (
           body.fact_type === "role" &&
           body.content === "Coffee tasting organizer" &&
-          body.sensitivity === "high" &&
+          !("sensitivity" in body) &&
           body.ai_use_policy === "ask_before_use"
         );
       }),
@@ -1322,7 +1280,6 @@ describe("App route shell", () => {
         value: null,
         claim_type: "fact",
         confidence: 1,
-        sensitivity: "medium",
         ai_use_policy: "cautious_use",
         status: "active",
         valid_from: null,
@@ -1348,9 +1305,7 @@ describe("App route shell", () => {
           ontologyFixture({
             fact_types: [{value: "email", label: "Email", support_level: "supported"}],
             policies: {
-              sensitivity_levels: [
-                {value: "medium", label: "Medium", support_level: "supported"},
-              ],
+
               ai_use_policies: [
                 {value: "cautious_use", label: "Cautious use", support_level: "supported"},
               ],
@@ -1446,9 +1401,7 @@ describe("App route shell", () => {
         return jsonResponse(
           ontologyFixture({
             policies: {
-              sensitivity_levels: [
-                {value: "high", label: "High", support_level: "supported"},
-              ],
+
               ai_use_policies: [],
               claim_types: [],
               candidate_types: [
@@ -1469,12 +1422,11 @@ describe("App route shell", () => {
       if (url.includes("/api/candidates?")) {
         const query = new URL(String(url)).searchParams;
         const filtered =
-          query.get("candidate_type") === "observation" && query.get("sensitivity") === "high";
+          query.get("candidate_type") === "observation";
         return jsonResponse({
           items: [
             candidateFixture({
               id: filtered ? "candidate-filtered" : "candidate-1",
-              sensitivity: filtered ? "high" : "medium",
             }),
           ],
           limit: 50,
@@ -1529,21 +1481,17 @@ describe("App route shell", () => {
     expect(screen.getByRole("option", {name: "edited_accepted"})).toBeInTheDocument();
     expect(screen.getByRole("option", {name: "superseded"})).toBeInTheDocument();
     expect(screen.getByRole("option", {name: "Observation"})).toBeInTheDocument();
-    expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
     expect(screen.queryByText("candidate-1")).not.toBeInTheDocument();
     expect(fetchMock.mock.calls[0][0]).toContain("/api/candidates?status=pending&limit=50");
 
     expect(screen.getByText("AI가 제안한 정보의 형태")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/Candidate type/), {target: {value: "observation"}});
-    fireEvent.change(screen.getByLabelText(/Sensitivity/), {target: {value: "high"}});
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([url]) => String(url).includes("candidate_type=observation"))).toBe(
         true,
       ),
     );
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=high"))).toBe(
-      true,
-    );
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=high"))).toBe(false);
 
     expect(screen.getByRole("button", {name: "Accept"})).toBeEnabled();
     expect(screen.getByRole("button", {name: "Reject"})).toBeEnabled();
@@ -1769,10 +1717,7 @@ describe("App route shell", () => {
               {relation_type: "coworker", description: "Coworker"},
             ],
             policies: {
-              sensitivity_levels: [
-                {value: "medium", label: "Medium", support_level: "supported"},
-                {value: "high", label: "High", support_level: "supported"},
-              ],
+
               ai_use_policies: [],
               claim_types: [],
               candidate_types: [],
@@ -1803,7 +1748,6 @@ describe("App route shell", () => {
               display_name: "Self",
               entity_type: "person",
               status: "active",
-              sensitivity: "medium",
               is_focal: true,
             },
             {
@@ -1811,7 +1755,6 @@ describe("App route shell", () => {
               display_name: "김민지",
               entity_type: "person",
               status: "active",
-              sensitivity: "medium",
               is_focal: false,
             },
             {
@@ -1819,7 +1762,6 @@ describe("App route shell", () => {
               display_name: "박서연",
               entity_type: "person",
               status: "active",
-              sensitivity: "high",
               is_focal: false,
             },
           ],
@@ -1832,7 +1774,6 @@ describe("App route shell", () => {
               directed: false,
               status: "active",
               confidence: 0.9,
-              sensitivity: "medium",
             },
             {
               edge_id: "edge-2",
@@ -1842,7 +1783,6 @@ describe("App route shell", () => {
               directed: true,
               status: "active",
               confidence: 0.8,
-              sensitivity: "high",
             },
           ],
           filters_applied: {depth: 1},
@@ -1856,18 +1796,14 @@ describe("App route shell", () => {
 
     await waitFor(() => expect(screen.getAllByText("김민지").length).toBeGreaterThan(0));
     expect(screen.getByRole("option", {name: "Friend"})).toBeInTheDocument();
-    expect(screen.getByRole("option", {name: "Medium"})).toBeInTheDocument();
     expect(screen.getByText("박서연")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Relation type"), {target: {value: "friend"}});
-    fireEvent.change(screen.getByLabelText("Sensitivity"), {target: {value: "medium"}});
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([url]) => String(url).includes("relation_type=friend"))).toBe(
         true,
       ),
     );
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=medium"))).toBe(
-      true,
-    );
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=medium"))).toBe(false);
 
     fireEvent.click(screen.getByRole("button", {name: "Node 김민지"}));
     expect(screen.getAllByText("김민지").length).toBeGreaterThan(0);
@@ -1911,7 +1847,6 @@ describe("App route shell", () => {
               display_name: "Self",
               entity_type: "person",
               status: "active",
-              sensitivity: "medium",
               is_focal: true,
             },
             {
@@ -1919,7 +1854,6 @@ describe("App route shell", () => {
               display_name: "김민지",
               entity_type: "person",
               status: "active",
-              sensitivity: "medium",
               is_focal: false,
             },
           ],
@@ -1932,7 +1866,6 @@ describe("App route shell", () => {
               directed: false,
               status: "active",
               confidence: 0.9,
-              sensitivity: "medium",
             },
           ],
           filters_applied: {depth: 1},
@@ -1945,15 +1878,13 @@ describe("App route shell", () => {
     render(<App />);
 
     expect(await screen.findByRole("option", {name: "Vendor contact"})).toBeInTheDocument();
-    expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Relation type"), {target: {value: "vendor_contact"}});
-    fireEvent.change(screen.getByLabelText("Sensitivity"), {target: {value: "high"}});
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(([url]) => String(url).includes("relation_type=vendor_contact")),
       ).toBe(true),
     );
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=high"))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=high"))).toBe(false);
     fireEvent.click(screen.getByRole("button", {name: "Node 김민지"}));
     expect(screen.queryByText("person-1")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", {name: "Edge friend"}));
@@ -1993,7 +1924,6 @@ describe("App route shell", () => {
               score_breakdown: {semantic: 0.62},
               penalties: {},
               surface_bucket: "direct_surface",
-              sensitivity: "medium",
               ai_use_policy: "cautious_use",
               confirmation_status: "confirmed",
               profile_facts: [],
@@ -2056,9 +1986,7 @@ describe("App route shell", () => {
         return jsonResponse(
           ontologyFixture({
             policies: {
-              sensitivity_levels: [
-                {value: "high", label: "High", support_level: "supported"},
-              ],
+
               ai_use_policies: [],
               claim_types: [],
               candidate_types: [],
@@ -2115,7 +2043,6 @@ describe("App route shell", () => {
                 status: "active",
                 valid_from: null,
                 valid_to: null,
-                sensitivity: "medium",
                 ai_use_policy: "cautious_use",
                 created_by: "user",
                 invalidated_by_edge_id: null,
@@ -2142,21 +2069,16 @@ describe("App route shell", () => {
     await waitFor(() => expect(screen.getAllByText("김민지").length).toBeGreaterThan(0));
     expect(screen.getByText("민지")).toBeInTheDocument();
     expect(screen.getByText("1 relationships / 1 recent")).toBeInTheDocument();
-    expect(screen.getByLabelText(/Sensitivity filter/)).toBeInTheDocument();
-    expect(screen.getByText("정보가 얼마나 조심스러운지로 좁혀 보기")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Sensitivity/)).not.toBeInTheDocument();
     expect(screen.getByRole("option", {name: "merged"})).toBeInTheDocument();
-    expect(screen.getByRole("option", {name: "High"})).toBeInTheDocument();
     expect(screen.queryByText("person-1")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/Status filter/), {target: {value: "active"}});
-    fireEvent.change(screen.getByLabelText(/Sensitivity filter/), {target: {value: "high"}});
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([url]) => String(url).includes("status=active"))).toBe(
         true,
       ),
     );
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=high"))).toBe(
-      true,
-    );
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sensitivity=high"))).toBe(false);
     fireEvent.click(screen.getByRole("button", {name: "Open 김민지"}));
     await waitFor(() => expect(window.location.pathname).toBe("/people/person-1"));
   });
@@ -2225,7 +2147,6 @@ describe("App route shell", () => {
           candidate_type: "merge",
           target_entity_id: "target-1",
           confidence: 0.5,
-          sensitivity: "medium",
           suggested_action: "review",
           created_by: "user",
           payload: {
@@ -2242,7 +2163,6 @@ describe("App route shell", () => {
             field_conflict_policy: {
               display_name: "keep_target",
               canonical_name: "keep_target",
-              sensitivity: "use_more_restrictive",
               ai_use_policy: "use_more_restrictive",
             },
           },
@@ -2304,7 +2224,6 @@ function entityFixture(overrides: Partial<Record<string, unknown>> = {}) {
     properties: {},
     confirmation_status: "confirmed",
     status: "active",
-    sensitivity: "medium",
     ai_use_policy: "cautious_use",
     created_by: "user",
     system_role: null,
@@ -2326,7 +2245,6 @@ function observationFixture(overrides: Partial<Record<string, unknown>> = {}) {
     content: "Observation",
     claim_type: "fact",
     confidence: 1,
-    sensitivity: "medium",
     ai_use_policy: "cautious_use",
     status: "active",
     valid_from: null,
@@ -2405,7 +2323,6 @@ function candidateFixture(overrides: Partial<Record<string, unknown>> = {}) {
       },
     ],
     confidence: 0.8,
-    sensitivity: "medium",
     suggested_action: "accept",
     status: "pending",
     created_by: "ai_agent",
@@ -2433,11 +2350,7 @@ function ontologyFixture(overrides: Partial<Record<string, unknown>> = {}) {
       {observation_type: "recent_interaction", description: "Recent interaction"},
     ],
     policies: {
-      sensitivity_levels: [
-        {value: "low", label: "Low", support_level: "supported"},
-        {value: "medium", label: "Medium", support_level: "supported"},
-        {value: "high", label: "High", support_level: "supported"},
-      ],
+
       ai_use_policies: [
         {value: "freely_use", label: "Freely use", support_level: "supported"},
         {value: "cautious_use", label: "Cautious use", support_level: "supported"},

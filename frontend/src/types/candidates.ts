@@ -9,6 +9,7 @@ export type CandidateEvidence = {
   source_description: string | null;
   body_hash: string | null;
   actor: string | null;
+  material_import_id?: string | null;
   created_at: string;
 };
 
@@ -19,7 +20,6 @@ export type Candidate = {
   payload: Record<string, unknown>;
   evidence: CandidateEvidence[];
   confidence: number;
-  sensitivity: string;
   suggested_action: string | null;
   status: string;
   created_by: string;
@@ -36,5 +36,4 @@ export type Candidate = {
 export type CandidateFilters = {
   status: string;
   candidate_type: string;
-  sensitivity: string;
 };

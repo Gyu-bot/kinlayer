@@ -511,8 +511,6 @@ def test_fact_promote_posts_direct_payload_and_reports_refs(monkeypatch) -> None
             "alex@example.com",
             "--field-path",
             "profile.email",
-            "--sensitivity",
-            "high",
             "--ai-use-policy",
             "ask_before_use",
         ],
@@ -532,7 +530,6 @@ def test_fact_promote_posts_direct_payload_and_reports_refs(monkeypatch) -> None
             "fact_type": "email",
             "content": "alex@example.com",
             "field_path": "profile.email",
-            "sensitivity": "high",
             "ai_use_policy": "ask_before_use",
         },
     )
@@ -898,14 +895,84 @@ def test_graph_ego_cli_reads_graph_endpoint(monkeypatch) -> None:
             "self-id",
             "--relation-type",
             "client_contact",
-            "--sensitivity",
-            "medium",
             "--json",
         ],
     )
 
     assert result.exit_code == 0
     assert calls[0].endswith(
-        "/api/graph/ego/self-id?depth=1&relation_type=client_contact&status=active&sensitivity=medium"
+        "/api/graph/ego/self-id?depth=1&relation_type=client_contact&status=active"
     )
     assert json.loads(result.stdout)["focal_entity_id"] == "self-id"
+
+
+def test_curation_cli_routes_prepare_plan_execute_resume_and_show(monkeypatch, tmp_path) -> None:
+    calls = []
+
+    def fake_request(method, path, *, payload=None):
+        calls.append((method, path, payload))
+        return DummyResponse(200, {"id": "run-id", "status": "ready"})
+
+    monkeypatch.setattr(cli, "_request", fake_request)
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text('{"policy_version":"curation-policy-v1","decisions":[]}')
+
+    commands = [
+        ["curation", "prepare", "--limit", "10", "--json"],
+        ["curation", "plan-file", str(plan_path), "--mode", "shadow", "--json"],
+        ["curation", "execute", "run-id", "--json"],
+        ["curation", "resume", "run-id", "--json"],
+        ["curation", "show", "run-id", "--json"],
+    ]
+    for command in commands:
+        assert CliRunner().invoke(cli.app, command).exit_code == 0
+
+    assert calls == [
+        ("POST", "/api/curation/source-packs", {"limit": 10}),
+        (
+            "POST",
+            "/api/curation/runs",
+            {"policy_version": "curation-policy-v1", "decisions": [], "mode": "shadow"},
+        ),
+        ("POST", "/api/curation/runs/run-id/execute", None),
+        ("POST", "/api/curation/runs/run-id/resume", None),
+        ("GET", "/api/curation/runs/run-id", None),
+    ]
+
+
+def test_context_cli_forwards_provisional_opt_in(monkeypatch) -> None:
+    calls = []
+
+    def fake_request(method, path, *, payload=None):
+        calls.append((method, path, payload))
+        body = {
+            "context_pack": {
+                "confidence": "low",
+                "suggested_response_policy": "conditional_use",
+                "matched_entities": [],
+                "provisional_context": [],
+            }
+        }
+        if method == "GET":
+            body = {"entity": {"id": "entity-id"}, "provisional_context": []}
+        return DummyResponse(200, body)
+
+    monkeypatch.setattr(cli, "_request", fake_request)
+    assert CliRunner().invoke(
+        cli.app,
+        ["context-card", "entity-id", "--include-provisional", "--json"],
+    ).exit_code == 0
+    assert CliRunner().invoke(
+        cli.app,
+        [
+            "context",
+            "pack",
+            "Casey",
+            "--focal-entity-id",
+            "entity-id",
+            "--include-provisional",
+            "--json",
+        ],
+    ).exit_code == 0
+    assert calls[0][1].endswith("?include_provisional=true")
+    assert calls[1][2]["include_provisional"] is True

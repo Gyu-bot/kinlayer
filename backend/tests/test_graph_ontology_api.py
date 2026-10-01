@@ -60,7 +60,7 @@ def test_ego_graph_returns_generic_depth_one_nodes_edges_and_filters(client) -> 
     assert body["focal_entity_id"] == user["id"]
     assert body["depth"] == 1
     assert body["filters_applied"]["relation_type"] == "client_contact"
-    assert body["filters_applied"]["sensitivity"] == "low"
+    assert "sensitivity" not in body["filters_applied"]
     node_ids = {node["entity_id"] for node in body["nodes"]}
     assert node_ids == {user["id"], alex["id"]}
     assert [node for node in body["nodes"] if node["is_focal"]][0]["entity_id"] == user["id"]
@@ -73,7 +73,6 @@ def test_ego_graph_returns_generic_depth_one_nodes_edges_and_filters(client) -> 
             "directed": client_contact["directed"],
             "status": "active",
             "confidence": client_contact["confidence"],
-            "sensitivity": "low",
         }
     ]
     assert "source" not in body["edges"][0]
@@ -161,7 +160,7 @@ def test_ontology_read_endpoints_return_seed_registries(client) -> None:
     )
     assert any(item["value"] == "organization" for item in body["fact_types"])
     assert "ai_use_policies" in body["policies"]
-    assert "sensitivity_levels" in body["policies"]
+    assert "sensitivity_levels" not in body["policies"]
 
     assert client.get("/api/ontology/edge-types").json()["items"]
     assert client.get("/api/ontology/observation-types").json()["items"]

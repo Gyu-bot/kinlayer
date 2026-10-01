@@ -13,6 +13,7 @@ Operational guidance for AI agents, skills, plugins, MCP adapters, and runtime h
 | API details | `../specs/api-spec.md` | Endpoint contract |
 | Candidate payloads | `../specs/candidate-lifecycle-and-payload.md` | Typed payload and status behavior |
 | Ontology boundary | `../specs/ontology-design.md` | Edge vs observation rules |
+| Periodic curation plan | `../plans/relationship-curation-cycle.md` | Approved external-curator/deterministic-executor contract |
 
 ## CONVENTIONS
 

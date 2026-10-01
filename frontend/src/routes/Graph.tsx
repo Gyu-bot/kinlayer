@@ -3,7 +3,7 @@ import {Background, Controls, ReactFlow, type Edge, type Node} from "@xyflow/rea
 import "@xyflow/react/dist/style.css";
 
 import {formatApiError, getEgoGraph, getOntology, listPeople} from "../api/client";
-import {includeAllOption, edgeTypeOptions, registryOptions, type SelectOption} from "../ontologyOptions";
+import {edgeTypeOptions, type SelectOption} from "../ontologyOptions";
 import type {Entity} from "../types/entities";
 import type {EgoGraph, GraphEdge, GraphFilters, GraphNode} from "../types/graph";
 
@@ -15,11 +15,9 @@ export function Graph() {
   const [filters, setFilters] = useState<GraphFilters>({
     relation_type: "",
     status: "active",
-    sensitivity: "all",
   });
   const [graph, setGraph] = useState<EgoGraph | null>(null);
   const [edgeTypes, setEdgeTypes] = useState<SelectOption[]>([]);
-  const [sensitivityOptions, setSensitivityOptions] = useState<SelectOption[]>([]);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +36,6 @@ export function Graph() {
     getOntology()
       .then((ontology) => {
         setEdgeTypes(edgeTypeOptions(ontology.edge_types));
-        setSensitivityOptions(registryOptions(ontology.policies.sensitivity_levels));
       })
       .catch(() => undefined);
   }, []);
@@ -144,19 +141,6 @@ export function Graph() {
             ))}
           </select>
         </label>
-        <label>
-          <span>Sensitivity</span>
-          <select
-            value={filters.sensitivity}
-            onChange={(event) => updateFilter("sensitivity", event.target.value)}
-          >
-            {includeAllOption(sensitivityOptions).map((sensitivity) => (
-              <option value={sensitivity.value} key={sensitivity.value}>
-                {sensitivity.label}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
 
       {error ? <p className="error">{error}</p> : null}
@@ -242,10 +226,6 @@ function NodeDetail({node}: {node: GraphNode}) {
         <dt>Status</dt>
         <dd>{node.status}</dd>
       </div>
-      <div>
-        <dt>Sensitivity</dt>
-        <dd>{node.sensitivity}</dd>
-      </div>
     </dl>
   );
 }
@@ -272,10 +252,6 @@ function EdgeDetail({edge, graph}: {edge: GraphEdge; graph: EgoGraph | null}) {
       <div>
         <dt>Status</dt>
         <dd>{edge.status}</dd>
-      </div>
-      <div>
-        <dt>Sensitivity</dt>
-        <dd>{edge.sensitivity}</dd>
       </div>
       <div>
         <dt>Confidence</dt>

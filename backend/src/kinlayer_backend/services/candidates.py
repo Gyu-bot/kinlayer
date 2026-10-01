@@ -5,9 +5,11 @@ from typing import assert_never
 
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
+from kinlayer_backend.schemas.common import without_legacy_sensitivity
 from kinlayer_backend.models import (
     AllowedEdgeType,
     AllowedObservationType,
@@ -25,7 +27,6 @@ from kinlayer_backend.models import (
     ObservationEvidence,
 )
 from kinlayer_backend.repositories.candidates import CandidateRepository
-from kinlayer_backend.repositories.entities import EntityRepository
 from kinlayer_backend.schemas.candidates import PAYLOAD_MODELS
 from kinlayer_backend.services.entities import (
     EntityService,
@@ -33,6 +34,7 @@ from kinlayer_backend.services.entities import (
     JsonValue,
     validate_common,
 )
+from kinlayer_backend.services.entity_guards import lock_active_entities
 from kinlayer_backend.services.ontology import is_allowed_registry_value
 from kinlayer_backend.services.relationships import RelationshipService
 from kinlayer_backend.services.structured_facts import (
@@ -60,7 +62,9 @@ class CandidateService:
         self.session = session
         self.repository = CandidateRepository(session)
 
-    def create_candidate(self, payload: dict[str, Any]) -> Candidate:
+    def create_candidate(self, payload: dict[str, Any], *, commit: bool = True,
+                         material_import_id: str | None = None) -> Candidate:
+        payload = without_legacy_sensitivity(payload)
         evidence = payload.pop("evidence", [])
         validate_common(payload, self.session)
         if not is_allowed_registry_value(self.session, "candidate_type", payload["candidate_type"]):
@@ -80,6 +84,8 @@ class CandidateService:
             episode = self.session.get(Episode, item["episode_id"])
             if not episode:
                 raise api_error(404, "not_found", "Evidence episode not found.")
+            if episode.material_import_id and episode.material_import_id != material_import_id:
+                raise api_error(422, "material_import_link_required", "Use the explicit material import operation.")
             if payload.get("created_by") == "ai_agent":
                 self._validate_agent_evidence(item, episode)
         self._validate_payload(
@@ -91,9 +97,10 @@ class CandidateService:
             )
         )
         payload.setdefault("status", "pending")
-        return self.repository.add_candidate(payload, evidence)
+        return self.repository.add_candidate(payload, evidence, commit=commit)
 
     def patch_candidate(self, candidate: Candidate, payload: dict[str, Any]) -> Candidate:
+        payload = without_legacy_sensitivity(payload)
         validate_common(payload, self.session)
         suggested_action = payload.get("suggested_action")
         if suggested_action and suggested_action not in SUGGESTED_ACTIONS:
@@ -147,16 +154,51 @@ class CandidateService:
         status: str = "accepted",
         resolution_note: str | None = None,
         resolved_by: str = "user",
+        commit: bool = True,
+    ) -> Candidate:
+        candidate = self._lock_resolvable_candidate(candidate.id)
+        return self._accept_locked_candidate(
+            candidate,
+            status=status,
+            resolution_note=resolution_note,
+            resolved_by=resolved_by,
+            commit=commit,
+        )
+
+    def _accept_locked_candidate(
+        self,
+        candidate: Candidate,
+        *,
+        status: str,
+        resolution_note: str | None,
+        resolved_by: str,
+        commit: bool,
     ) -> Candidate:
         try:
-            self._ensure_resolvable(candidate)
+            from kinlayer_backend.services.material_provenance import material_provenance
+
+            for evidence in candidate.evidence:
+                if (evidence.episode.material_import_id or evidence.episode.source_type == "import") and not material_provenance(self.session, evidence):
+                    raise api_error(409, "material_import_changed", "Imported source linkage or synthesis changed; re-import for review.")
             candidate.resolved_by = resolved_by
             canonical_record_ref = self._write_canonical_record(candidate)
             candidate.canonical_record_ref = canonical_record_ref
             self._resolve(candidate, status, resolution_note, resolved_by, commit=False)
-            self.session.commit()
-            self.session.refresh(candidate)
+            if commit:
+                self.session.commit()
+                self.session.refresh(candidate)
+            else:
+                self.session.flush()
             return candidate
+        except IntegrityError as exc:
+            self.session.rollback()
+            if self._is_source_candidate_conflict(exc):
+                raise api_error(
+                    409,
+                    "candidate_already_canonicalized",
+                    "Candidate already produced a canonical record.",
+                ) from exc
+            raise
         except Exception:
             self.session.rollback()
             raise
@@ -167,9 +209,11 @@ class CandidateService:
         edited_payload: dict[str, Any],
         resolution_note: str | None = None,
         resolved_by: str = "user",
+        commit: bool = True,
     ) -> Candidate:
+        candidate = self._lock_resolvable_candidate(candidate.id)
         try:
-            candidate.payload = PAYLOAD_MODELS[candidate.candidate_type].model_validate(
+            validated_payload = PAYLOAD_MODELS[candidate.candidate_type].model_validate(
                 edited_payload
             ).model_dump(mode="json", exclude_none=True)
         except (KeyError, ValidationError) as exc:
@@ -177,17 +221,37 @@ class CandidateService:
         self._validate_payload(
             CandidatePayloadValidation(
                 candidate_type=candidate.candidate_type,
-                payload=candidate.payload,
+                payload=validated_payload,
                 target_entity_id=candidate.target_entity_id,
                 supersedes_record_ref=candidate.supersedes_record_ref,
             )
         )
-        return self.accept_candidate(
+        candidate.payload = validated_payload
+        return self._accept_locked_candidate(
             candidate,
             status="edited_accepted",
             resolution_note=resolution_note,
             resolved_by=resolved_by,
+            commit=commit,
         )
+
+    def _lock_resolvable_candidate(self, candidate_id: str) -> Candidate:
+        candidate = self.repository.lock_candidate(candidate_id)
+        if not candidate:
+            raise api_error(404, "not_found", "Candidate not found.")
+        self._ensure_resolvable(candidate)
+        return candidate
+
+    @staticmethod
+    def _is_source_candidate_conflict(exc: IntegrityError) -> bool:
+        constraint_name = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        return constraint_name in {
+            "ux_entity_aliases_source_candidate_id",
+            "ux_entity_facts_source_candidate_id",
+            "ux_entity_edges_source_candidate_id",
+            "ux_observations_source_candidate_id",
+            "ux_entity_merges_candidate_id",
+        } or "source_candidate_id" in str(exc.orig) or "entity_merges.candidate_id" in str(exc.orig)
 
     def _entity(self, entity_id: str) -> Entity:
         entity = self.session.get(Entity, entity_id)
@@ -328,14 +392,14 @@ class CandidateService:
 
     def _write_alias(self, candidate: Candidate) -> str:
         payload = candidate.payload
-        entity = self._entity(payload["entity_id"])
         alias_payload = {
             "alias": payload["alias"],
             "confidence": payload.get("confidence", candidate.confidence),
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,
         }
-        alias = EntityRepository(self.session).add_alias(entity.id, alias_payload, commit=False)
+        entity = self._entity(payload["entity_id"])
+        alias = EntityService(self.session).create_alias(entity, alias_payload, commit=False)
         return f"entity_aliases:{alias.id}"
 
     def _write_profile_field(self, candidate: Candidate) -> str:
@@ -363,7 +427,6 @@ class CandidateService:
             },
             "claim_type": payload["claim_type"],
             "confidence": candidate.confidence,
-            "sensitivity": payload.get("sensitivity") or candidate.sensitivity,
             "ai_use_policy": payload.get("ai_use_policy", "cautious_use"),
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,
@@ -383,7 +446,6 @@ class CandidateService:
                 content=content,
                 field_path=payload.get("field_path"),
                 value=payload.get("value"),
-                sensitivity=payload.get("sensitivity"),
                 ai_use_policy=payload.get("ai_use_policy"),
                 created_by=candidate.created_by,
                 source_candidate_id=candidate.id,
@@ -396,7 +458,6 @@ class CandidateService:
     def _write_edge(self, candidate: Candidate) -> str:
         payload = {
             "confidence": candidate.confidence,
-            "sensitivity": candidate.sensitivity,
             "ai_use_policy": "cautious_use",
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,
@@ -409,7 +470,6 @@ class CandidateService:
     def _write_observation(self, candidate: Candidate) -> str:
         payload = {
             "confidence": candidate.confidence,
-            "sensitivity": candidate.sensitivity,
             "ai_use_policy": "cautious_use",
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,
@@ -424,8 +484,12 @@ class CandidateService:
         return f"observations:{observation.id}"
 
     def _write_merge(self, candidate: Candidate) -> str:
-        source = self._entity(candidate.payload["source_entity_id"])
-        target = self._entity(candidate.payload["target_entity_id"])
+        entities = lock_active_entities(
+            self.session,
+            [candidate.payload["source_entity_id"], candidate.payload["target_entity_id"]],
+        )
+        source = entities[candidate.payload["source_entity_id"]]
+        target = entities[candidate.payload["target_entity_id"]]
         if source.id == target.id:
             raise api_error(422, "validation_error", "Merge source and target must differ.")
         if source.system_role == "self" or target.system_role == "self":

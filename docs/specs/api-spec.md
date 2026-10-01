@@ -1,5 +1,11 @@
 # Kinlayer API Specification
 
+> Sensitivity is retired. See [retirement and compatibility contract](sensitivity-retirement.md).
+
+Authenticated reconciliation actions may carry up to six deterministically ordered typed context claims.
+Each targets only the resulting primary person and derives content from an exact native-reply span or
+candidate-bound original user evidence. Identity and context commit in one transaction.
+
 - Status: Draft v0.1
 - Style: OpenAPI-like Markdown
 - Parent PRD: `prd.md`
@@ -10,6 +16,12 @@
 ## 1. API Principles
 
 Kinlayer's HTTP API is the canonical capability layer.
+
+Explicit user-authorized source imports use `POST /api/material-imports/validate`,
+`POST /api/material-imports/submit`, and `GET /api/material-imports/{import_id}`.
+They require a separate token and bounded manifest; see the
+[authorized material import contract](authorized-material-imports.md).
+Ordinary post-turn evidence and correction/reconciliation identity guards are unchanged.
 
 Product boundary: AI agents interpret current-turn user-authored text and propose candidates or
 explicit corrections; Kinlayer validates, stores, retrieves, reviews, and canonicalizes relationship
@@ -179,7 +191,6 @@ Request:
     "short_note": "Met through work"
   },
   "confirmation_status": "confirmed",
-  "sensitivity": "medium",
   "ai_use_policy": "cautious_use",
   "created_by": "user"
 }
@@ -207,7 +218,6 @@ Query params:
 q
 entity_type
 status
-sensitivity
 limit
 offset
 ```
@@ -407,7 +417,6 @@ Request:
   "content": "Example Corp",
   "claim_type": "fact",
   "confidence": 0.95,
-  "sensitivity": "low",
   "ai_use_policy": "freely_use",
   "status": "active",
   "created_by": "user",
@@ -467,7 +476,6 @@ Request:
   "content": "alex@example.com",
   "field_path": "profile.email",
   "value": "alex@example.com",
-  "sensitivity": "high",
   "ai_use_policy": "ask_before_use"
 }
 ```
@@ -494,7 +502,7 @@ Semantics:
 - Replacement `value` stores `field_path`, `value`, and
   `supersedes_record_ref = entity_facts:<source_id>`.
 - Replacement preserves source `claim_type`, confidence, validity window, and copied evidence.
-  `sensitivity` and `ai_use_policy` default from the source unless provided.
+  `ai_use_policy` defaults from the source unless provided.
 - Errors include `validation_error` for invalid target type/content, entity mismatch, or already
   structured source; `conflict` for inactive/stale source paths; and `not_found` for missing facts.
 
@@ -518,7 +526,6 @@ Request:
   "confidence": 0.95,
   "status": "active",
   "valid_from": "2026-06-10T00:00:00Z",
-  "sensitivity": "medium",
   "ai_use_policy": "cautious_use",
   "created_by": "user"
 }
@@ -576,7 +583,6 @@ Request:
   "content": "Alex contacted the user again and the user felt unsure how to respond.",
   "claim_type": "fact",
   "confidence": 0.86,
-  "sensitivity": "medium",
   "ai_use_policy": "cautious_use",
   "status": "active",
   "valid_from": null,
@@ -642,7 +648,6 @@ Request:
   "body_hash": "sha256:...",
   "actor": "user",
   "occurred_at": "2026-06-10T00:00:00Z",
-  "sensitivity": "medium",
   "retention_policy": "excerpt_only"
 }
 ```
@@ -680,7 +685,6 @@ Request:
   "target_entity_id": "uuid",
   "payload": {},
   "confidence": 0.86,
-  "sensitivity": "medium",
   "suggested_action": "accept",
   "created_by": "ai_agent",
   "evidence": [
@@ -778,7 +782,6 @@ Query params:
 status
 candidate_type
 target_entity_id
-sensitivity
 limit
 offset
 ```
@@ -981,7 +984,6 @@ Response:
       },
       "penalties": {},
       "surface_bucket": "direct_surface",
-      "sensitivity": "medium",
       "ai_use_policy": "cautious_use",
       "confirmation_status": "confirmed",
       "observations": []
@@ -1067,7 +1069,6 @@ Query params:
 depth=1
 relation_type
 status
-sensitivity
 ```
 
 Response:
@@ -1082,7 +1083,6 @@ Response:
       "display_name": "Self",
       "entity_type": "person",
       "status": "active",
-      "sensitivity": "medium",
       "is_focal": true
     }
   ],
@@ -1278,3 +1278,210 @@ Returns newline-delimited JSON with a manifest first, then bounded operation rec
 ## 18. Handoff Notes
 
 This spec is intentionally Markdown-first. After implementation stabilizes, generate `openapi.yaml` from FastAPI/Pydantic models or convert this file into formal OpenAPI.
+
+## 19. Periodic Relationship Curation
+
+`KINLAYER_CURATION_MODE=disabled|shadow|apply` is authoritative and is returned by
+`GET /api/system/config` with `policy_version`.
+
+```text
+POST /api/curation/source-packs
+POST /api/curation/runs
+GET  /api/curation/runs
+GET  /api/curation/runs/{run_id}
+POST /api/curation/runs/{run_id}/execute
+POST /api/curation/runs/{run_id}/resume
+```
+
+Source packs use an exclusive `(created_at,candidate_id)` cursor, fixed `as_of`, and explicit
+candidate/evidence/excerpt budgets. They contain bounded user-authored excerpts, compact target
+context, validation diagnostics, and exact duplicate/conflict signals, never episode bodies or raw
+provider/session data. Candidate payloads are bounded typed projections. The first pack returns a
+server-derived lower-bound `cursor_started`; non-empty plans must echo that start, the completed
+cursor, and input count. The deduplicated union of all decision `candidate_ids` must equal the exact
+server-derived pending candidate set, and every candidate must appear in exactly one decision.
+Partial coverage, duplicate membership, out-of-window IDs, and count drift return HTTP 409 before
+any run or decision is persisted. A consolidate decision may contain multiple candidates, but those
+candidates cannot appear in another decision. An empty window requires zero count and zero decisions.
+Every non-empty decision also carries the exact reviewed candidate status, `updated_at`, payload
+digest, and evidence digest. Kinlayer compares those snapshots before run persistence and again
+after execution locks are acquired; drift returns `source_pack_candidate_changed` or blocks the
+decision as `source_candidate_changed` before canonical mutation.
+Reason codes are `source_pack_candidate_coverage_mismatch`, `duplicate_candidate_membership`,
+`candidate_outside_source_pack`, `source_pack_count_mismatch`,
+`source_pack_snapshot_mismatch`, `source_pack_candidate_changed`, and
+`source_pack_empty_run_mismatch`.
+
+`POST /api/curation/source-packs` accepts optional `upper_cursor`. Selection is the full tuple window
+`cursor < (created_at,candidate_id) <= upper_cursor`; `upper_cursor` must be greater than the effective
+lower cursor. `has_more` and the limit+1 probe are computed only inside that window, so same-timestamp
+IDs greater than the upper ID cannot widen results. Run validation applies the completed cursor as the
+same tuple-inclusive upper bound.
+
+An auditable empty replay checkpoint is an apply-mode run with zero input/decisions, complete start
+and completed cursor pairs, and exactly `diagnostics.replay_checkpoint=true`. Before persistence,
+Kinlayer re-queries the exact `(start,end]` tuple window and requires zero pending candidates. A valid
+checkpoint is created, evaluated, and executed to an empty `completed` apply run; repeated execute or
+resume is idempotent and performs no candidate/canonical mutation. Missing/reversed bounds, non-apply
+mode, decisions, or pending rows fail with `replay_checkpoint_invalid` or
+`replay_checkpoint_not_empty`. Ordinary empty runs remain cursorless and are not auto-executed.
+Run diagnostics/proposals reject nested reserved raw/session/transcript/tool keys and over-limit JSON.
+Run submission persists proposals and recomputes `allowed`/`blocked` from
+stored state. `shadow` never executes. `apply` commits canonical writes, source states, evidence,
+and an `executing/verification_unknown` decision atomically, then marks `executed/verified` only after
+fresh exact post-commit reconciliation. Phone/email/address/contact-like content is never automatic.
+
+`POST .../resume` has two strictly separated roles. With curation enabled and the stored
+`policy_version` matching current configuration, persisted `pending` or `planning` runs are
+deterministically re-evaluated to `ready` with `allowed|blocked` decisions and fresh DB readback;
+this recovery performs no candidate or canonical writes. It may recover a stored shadow run while
+the server is configured as either `shadow` or `apply`. Repeating resume on a ready shadow run is a
+read-only no-op. Apply-run execution/reconciliation from `ready|executing|partial|failed|completed`
+still requires server mode `apply`; disabled mode and stale policy versions fail closed.
+
+Context-card query `include_provisional=true` and context-pack field `include_provisional=true`
+return eligible pending observations only in a separate `provisional_context` array.
+
+## Reconciliation actions
+
+```text
+GET  /api/reconciliation/entity-snapshots?limit=200&offset=0
+GET  /api/reconciliation/candidate-evidence-snapshots?candidate_id=<id>
+POST /api/reconciliation/actions
+GET  /api/reconciliation/actions/{action_id}
+
+POST /api/reconciliation/enrichment-authorizations
+POST /api/reconciliation/enrichment-answers
+GET  /api/reconciliation/enrichment-answers/{action_id}
+```
+
+These routes are disabled unless `KINLAYER_RECONCILIATION_TOKEN` is configured. Stage and existing
+identity-reconciliation routes require that dedicated bearer credential. A successful or idempotent
+stage returns a deterministic opaque per-authorization answer capability. Answer POST and GET require
+that exact capability in `X-Kinlayer-Enrichment-Capability`; the broad reconciliation bearer alone is
+not sufficient and the capability cannot stage. Missing, wrong, and cross-authorization capabilities
+fail closed without disclosing action existence. The capability is derived by server-secret HMAC and
+is never stored in plaintext. Rotating `KINLAYER_RECONCILIATION_TOKEN` invalidates outstanding
+capabilities; recovery is a same-body stage retry
+while the authorization remains open, or a fresh stage after expiry. Authorization expiry
+independently ends answer authority.
+
+Conversational enrichment is a separate closed surface and does not overload reconciliation
+actions. A trusted PCR/compiler stages an authorization for one active confirmed person (including
+protected self) and one to three append-only slots for one topic. The backend resolves and snapshots
+all entity IDs. Each immutable authorization entity snapshot contains exactly `id`, `entity_type`,
+`display_name`, nullable `canonical_name`, nullable `system_role`, `confirmation_status`, `status`,
+`updated_at`, and `entity_digest`. The existing digest/stale comparison remains exact. Snapshots do
+not contain aliases, raw context, properties, question/reply text, or capabilities. The backend fixes
+policy/claim type, validates the small proactive ontology
+allowlists, rejects duplicate semantic slot authority, and rejects already-filled gaps. A gap is
+also filled when an exact semantically matching candidate for the subject is `pending` or
+`needs_clarification`; stage and answer-time revalidation return `409 pending_gap_filled` before any
+authorization, action, Episode, candidate, canonical, or slot mutation. The stage body contains no
+question or reply text.
+
+At stage and answer-time revalidation, the main subject must also be unambiguous among active
+confirmed people. The backend normalizes each nonempty display name, canonical name, and active alias
+with the canonical `normalize_name` helper and rejects any overlap with another such person as
+`409 subject_ambiguous` before authorization, action, Episode, candidate, canonical, or slot mutation.
+Empty or malformed identifiers do not match; there is no fuzzy matching. Protected self is identified
+by the unique `system_role=self` invariant and bypasses ordinary name-collision checks. Inactive or
+unconfirmed people do not create ambiguity.
+
+An answer contains only a resolution ID, authorization ID, bounded explicit-user source metadata,
+an optional bounded known-evidence bundle, and sorted closed slot answers. The bundle is required iff
+at least one answer is known and must be absent for all-unknown/skip actions. Known answers supply a slot-permitted
+text value, an optional selection from the slot's stored ontology allowlist, and exact evidence
+contained in that bundle. Unknown closes a slot without writing; skip leaves it open. An all-unknown/
+skip action creates no Episode, candidate, canonical, or evidence row. Mixed actions create one Episode
+containing only the bounded known-evidence bundle and evidence only for known slots. The
+backend compiles candidates and accepts them atomically as the user. POST retry and GET perform only
+fresh readback after the first commit; they never replay canonical writes.
+
+`GET .../entity-snapshots` returns a bounded page of active person entities with only `id`,
+entity/name fields, status, `updated_at`, and the backend-computed exact entity digest used by
+reconciliation preconditions. It rejects pages larger than 200; a caller that cannot review the
+complete bounded set must fail closed instead of silently comparing a partial person graph.
+
+`GET .../candidate-evidence-snapshots` is reconciliation-token gated and accepts one to fifty
+unique candidate IDs. It returns exact candidate status/`updated_at`/payload/evidence digests plus
+only eligible user-authored `agent_conversation` evidence: candidate/evidence/episode IDs, the exact
+bounded excerpt (maximum 500 code points), body hash, actor/source type, and server-derived effective
+AI-use policy. It never returns `source_ref`, an Episode body, record summaries, or
+assistant/system evidence. This is a private stage-validation surface, not generic CLI/session output.
+If any requested candidate has more than twenty attached evidence rows, the whole request fails
+closed with deterministic `409 candidate_evidence_limit_exceeded`; evidence is never silently
+truncated and schema validation never becomes a 500.
+
+POST accepts a closed, bounded request containing a unique `resolution_id`, one allowlisted action,
+the exact candidate ID set and reviewed status/`updated_at`/canonical-payload and evidence SHA-256
+digests, optional target/name fields, an optional closed bounded `relationship_to_self` object
+containing only `relation_type` and `claim_text`, a bounded resolution note, and a user-explicit confirmation
+source. Unknown fields, unbounded collections/text, non-user sources, and malformed hashes are
+rejected. Durable rows contain only those bounded controls and compact outcomes; raw Discord
+questions or replies, transcripts, prompts, provider payloads, and model output are forbidden.
+Every action also carries exactly one `answer_bindings` entry authenticated by a separate
+`KINLAYER_RECONCILIATION_COMMITMENT_KEY` of at least 32 UTF-8 bytes, enforced at settings startup.
+Its HMAC commits the actual PCR
+question ID, answer item and fingerprint, full agenda digest, resolution/action digest, and exact
+context-claim digest. Kinlayer verifies it before idempotency lookup or mutation. Possession of the
+reconciliation bearer alone cannot forge or substitute a binding. Omitted, duplicate, cross-item,
+cross-question, cross-agenda, cross-claim, and cross-action bindings return 422.
+The commitment key must differ from the reconciliation bearer token; equal configured values are
+invalid. Do not rotate it while an action is pending fresh readback.
+An action may carry at most six sorted, semantically unique typed context claims. Current-reply
+claims use exact code-point spans and are fixed to `cautious_use`. Prepared claims carry
+only candidate/evidence/episode IDs, exact body/excerpt commitments, and server-validated offsets;
+their AI-use policy preserves the more restrictive of `cautious_use` and the original candidate policy. The backend re-derives these values under the same transaction and fresh
+readback verifies candidate payload, manifest, and canonical AI-use policy without downgrade.
+
+The actions are `reject_candidates`, `map_to_existing_entity`, `confirm_new_entity_group`,
+`accept_existing_entity_observation_group`, `rename_and_accept_new_entity`,
+`merge_existing_entities`, and `archive_existing_entity`. Existing
+candidate action shapes remain unchanged and lock candidates in ID order. Entity cleanup actions
+use empty candidate lists plus bounded exact entity status/`updated_at`/entity digests and lock
+entities in ID order. Mapping requires one exact reviewed active non-self target snapshot and locks
+that target in the same transaction. Group confirmation deterministically retains one pending
+`new_entity`, creates exactly one person through the canonical candidate writer, and supersedes the
+rest. Rename does the same after validating the supplied stable person name. Only rename may include
+`relationship_to_self`: the service resolves the single active protected-self person internally,
+creates one user-authored `relationship_edge` candidate from self to the new person with
+`claim_type=fact`, empty properties, and confirmation-episode-only evidence, and accepts it before
+the same commit. The caller cannot supply either endpoint ID. No profile field is produced.
+`accept_existing_entity_observation_group` requires exact snapshots for one or more pending
+observation candidates plus exactly one exact snapshot for the supplied active non-system, non-self
+person target. Candidate targets and payload subjects must all equal that target. It accepts every
+candidate through the canonical observation writer in one transaction, preserving one
+`observations:<id>` record and exact source-evidence linkage per candidate; it never creates, renames,
+merges, maps, or supersedes an entity or candidate. Before canonical writes, the service derives the
+union of the target, every observation subject, and every related entity from the locked candidate
+snapshots and locks that full entity set once in globally sorted ID order.
+Protected-self names
+and aliases, pronouns, relationship nouns, honorific-only labels, and role/title-only labels cannot
+be created, renamed, or mapped as people.
+
+Existing-entity merge requires distinct active non-system person source and target IDs. It creates
+exactly one internal user-explicit typed merge candidate with the canonical merge defaults, accepts
+it atomically, and records candidate, merge, evidence, audit, canonical, and context readback.
+Archive requires one active non-self person created through the reviewed `new_entity` path and no
+active aliases, facts, edges, observations, related-observation memberships, or merge dependencies;
+otherwise the request fails closed and requires merge or correction. Archive uses canonical entity
+soft-delete semantics and verifies deletion/deprecation and absence from active context.
+
+The unique resolution ID is also the idempotency key. Reuse with the same normalized fingerprint
+returns the same action; reuse with different input returns `409`. Any mismatch in the locked
+candidate snapshot returns `409` without mutation. Mutation commits with
+`committed_unverified`, after which a fresh database session reads candidates, canonical entity,
+candidate evidence, and context projection. Readback failure preserves `committed_unverified`;
+POST retry and GET perform readback only and never replay canonical writes. Successful readback
+returns `verified` plus every candidate type/status/target/reference and exact payload/evidence
+digests, bounded derived-candidate summaries, and compact entity/evidence/context data. Merge and
+archive also return the post-action source-entity state and digest so adapters can verify the retired
+source independently. Relationship verification requires the accepted user-resolved
+derived candidate, exact confirmation episode, canonical edge source-candidate linkage, self/person
+endpoints, relation type, claim text, and canonical reference to all match. Any mismatch remains
+`committed_unverified` with `readback_unavailable`.
+The same transaction stores the safe signed binding in the existing action ledger summary. Fresh
+readback revalidates its HMAC and returns the exact `answer_binding`; a retry cannot replay writes or
+change the binding. It contains only IDs, digests, version, action name, and MAC—never prior excerpts
+or source handles.

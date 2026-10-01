@@ -77,7 +77,6 @@ class ObservationTypeList(APIModel):
 
 
 class PoliciesRead(APIModel):
-    sensitivity_levels: list[RegistryValueRead]
     ai_use_policies: list[RegistryValueRead]
     claim_types: list[RegistryValueRead]
     candidate_types: list[RegistryValueRead]

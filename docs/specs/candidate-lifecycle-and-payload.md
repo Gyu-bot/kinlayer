@@ -1,5 +1,7 @@
 # Kinlayer Candidate Lifecycle and Payload Contract
 
+> Sensitivity is retired. See [retirement and compatibility contract](sensitivity-retirement.md).
+
 - Status: Draft v0.1
 - Parent PRD: `prd.md`
 - Related docs: `ontology-design.md`, `context-output-contract.md`, `../agents/agent-write-instruction-pack.md`
@@ -117,7 +119,8 @@ candidate pending
 → candidate.canonical_record_ref = <table>:<id>
 ```
 
-Batch review / changeset apply is not MVP.
+General batch review / changeset apply is not MVP. The reconciliation API is a narrow exception for
+bounded, user-confirmed identity groups with exact stale fencing and atomic allowlisted outcomes.
 
 ---
 
@@ -132,7 +135,6 @@ candidates
 - target_entity_id nullable
 - payload jsonb
 - confidence
-- sensitivity
 - suggested_action
 - status
 - created_by
@@ -198,7 +200,6 @@ All candidate submissions use a common envelope.
     }
   ],
   "confidence": 0.72,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -217,7 +218,6 @@ Strongly recommended fields:
 
 ```text
 evidence[]
-sensitivity
 suggested_action
 target_entity_id when candidate applies to existing entity
 supersedes_record_ref when a profile_field candidate replaces an existing entity_facts row
@@ -235,8 +235,7 @@ supersedes_record_ref when a profile_field candidate replaces an existing entity
   "display_name": "Alex",
   "canonical_name": "alex",
   "properties": {},
-  "ai_use_policy": "cautious_use",
-  "sensitivity": "medium"
+  "ai_use_policy": "cautious_use"
 }
 ```
 
@@ -277,7 +276,6 @@ candidate.canonical_record_ref = entity_aliases:<id>
     "email": "alex@example.com"
   },
   "claim_type": "fact",
-  "sensitivity": "high",
   "ai_use_policy": "ask_before_use"
 }
 ```
@@ -317,7 +315,6 @@ Promotion candidate example:
     "content": "alex@example.com",
     "value": "alex@example.com",
     "claim_type": "fact",
-    "sensitivity": "high",
     "ai_use_policy": "ask_before_use"
   },
   "evidence": [
@@ -328,7 +325,6 @@ Promotion candidate example:
     }
   ],
   "confidence": 0.8,
-  "sensitivity": "high",
   "suggested_action": "review",
   "created_by": "ai_agent",
   "supersedes_record_ref": "entity_facts:general-fact-id"
@@ -385,7 +381,6 @@ Validation:
   "content": "Alex tends to prefer concise follow-ups.",
   "claim_type": "pattern",
   "ai_use_policy": "cautious_use",
-  "sensitivity": "medium",
   "occurred_at": null,
   "valid_from": null,
   "valid_to": null
@@ -433,7 +428,6 @@ Quality behavior:
   "field_conflict_policy": {
     "display_name": "keep_target",
     "canonical_name": "keep_target",
-    "sensitivity": "use_more_restrictive",
     "ai_use_policy": "use_more_restrictive"
   },
   "risk_notes": ["Both entities have similar names but different contexts."],
@@ -559,3 +553,27 @@ superseded → excluded unless audit/debug mode
 3. Should profile fields be embedded in `entities.properties` or normalized as separate records?
 4. Should `needs_clarification` generate suggested user-facing questions or just mark state?
 5. Should candidates support bulk creation in one request for agent post-turn extraction?
+## Periodic Curation Lifecycle
+
+Pending candidates are the normal curation change feed. Preparation reads them by keyset cursor,
+groups exact targets or exact normalized unresolved names, and includes only bounded user-authored
+evidence. Similar spellings remain separate review cases.
+
+Kinlayer revalidates status/type, target, ontology, warnings, evidence ownership, temporal scope,
+AI-use policy, duplicates/conflicts, and pattern episode count. Automatic promotion is
+limited to safe existing-person observations plus a single specific named-person `new_entity` whose
+name is supported by linked user-authored evidence. The named-person exception rejects protected
+self names/aliases, pronouns, generic relationship nouns, honorific-only and role/title-only labels,
+blank or one-character names, exact active entity/alias collisions, and any unresolved identity,
+conflict, schema, or evidence reason. Fuzzy similarity alone schedules reconciliation and does not
+block creation. `consolidate_accept` preserves the union
+of evidence in one replacement candidate and canonical observation. Exact duplicate archival retains
+an exact canonical record or deterministic oldest pending candidate. Retry/resume verifies the saved
+reference and never writes a second record.
+
+Manual accept/edit-accept and curation execution use one shared `FOR UPDATE` candidate boundary.
+After acquiring locks, curation refreshes run, decision, and candidate state. An executor that finds
+already committed work performs exact readback instead of overwriting it; other stale callers reload
+and lose with HTTP 409. Partial
+unique canonical-source indexes are the DB fallback; actual PostgreSQL lock contention remains a
+service-backed release gate.

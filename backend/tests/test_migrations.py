@@ -1,4 +1,13 @@
+import runpy
 from pathlib import Path
+
+import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from sqlalchemy import inspect, text
+
+from kinlayer_backend.config import Settings
+from kinlayer_backend.database import create_db_engine
 
 
 def test_core_entity_migration_defines_required_tables_and_seeds() -> None:
@@ -124,3 +133,180 @@ def test_person_merge_migration_defines_required_table() -> None:
         "previous_refs",
     ]:
         assert f'"{column}"' in content
+
+
+def test_curation_migration_defines_durable_run_and_decision_tables() -> None:
+    migration = Path("backend/alembic/versions/20260824_0007_relationship_curation.py")
+    content = migration.read_text()
+
+    assert 'down_revision: str | None = "20260612_0006"' in content
+    for table in ["curation_runs", "curation_decisions"]:
+        assert f'"{table}"' in content
+    for column in [
+        "mode",
+        "status",
+        "cursor_started_at",
+        "cursor_started_id",
+        "cursor_completed_at",
+        "cursor_completed_id",
+        "policy_version",
+        "planner_name",
+        "planner_model",
+        "planner_version",
+        "input_candidate_count",
+        "planned_decision_count",
+        "executed_decision_count",
+        "blocked_decision_count",
+        "error_code",
+        "diagnostics",
+        "started_at",
+        "completed_at",
+        "run_id",
+        "action",
+        "risk_level",
+        "candidate_ids",
+        "target_entity_id",
+        "proposed_payload",
+        "evidence_episode_ids",
+        "reason_codes",
+        "idempotency_key",
+        "canonical_record_ref",
+        "readback_status",
+        "readback_summary",
+        "api_error_code",
+        "executed_at",
+    ]:
+        assert f'"{column}"' in content
+    for constraint in [
+        "uq_curation_decisions_idempotency_key",
+        "ix_curation_runs_status",
+        "ix_curation_decisions_run_id",
+        "ix_curation_decisions_status",
+    ]:
+        assert f'"{constraint}"' in content
+    for forbidden in ["raw_prompt", "provider_request", "provider_response", "session_content"]:
+        assert forbidden not in content
+
+
+def test_curation_migration_applies_to_an_empty_database(database_url: str) -> None:
+    migration = runpy.run_path(
+        "backend/alembic/versions/20260824_0007_relationship_curation.py"
+    )
+    engine = create_db_engine(Settings(database_url=database_url))
+
+    with engine.begin() as connection:
+        context = MigrationContext.configure(connection)
+        with Operations.context(context):
+            migration["upgrade"]()
+
+    assert {"curation_runs", "curation_decisions"} <= set(inspect(engine).get_table_names())
+
+
+def test_reconciliation_migration_defines_bounded_durable_ledger() -> None:
+    migration = Path("backend/alembic/versions/20260825_0009_reconciliation_actions.py")
+    content = migration.read_text()
+
+    assert 'down_revision: str | None = "20260825_0008"' in content
+    assert '"reconciliation_actions"' in content
+    for column in [
+        "resolution_id",
+        "action_type",
+        "status",
+        "request_fingerprint",
+        "candidate_ids",
+        "expected_candidates",
+        "expected_entities",
+        "source_entity_id",
+        "target_entity_id",
+        "primary_entity_id",
+        "derived_candidate_ids",
+        "confirmation_episode_id",
+        "outcome_canonical_refs",
+        "readback_summary",
+        "error_code",
+        "committed_at",
+        "verified_at",
+    ]:
+        assert f'"{column}"' in content
+    assert '"uq_reconciliation_actions_resolution_id"' in content
+    assert 'postgresql.JSONB()' in content
+    assert 'op.add_column(\n        "curation_decisions"' in content
+    assert '"expected_candidates"' in content
+    for forbidden in [
+        "discord_payload",
+        "question_text",
+        "reply_text",
+        "session_content",
+        "raw_prompt",
+        "model_output",
+    ]:
+        assert forbidden not in content
+
+def test_candidate_canonicalization_guard_migration_defines_unique_indexes() -> None:
+    migration = Path(
+        "backend/alembic/versions/20260825_0008_unique_candidate_canonicalization.py"
+    )
+    content = migration.read_text()
+
+    assert 'down_revision: str | None = "20260824_0007"' in content
+    for index in [
+        "ux_entity_aliases_source_candidate_id",
+        "ux_entity_facts_source_candidate_id",
+        "ux_entity_edges_source_candidate_id",
+        "ux_observations_source_candidate_id",
+        "ux_entity_merges_candidate_id",
+    ]:
+        assert f'"{index}"' in content
+    assert "unique=True" in content
+
+
+def test_candidate_canonicalization_migration_preflight_reports_legacy_duplicates(
+    database_url: str,
+) -> None:
+    migration = runpy.run_path(
+        "backend/alembic/versions/20260825_0008_unique_candidate_canonicalization.py"
+    )
+    engine = create_db_engine(Settings(database_url=database_url))
+    columns = {
+        "entity_aliases": "source_candidate_id",
+        "entity_facts": "source_candidate_id",
+        "entity_edges": "source_candidate_id",
+        "observations": "source_candidate_id",
+        "entity_merges": "candidate_id",
+    }
+    with engine.begin() as connection:
+        for table, column in columns.items():
+            connection.execute(text(f"create table {table} (id text, {column} text)"))
+        connection.execute(
+            text(
+                "insert into observations (id, source_candidate_id) values "
+                "('one', 'duplicate-candidate'), ('two', 'duplicate-candidate')"
+            )
+        )
+        with pytest.raises(RuntimeError) as exc_info:
+            migration["_assert_no_historical_duplicates"](connection)
+
+    message = str(exc_info.value)
+    assert "observations.source_candidate_id" in message
+    assert "Resolve those duplicates manually" in message
+    assert "No rows were changed" in message
+    assert "duplicate-candidate" not in message
+
+
+def test_candidate_canonicalization_migration_offline_preflight_lists_key_classes() -> None:
+    migration = runpy.run_path(
+        "backend/alembic/versions/20260825_0008_unique_candidate_canonicalization.py"
+    )
+
+    sql = str(migration["_offline_postgres_preflight_sql"]())
+
+    for key_class in [
+        "entity_aliases.source_candidate_id",
+        "entity_facts.source_candidate_id",
+        "entity_edges.source_candidate_id",
+        "observations.source_candidate_id",
+        "entity_merges.candidate_id",
+    ]:
+        assert key_class in sql
+    assert "Resolve those duplicates manually, then retry" in sql
+    assert "No rows were changed" in sql

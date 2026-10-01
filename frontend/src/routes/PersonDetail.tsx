@@ -68,21 +68,18 @@ type FactDraft = {
   fact_type: string;
   content: string;
   claim_type: string;
-  sensitivity: string;
   ai_use_policy: string;
 };
 
 type EdgeDraft = {
   relation_type: string;
   claim_text: string;
-  sensitivity: string;
   ai_use_policy: string;
 };
 
 type PromotionDraft = {
   fact_type: string;
   content: string;
-  sensitivity: string;
   ai_use_policy: string;
 };
 
@@ -111,13 +108,11 @@ export function PersonDetail({id, onNavigate}: Props) {
   const [people, setPeople] = useState<Entity[]>([]);
   const [edgeTypes, setEdgeTypes] = useState<SelectOption[]>([]);
   const [factTypes, setFactTypes] = useState<SelectOption[]>([]);
-  const [sensitivityOptions, setSensitivityOptions] = useState<SelectOption[]>([]);
   const [policyOptions, setPolicyOptions] = useState<SelectOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [profileDraft, setProfileDraft] = useState({
     display_name: "",
-    sensitivity: "",
     ai_use_policy: "",
     short_note: "",
   });
@@ -130,7 +125,6 @@ export function PersonDetail({id, onNavigate}: Props) {
     fact_type: "",
     content: "",
     claim_type: "fact",
-    sensitivity: "",
     ai_use_policy: "",
   });
   const [edgeDrafts, setEdgeDrafts] = useState<Record<string, EdgeDraft>>({});
@@ -138,7 +132,6 @@ export function PersonDetail({id, onNavigate}: Props) {
     to_entity_id: "",
     relation_type: "",
     claim_text: "",
-    sensitivity: "",
     ai_use_policy: "",
   });
 
@@ -155,7 +148,6 @@ export function PersonDetail({id, onNavigate}: Props) {
       setContextCard(card);
       setProfileDraft({
         display_name: entity.display_name,
-        sensitivity: entity.sensitivity,
         ai_use_policy: entity.ai_use_policy,
         short_note: String(entity.properties.short_note ?? ""),
       });
@@ -170,7 +162,6 @@ export function PersonDetail({id, onNavigate}: Props) {
               fact_type: fact.fact_type,
               content: fact.content,
               claim_type: fact.claim_type,
-              sensitivity: fact.sensitivity,
               ai_use_policy: fact.ai_use_policy,
             },
           ]),
@@ -183,7 +174,6 @@ export function PersonDetail({id, onNavigate}: Props) {
             {
               relation_type: edge.relation_type,
               claim_text: edge.claim_text,
-              sensitivity: edge.sensitivity,
               ai_use_policy: edge.ai_use_policy,
             },
           ]),
@@ -208,12 +198,10 @@ export function PersonDetail({id, onNavigate}: Props) {
       .then(([peopleResult, ontology]) => {
         const nextEdgeTypes = edgeTypeOptions(ontology.edge_types);
         const nextFactTypes = registryOptions(ontology.fact_types);
-        const nextSensitivityOptions = registryOptions(ontology.policies.sensitivity_levels);
         const nextPolicyOptions = registryOptions(ontology.policies.ai_use_policies);
         setPeople(peopleResult.items);
         setEdgeTypes(nextEdgeTypes);
         setFactTypes(nextFactTypes);
-        setSensitivityOptions(nextSensitivityOptions);
         setPolicyOptions(nextPolicyOptions);
         setNewEdge((current) => {
           const firstRelated = peopleResult.items.find((personItem) => personItem.id !== id);
@@ -221,14 +209,12 @@ export function PersonDetail({id, onNavigate}: Props) {
             ...current,
             relation_type: normalizeOptionValue(current.relation_type, nextEdgeTypes),
             to_entity_id: current.to_entity_id || firstRelated?.id || "",
-            sensitivity: normalizeOptionValue(current.sensitivity, nextSensitivityOptions),
             ai_use_policy: normalizeOptionValue(current.ai_use_policy, nextPolicyOptions),
           };
         });
         setNewFact((current) => ({
           ...current,
           fact_type: normalizeOptionValue(current.fact_type, nextFactTypes),
-          sensitivity: normalizeOptionValue(current.sensitivity, nextSensitivityOptions),
           ai_use_policy: normalizeOptionValue(current.ai_use_policy, nextPolicyOptions),
         }));
       })
@@ -250,7 +236,6 @@ export function PersonDetail({id, onNavigate}: Props) {
     await runAction(() =>
       updatePerson(id, {
         display_name: profileDraft.display_name,
-        sensitivity: profileDraft.sensitivity,
         ai_use_policy: profileDraft.ai_use_policy,
         properties: {...(person?.properties ?? {}), short_note: profileDraft.short_note},
       }),
@@ -298,7 +283,6 @@ export function PersonDetail({id, onNavigate}: Props) {
         claim_type: "fact",
         directed: true,
         confidence: 1,
-        sensitivity: newEdge.sensitivity,
         ai_use_policy: newEdge.ai_use_policy,
         created_by: "user",
       }),
@@ -330,7 +314,6 @@ export function PersonDetail({id, onNavigate}: Props) {
     return {
       fact_type: promotionFactTypes[0]?.value ?? "email",
       content: fact.content,
-      sensitivity: fact.sensitivity,
       ai_use_policy: fact.ai_use_policy,
     };
   }
@@ -361,7 +344,6 @@ export function PersonDetail({id, onNavigate}: Props) {
         content: trimmedContent,
         field_path: `profile.${draft.fact_type}`,
         value: trimmedContent,
-        sensitivity: draft.sensitivity,
         ai_use_policy: draft.ai_use_policy,
       });
       setActivePromotionFactId(null);
@@ -400,10 +382,6 @@ export function PersonDetail({id, onNavigate}: Props) {
           <strong>{person.status}</strong>
         </div>
         <div>
-          <span>{helpCopy.sensitivity.label}</span>
-          <strong>{person.sensitivity}</strong>
-        </div>
-        <div>
           <span>{helpCopy.policy.label}</span>
           <strong>{person.ai_use_policy}</strong>
         </div>
@@ -425,21 +403,6 @@ export function PersonDetail({id, onNavigate}: Props) {
                 setProfileDraft({...profileDraft, display_name: event.target.value})
               }
             />
-          </label>
-          <label>
-            <FieldHelp {...helpCopy.sensitivity} />
-            <select
-              value={profileDraft.sensitivity}
-              onChange={(event) =>
-                setProfileDraft({...profileDraft, sensitivity: event.target.value})
-              }
-            >
-              {optionsWithCurrent(sensitivityOptions, profileDraft.sensitivity).map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
           </label>
           <label>
             <FieldHelp {...helpCopy.policy} />
@@ -516,7 +479,6 @@ export function PersonDetail({id, onNavigate}: Props) {
         <FactCreateForm
           newFact={newFact}
           factTypes={factTypes}
-          sensitivityOptions={sensitivityOptions}
           policyOptions={policyOptions}
           setNewFact={setNewFact}
           onSubmit={addFact}
@@ -525,7 +487,6 @@ export function PersonDetail({id, onNavigate}: Props) {
           facts={structuredFacts}
           factDrafts={factDrafts}
           factTypes={factTypes}
-          sensitivityOptions={sensitivityOptions}
           policyOptions={policyOptions}
           setFactDrafts={setFactDrafts}
           runAction={runAction}
@@ -539,7 +500,6 @@ export function PersonDetail({id, onNavigate}: Props) {
           facts={generalFacts}
           factDrafts={factDrafts}
           factTypes={factTypes}
-          sensitivityOptions={sensitivityOptions}
           policyOptions={policyOptions}
           setFactDrafts={setFactDrafts}
           runAction={runAction}
@@ -596,19 +556,6 @@ export function PersonDetail({id, onNavigate}: Props) {
             />
           </label>
           <label>
-            <FieldHelp label="Relationship sensitivity" help={helpCopy.sensitivity.help} />
-            <select
-              value={newEdge.sensitivity}
-              onChange={(event) => setNewEdge({...newEdge, sensitivity: event.target.value})}
-            >
-              {optionsWithCurrent(sensitivityOptions, newEdge.sensitivity).map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
             <FieldHelp label="Relationship AI use policy" help={helpCopy.policy.help} />
             <select
               value={newEdge.ai_use_policy}
@@ -639,7 +586,6 @@ export function PersonDetail({id, onNavigate}: Props) {
                   edge={edge}
                   draft={edgeDrafts[edge.id]}
                   edgeTypes={edgeTypes}
-                  sensitivityOptions={sensitivityOptions}
                   policyOptions={policyOptions}
                   key={edge.id}
                   setDraft={(draft) => setEdgeDrafts({...edgeDrafts, [edge.id]: draft})}
@@ -697,14 +643,12 @@ export function PersonDetail({id, onNavigate}: Props) {
 function FactCreateForm({
   newFact,
   factTypes,
-  sensitivityOptions,
   policyOptions,
   setNewFact,
   onSubmit,
 }: {
   newFact: FactDraft;
   factTypes: SelectOption[];
-  sensitivityOptions: SelectOption[];
   policyOptions: SelectOption[];
   setNewFact: (fact: FactDraft) => void;
   onSubmit: (event: FormEvent) => void;
@@ -732,19 +676,6 @@ function FactCreateForm({
         />
       </label>
       <label>
-        <FieldHelp label="New structured fact sensitivity" help={helpCopy.sensitivity.help} />
-        <select
-          value={newFact.sensitivity}
-          onChange={(event) => setNewFact({...newFact, sensitivity: event.target.value})}
-        >
-          {optionsWithCurrent(sensitivityOptions, newFact.sensitivity).map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
         <FieldHelp label="New structured fact AI use policy" help={helpCopy.policy.help} />
         <select
           value={newFact.ai_use_policy}
@@ -766,7 +697,6 @@ function FactTable({
   facts,
   factDrafts,
   factTypes,
-  sensitivityOptions,
   policyOptions,
   setFactDrafts,
   runAction,
@@ -775,7 +705,6 @@ function FactTable({
   facts: EntityFact[];
   factDrafts: Record<string, FactDraft>;
   factTypes: SelectOption[];
-  sensitivityOptions: SelectOption[];
   policyOptions: SelectOption[];
   setFactDrafts: (drafts: Record<string, FactDraft>) => void;
   runAction: (action: () => Promise<unknown>) => Promise<void>;
@@ -799,7 +728,6 @@ function FactTable({
               fact_type: fact.fact_type,
               content: fact.content,
               claim_type: fact.claim_type,
-              sensitivity: fact.sensitivity,
               ai_use_policy: fact.ai_use_policy,
             };
             return [
@@ -839,22 +767,6 @@ function FactTable({
                 <td className="fact-policy-column">
                   <div className="stacked-selects">
                     <select
-                      aria-label={`Fact sensitivity ${fact.fact_type}`}
-                      value={draft.sensitivity}
-                      onChange={(event) =>
-                        setFactDrafts({
-                          ...factDrafts,
-                          [fact.id]: {...draft, sensitivity: event.target.value},
-                        })
-                      }
-                    >
-                      {optionsWithCurrent(sensitivityOptions, draft.sensitivity).map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <select
                       aria-label={`Fact AI use policy ${fact.fact_type}`}
                       value={draft.ai_use_policy}
                       onChange={(event) =>
@@ -883,7 +795,6 @@ function FactTable({
                             content: draft.content,
                             value: {field_path: `profile.${draft.fact_type}`, value: draft.content},
                             claim_type: draft.claim_type,
-                            sensitivity: draft.sensitivity,
                             ai_use_policy: draft.ai_use_policy,
                           }),
                         )
@@ -954,31 +865,6 @@ function FactTable({
                       </label>
                       <label>
                         <FieldHelp
-                          label="Structured fact sensitivity"
-                          help={helpCopy.sensitivity.help}
-                        />
-                        <select
-                          aria-label="Structured fact sensitivity"
-                          value={promotion.getDraft(fact).sensitivity}
-                          onChange={(event) =>
-                            promotion.onChange(fact.id, {
-                              ...promotion.getDraft(fact),
-                              sensitivity: event.target.value,
-                            })
-                          }
-                        >
-                          {optionsWithCurrent(
-                            sensitivityOptions,
-                            promotion.getDraft(fact).sensitivity,
-                          ).map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        <FieldHelp
                           label="Structured fact AI use policy"
                           help={helpCopy.policy.help}
                         />
@@ -1033,7 +919,6 @@ function RelationshipRow({
   edge,
   draft,
   edgeTypes,
-  sensitivityOptions,
   policyOptions,
   setDraft,
   runAction,
@@ -1041,7 +926,6 @@ function RelationshipRow({
   edge: EntityEdge;
   draft: EdgeDraft | undefined;
   edgeTypes: SelectOption[];
-  sensitivityOptions: SelectOption[];
   policyOptions: SelectOption[];
   setDraft: (draft: EdgeDraft) => void;
   runAction: (action: () => Promise<unknown>) => Promise<void>;
@@ -1049,7 +933,6 @@ function RelationshipRow({
   const current = draft ?? {
     relation_type: edge.relation_type,
     claim_text: edge.claim_text,
-    sensitivity: edge.sensitivity,
     ai_use_policy: edge.ai_use_policy,
   };
   return (
@@ -1077,17 +960,6 @@ function RelationshipRow({
       <td>
         <div className="stacked-selects">
           <select
-            aria-label={`Relationship sensitivity ${edge.relation_type}`}
-            value={current.sensitivity}
-            onChange={(event) => setDraft({...current, sensitivity: event.target.value})}
-          >
-            {optionsWithCurrent(sensitivityOptions, current.sensitivity).map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <select
             aria-label={`Relationship AI use policy ${edge.relation_type}`}
             value={current.ai_use_policy}
             onChange={(event) => setDraft({...current, ai_use_policy: event.target.value})}
@@ -1109,7 +981,6 @@ function RelationshipRow({
                 updateEdge(edge.id, {
                   relation_type: current.relation_type,
                   claim_text: current.claim_text,
-                  sensitivity: current.sensitivity,
                   ai_use_policy: current.ai_use_policy,
                 }),
               )
@@ -1156,7 +1027,6 @@ function ObservationSection({
             <div className="pill-row">
               <span className="pill">{helpCopy.claim.label}: {observation.claim_type}</span>
               <span className="pill">{helpCopy.policy.label}: {observation.ai_use_policy}</span>
-              <span className="pill">{helpCopy.sensitivity.label}: {observation.sensitivity}</span>
             </div>
             <div className="pill-row">
               {observation.occurred_at ? (

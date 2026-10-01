@@ -18,12 +18,10 @@ def get_ego_graph(
     depth: int = Query(default=1),
     relation_type: str | None = None,
     status: str | None = None,
-    sensitivity: str | None = None,
 ):
     return GraphService(session).ego_graph(
         entity_id,
         depth=depth,
         relation_type=relation_type,
         status=status,
-        sensitivity=sensitivity,
     )

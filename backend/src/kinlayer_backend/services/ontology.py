@@ -42,11 +42,6 @@ REGISTRY_SEEDS: dict[str, list[tuple[str, str, str]]] = {
         ("preference", "Preference", "supported"),
         ("pattern", "Pattern", "supported"),
     ],
-    "sensitivity": [
-        ("low", "Low", "supported"),
-        ("medium", "Medium", "supported"),
-        ("high", "High", "supported"),
-    ],
     "ai_use_policy": [
         ("freely_use", "Freely use", "supported"),
         ("cautious_use", "Cautious use", "supported"),
@@ -228,7 +223,6 @@ class OntologyReadService:
 
     def policies(self) -> dict:
         return {
-            "sensitivity_levels": self.repository.registry_values("sensitivity"),
             "ai_use_policies": self.repository.registry_values("ai_use_policy"),
             "claim_types": self.repository.registry_values("claim_type"),
             "candidate_types": self.repository.registry_values("candidate_type"),

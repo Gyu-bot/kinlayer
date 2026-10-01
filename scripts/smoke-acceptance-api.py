@@ -138,7 +138,6 @@ def episode(client: SmokeClient, ref: str, excerpt: str) -> dict[str, Any]:
             "body_excerpt": excerpt,
             "body_hash": body_hash(excerpt),
             "actor": "ai_agent",
-            "sensitivity": "medium",
             "retention_policy": "excerpt_only",
         },
     )
@@ -164,11 +163,9 @@ def observation_candidate(
                 "content": content,
                 "claim_type": "fact",
                 "ai_use_policy": "cautious_use",
-                "sensitivity": "medium",
             },
             "evidence": [{"episode_id": source["id"], "excerpt": content, "confidence": 0.9}],
             "confidence": 0.9,
-            "sensitivity": "medium",
             "suggested_action": "review",
             "created_by": "ai_agent",
         },
@@ -194,12 +191,10 @@ def profile_fact_candidate(
                 "content": content,
                 "value": {"kind": "work", "email": content},
                 "claim_type": "fact",
-                "sensitivity": "high",
                 "ai_use_policy": "ask_before_use",
             },
             "evidence": [{"episode_id": source["id"], "excerpt": content, "confidence": 0.9}],
             "confidence": 0.9,
-            "sensitivity": "high",
             "suggested_action": "review",
             "created_by": "ai_agent",
         },
@@ -224,7 +219,6 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
             "entity_type": "person",
             "display_name": f"Acceptance Disposable {stamp}",
             "confirmation_status": "confirmed",
-            "sensitivity": "low",
             "ai_use_policy": "cautious_use",
             "created_by": "user",
         },
@@ -245,7 +239,6 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
             "content": f"Disposable fact {stamp}",
             "claim_type": "fact",
             "confidence": 1,
-            "sensitivity": "low",
             "ai_use_policy": "cautious_use",
             "created_by": "user",
         },
@@ -262,7 +255,6 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
             "content": f"Promote disposable profile fact {stamp}",
             "claim_type": "fact",
             "confidence": 0.8,
-            "sensitivity": "medium",
             "ai_use_policy": "cautious_use",
             "created_by": "user",
         },
@@ -275,7 +267,6 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
             "fact_type": "email",
             "content": promoted_email,
             "field_path": "profile.email",
-            "sensitivity": "high",
             "ai_use_policy": "ask_before_use",
         },
     )
@@ -307,7 +298,6 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
             "content": "not-an-email",
             "claim_type": "fact",
             "confidence": 1,
-            "sensitivity": "high",
             "ai_use_policy": "ask_before_use",
             "created_by": "user",
         },
@@ -327,7 +317,6 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
             "claim_text": f"Disposable edge {stamp}",
             "claim_type": "fact",
             "confidence": 0.8,
-            "sensitivity": "low",
             "ai_use_policy": "cautious_use",
             "created_by": "user",
         },
@@ -371,7 +360,6 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
                     }
                 ],
                 "confidence": 0.9,
-                "sensitivity": "medium",
                 "created_by": "ai_agent",
             },
         },
@@ -394,7 +382,6 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
             "content": f"Disposable observation {stamp}",
             "claim_type": "fact",
             "confidence": 1,
-            "sensitivity": "low",
             "ai_use_policy": "cautious_use",
             "created_by": "user",
         },
@@ -540,7 +527,6 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
                 "content": f"Edited accepted candidate smoke {stamp}",
                 "claim_type": "fact",
                 "ai_use_policy": "cautious_use",
-                "sensitivity": "medium",
             }
         },
     )
@@ -624,7 +610,6 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
                     "content": corrected_content,
                     "claim_type": "fact",
                     "confidence": 1,
-                    "sensitivity": "medium",
                     "ai_use_policy": "cautious_use",
                     "recency_weight": 1,
                 },
@@ -724,6 +709,30 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
     assert_true(fixtures["accepted_canonical_record_ref"].split(":", 1)[1] in json.dumps(card), "accepted evidence link missing")
     assert_true(profile_fact_id in json.dumps(card), "accepted profile fact missing from context card")
 
+    curation_config = client.get("/api/system/config")["curation"]
+    curation_mode = curation_config["mode"]
+    if curation_mode != "disabled":
+        source_pack = client.post("/api/curation/source-packs", {"limit": 10})
+        assert_true("groups" in source_pack, "curation source pack failed")
+        curation_run = client.post(
+            "/api/curation/runs",
+            {
+                "mode": curation_mode,
+                "policy_version": curation_config["policy_version"],
+                "input_candidate_count": 0,
+                "decisions": [],
+            },
+        )
+        assert_true(curation_run["status"] == "ready", "curation plan failed")
+        if curation_mode == "apply":
+            curation_run = client.post(
+                f"/api/curation/runs/{curation_run['id']}/execute",
+                {},
+            )
+            assert_true(curation_run["status"] == "completed", "curation execute failed")
+            resumed = client.post(f"/api/curation/runs/{curation_run['id']}/resume", {})
+            assert_true(resumed["id"] == curation_run["id"], "curation resume failed")
+
     graph = client.get(f"/api/graph/ego/{self_id}?depth=1")
     assert_true(len(graph["nodes"]) >= 3 and len(graph["edges"]) >= 2, "ego graph missing fixture nodes/edges")
 
@@ -744,6 +753,7 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
         "accepted_canonical_record_ref": fixtures["accepted_canonical_record_ref"],
         "accepted_merge_ref": accepted_merge["canonical_record_ref"],
         "api_smoke": "ok",
+        "curation_mode": curation_mode,
     }
 
 

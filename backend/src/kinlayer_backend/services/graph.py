@@ -12,7 +12,6 @@ class GraphService:
         depth: int = 1,
         relation_type: str | None = None,
         status: str | None = None,
-        sensitivity: str | None = None,
     ) -> dict:
         if depth != 1:
             raise api_error(422, "validation_error", "Only depth=1 is supported in MVP.")
@@ -25,7 +24,6 @@ class GraphService:
             entity_id,
             relation_type=relation_type,
             status=status,
-            sensitivity=sensitivity,
         )
         entity_ids = {entity_id}
         for edge in edges:
@@ -38,7 +36,6 @@ class GraphService:
                 "display_name": entity.display_name,
                 "entity_type": entity.entity_type,
                 "status": entity.status,
-                "sensitivity": entity.sensitivity,
                 "is_focal": entity.id == entity_id,
             }
             for entity in entities.values()
@@ -49,8 +46,6 @@ class GraphService:
             filters_applied["relation_type"] = relation_type
         if status:
             filters_applied["status"] = status
-        if sensitivity:
-            filters_applied["sensitivity"] = sensitivity
         return {
             "focal_entity_id": entity_id,
             "depth": depth,
@@ -64,7 +59,6 @@ class GraphService:
                     "directed": edge.directed,
                     "status": edge.status,
                     "confidence": float(edge.confidence),
-                    "sensitivity": edge.sensitivity,
                 }
                 for edge in edges
             ],

@@ -176,7 +176,6 @@ describe("API client", () => {
               ],
               observation_types: [],
               policies: {
-                sensitivity_levels: [],
                 ai_use_policies: [],
                 claim_types: [],
                 candidate_types: [],
@@ -236,7 +235,6 @@ describe("API client", () => {
       content: "new@example.com",
       field_path: "profile.email",
       value: "new@example.com",
-      sensitivity: "high",
       ai_use_policy: "ask_before_use",
     });
 
@@ -250,7 +248,6 @@ describe("API client", () => {
           content: "new@example.com",
           field_path: "profile.email",
           value: "new@example.com",
-          sensitivity: "high",
           ai_use_policy: "ask_before_use",
         }),
       }),

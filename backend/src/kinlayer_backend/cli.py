@@ -15,6 +15,7 @@ embedding_app = typer.Typer(help="Inspect and backfill observation embeddings.")
 candidate_app = typer.Typer(help="Submit and resolve candidate records.")
 correction_app = typer.Typer(help="Apply explicit corrections.")
 context_app = typer.Typer(help="Retrieve and package context.")
+curation_app = typer.Typer(help="Prepare, plan, and inspect periodic curation runs.")
 debug_app = typer.Typer(help="Inspect retrieval internals.")
 graph_app = typer.Typer(help="Inspect relationship graph views.")
 ontology_app = typer.Typer(help="Inspect ontology registries and diagnostics.")
@@ -26,6 +27,7 @@ app.add_typer(embedding_app, name="embedding")
 app.add_typer(candidate_app, name="candidate")
 app.add_typer(correction_app, name="correction")
 app.add_typer(context_app, name="context")
+app.add_typer(curation_app, name="curation")
 app.add_typer(debug_app, name="debug")
 app.add_typer(graph_app, name="graph")
 app.add_typer(ontology_app, name="ontology")
@@ -48,6 +50,10 @@ def _request(method: str, path: str, *, payload: dict[str, Any] | None = None) -
     settings = Settings()
     url = _api_url(settings, path)
     headers = _headers(settings)
+    if path.startswith("/api/material-imports/"):
+        if not settings.material_import_token:
+            raise typer.BadParameter("KINLAYER_MATERIAL_IMPORT_TOKEN is required.")
+        headers = {"Authorization": f"Bearer {settings.material_import_token}"}
     if method == "GET":
         return httpx.get(url, headers=headers, timeout=5)
     if method == "POST":
@@ -94,6 +100,33 @@ def _read_json_file(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise typer.BadParameter("JSON file must contain an object.")
     return payload
+
+
+@app.command("material-import")
+def material_import(
+    file: Annotated[Path, typer.Option("--file", exists=True, dir_okay=False)],
+    submit: Annotated[bool, typer.Option("--submit", help="Persist pending candidates; default validates with rollback.")] = False,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Validate pending candidates only, not autoaccept eligibility. Never canonicalizes.
+
+    Submit only explicitly; warnings, undated material and planner limits need review.
+    """
+    if file.stat().st_size > 100_000:
+        raise typer.BadParameter("Import manifest exceeds 100000 bytes.")
+    payload = _read_json_file(file)
+    response = _request("POST", "/api/material-imports/" + ("submit" if submit else "validate"), payload=payload)
+    _raise_for_api(response)
+    result = response.json()
+    if submit:
+        from urllib.parse import quote
+
+        readback = _request("GET", "/api/material-imports/" + quote(result["import_id"], safe=""))
+        _raise_for_api(readback)
+        actual = readback.json()
+        if any(actual.get(key) != result.get(key) for key in ("request_sha256", "candidate_ids", "episode_ids")):
+            raise typer.BadParameter("Import committed but receipt readback did not match; do not re-key.")
+    _emit(result, json_output)
 
 
 def _query_path(path: str, params: list[tuple[str, Any]]) -> str:
@@ -270,9 +303,13 @@ def retrieve_context(
 @app.command("context-card")
 def context_card(
     entity_id: str,
+    include_provisional: Annotated[bool, typer.Option("--include-provisional")] = False,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    response = _request("GET", f"/api/entities/{entity_id}/context-card")
+    path = f"/api/entities/{entity_id}/context-card"
+    if include_provisional:
+        path += "?include_provisional=true"
+    response = _request("GET", path)
     _raise_for_api(response)
     payload = response.json()
     if json_output:
@@ -293,6 +330,7 @@ def context_pack(
     focal_entity_id: Annotated[str | None, typer.Option("--focal-entity-id")] = None,
     situation: Annotated[str | None, typer.Option("--situation")] = None,
     include_debug: Annotated[bool, typer.Option("--debug")] = False,
+    include_provisional: Annotated[bool, typer.Option("--include-provisional")] = False,
     limit: Annotated[int, typer.Option("--limit", min=1, max=50)] = 10,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
@@ -305,6 +343,8 @@ def context_pack(
     )
     if situation:
         payload["situation"] = situation
+    if include_provisional:
+        payload["include_provisional"] = True
     response = _request("POST", "/api/context/pack", payload=payload)
     _raise_for_api(response)
     body = response.json()
@@ -315,6 +355,61 @@ def context_pack(
     typer.echo(f"Confidence: {pack['confidence']}")
     typer.echo(f"Policy: {pack['suggested_response_policy']}")
     _emit_context_summary(body)
+
+
+@curation_app.command("prepare")
+def curation_prepare(
+    limit: Annotated[int, typer.Option("--limit", min=1, max=200)] = 50,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    response = _request("POST", "/api/curation/source-packs", payload={"limit": limit})
+    _raise_for_api(response)
+    _emit(response.json(), json_output)
+
+
+@curation_app.command("plan-file")
+def curation_plan_file(
+    plan_json: Path,
+    mode: Annotated[str, typer.Option("--mode")] = "shadow",
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    payload = _read_json_file(plan_json)
+    payload["mode"] = mode
+    response = _request("POST", "/api/curation/runs", payload=payload)
+    _raise_for_api(response)
+    _emit(response.json(), json_output)
+
+
+def _curation_run_action(run_id: str, action: str, json_output: bool) -> None:
+    response = _request("POST", f"/api/curation/runs/{run_id}/{action}")
+    _raise_for_api(response)
+    _emit(response.json(), json_output)
+
+
+@curation_app.command("execute")
+def curation_execute(
+    run_id: str,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    _curation_run_action(run_id, "execute", json_output)
+
+
+@curation_app.command("resume")
+def curation_resume(
+    run_id: str,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    _curation_run_action(run_id, "resume", json_output)
+
+
+@curation_app.command("show")
+def curation_show(
+    run_id: str,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    response = _request("GET", f"/api/curation/runs/{run_id}")
+    _raise_for_api(response)
+    _emit(response.json(), json_output)
 
 
 @debug_app.command("retrieval")
@@ -350,7 +445,6 @@ def graph_ego(
     entity_id: str,
     relation_type: Annotated[str | None, typer.Option("--relation-type")] = None,
     status: Annotated[str, typer.Option("--status")] = "active",
-    sensitivity: Annotated[str | None, typer.Option("--sensitivity")] = None,
     depth: Annotated[int, typer.Option("--depth", min=1, max=2)] = 1,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
@@ -359,8 +453,6 @@ def graph_ego(
         params.append(f"relation_type={relation_type}")
     if status:
         params.append(f"status={status}")
-    if sensitivity:
-        params.append(f"sensitivity={sensitivity}")
     response = _request("GET", f"/api/graph/ego/{entity_id}?{'&'.join(params)}")
     _raise_for_api(response)
     payload = response.json()
@@ -425,7 +517,6 @@ def candidate_list(
     status: Annotated[str | None, typer.Option("--status")] = None,
     candidate_type: Annotated[str | None, typer.Option("--candidate-type", "--type")] = None,
     target_entity_id: Annotated[str | None, typer.Option("--target-entity-id", "--target")] = None,
-    sensitivity: Annotated[str | None, typer.Option("--sensitivity")] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     params = []
@@ -435,8 +526,6 @@ def candidate_list(
         params.append(f"candidate_type={candidate_type}")
     if target_entity_id:
         params.append(f"target_entity_id={target_entity_id}")
-    if sensitivity:
-        params.append(f"sensitivity={sensitivity}")
     query = f"?{'&'.join(params)}" if params else ""
     response = _request("GET", f"/api/candidates{query}")
     _raise_for_api(response)
@@ -574,7 +663,6 @@ def fact_promote(
     fact_type: Annotated[str, typer.Option("--fact-type")],
     content: Annotated[str, typer.Option("--content")],
     field_path: Annotated[str | None, typer.Option("--field-path")] = None,
-    sensitivity: Annotated[str | None, typer.Option("--sensitivity")] = None,
     ai_use_policy: Annotated[str | None, typer.Option("--ai-use-policy")] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
@@ -588,8 +676,6 @@ def fact_promote(
     }
     if field_path:
         payload["field_path"] = field_path
-    if sensitivity:
-        payload["sensitivity"] = sensitivity
     if ai_use_policy:
         payload["ai_use_policy"] = ai_use_policy
     response = _request("POST", f"/api/entity-facts/{fact_id}/promote", payload=payload)
@@ -743,7 +829,6 @@ def init(
             "system_role": "self",
             "is_system": True,
             "confirmation_status": "confirmed",
-            "sensitivity": "medium",
             "ai_use_policy": "cautious_use",
         },
     )
@@ -769,7 +854,6 @@ def person_create(
     name: Annotated[str, typer.Option("--name")],
     alias: Annotated[list[str] | None, typer.Option("--alias")] = None,
     note: Annotated[str | None, typer.Option("--note")] = None,
-    sensitivity: Annotated[str, typer.Option("--sensitivity")] = "medium",
     ai_use_policy: Annotated[str, typer.Option("--ai-use-policy")] = "cautious_use",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
@@ -781,7 +865,6 @@ def person_create(
             "display_name": name,
             "properties": {"short_note": note} if note else {},
             "confirmation_status": "confirmed",
-            "sensitivity": sensitivity,
             "ai_use_policy": ai_use_policy,
             "created_by": "user",
         },
@@ -819,7 +902,7 @@ def person_list(
         _emit(payload, json_output=True)
         return
     for item in payload["items"]:
-        typer.echo(f"{item['id']}  {item['display_name']}  {item['sensitivity']}")
+        typer.echo(f"{item['id']}  {item['display_name']}")
 
 
 @person_app.command("resolve")

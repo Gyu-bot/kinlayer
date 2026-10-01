@@ -79,7 +79,7 @@ def create_observation(client, entity_id: str, content: str, **overrides) -> dic
     return response.json()
 
 
-def create_episode(client, excerpt: str) -> dict:
+def create_episode(client, excerpt: str, actor: str = "ai_agent") -> dict:
     response = client.post(
         "/api/episodes",
         json={
@@ -88,7 +88,7 @@ def create_episode(client, excerpt: str) -> dict:
             "source_description": "Context candidate test",
             "body_excerpt": excerpt,
             "body_hash": "sha256:" + hashlib.sha256(excerpt.encode()).hexdigest(),
-            "actor": "ai_agent",
+            "actor": actor,
             "sensitivity": "medium",
             "retention_policy": "excerpt_only",
         },
@@ -164,6 +164,35 @@ def test_context_pack_policy_buckets_and_no_final_advice_or_drafts(client) -> No
     assert "final_relationship_advice" not in pack
     assert "message_draft" not in pack
     assert response.json()["debug"]["score_weights"]
+
+
+def test_context_requests_reject_unknown_legacy_fields(client) -> None:
+    retrieve = client.post(
+        "/api/context/retrieve",
+        json={"query": "Casey", "situation_text": "silently ignored before"},
+    )
+    pack = client.post(
+        "/api/context/pack",
+        json={"query": "Casey", "include_pending_recent": True},
+    )
+    assert retrieve.status_code == 422
+    assert pack.status_code == 422
+
+
+def test_context_pack_uses_situation_text_in_retrieval(client) -> None:
+    casey = create_person(client, "Casey Situation Synthetic")
+    response = client.post(
+        "/api/context/pack",
+        json={
+            "query": "help",
+            "situation": "Casey Situation Synthetic scheduling",
+        },
+    )
+    assert response.status_code == 200
+    assert any(
+        item["entity_id"] == casey["id"]
+        for item in response.json()["context_pack"]["matched_entities"]
+    )
 
 
 def test_context_pack_medium_direct_surface_uses_conditional_policy(client) -> None:
@@ -347,6 +376,7 @@ def test_context_pack_does_not_surface_rejected_candidate_context(client) -> Non
         },
     )
     assert candidate.status_code == 201
+
     rejected = client.post(f"/api/candidates/{candidate.json()['id']}/reject")
     assert rejected.status_code == 200
 
@@ -394,6 +424,112 @@ def test_context_card_returns_entity_relationship_context_and_provenance(client)
     assert card["provenance_summary"]["fact_count"] == 1
     assert card["retrieval_hints"]["entity_id"] == alex["id"]
     assert "AK" in card["retrieval_hints"]["aliases"]
+
+
+def test_provisional_context_is_opt_in_separate_and_not_write_evidence(client) -> None:
+    casey = create_person(client, "Casey Provisional")
+    content = "As of 2026-08-24, Casey prefers concise scheduling."
+    episode = create_episode(client, content, actor="user")
+    candidate = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "observation",
+            "target_entity_id": casey["id"],
+            "payload": {
+                "subject_entity_id": casey["id"],
+                "observation_type": "communication_preference",
+                "content": content,
+                "claim_type": "preference",
+                "sensitivity": "low",
+                "ai_use_policy": "cautious_use",
+                "occurred_at": "2026-08-24T00:00:00Z",
+            },
+            "evidence": [{"episode_id": episode["id"], "excerpt": content}],
+            "confidence": 0.9,
+            "sensitivity": "low",
+            "created_by": "ai_agent",
+        },
+    )
+    assert candidate.status_code == 201
+
+    for index in range(5):
+        blocked_content = f"As of 2026-08-24, ineligible pending item {index}."
+        blocked_episode = create_episode(client, blocked_content, actor="ai_agent")
+        blocked = client.post(
+            "/api/candidates",
+            json={
+                "candidate_type": "observation",
+                "target_entity_id": casey["id"],
+                "payload": {
+                    "subject_entity_id": casey["id"],
+                    "observation_type": "communication_preference",
+                    "content": blocked_content,
+                    "claim_type": "preference",
+                    "sensitivity": "low",
+                    "ai_use_policy": "cautious_use",
+                    "occurred_at": "2026-08-24T00:00:00Z",
+                },
+                "evidence": [
+                    {"episode_id": blocked_episode["id"], "excerpt": blocked_content}
+                ],
+                "confidence": 0.9,
+                "sensitivity": "low",
+                "created_by": "ai_agent",
+            },
+        )
+        assert blocked.status_code == 201
+
+    contact_content = "As of 2026-08-24, Casey's email is casey@example.test."
+    contact_episode = create_episode(client, contact_content, actor="user")
+    contact = client.post(
+        "/api/candidates",
+        json={
+            "candidate_type": "observation",
+            "target_entity_id": casey["id"],
+            "payload": {
+                "subject_entity_id": casey["id"],
+                "observation_type": "communication_preference",
+                "content": contact_content,
+                "claim_type": "preference",
+                "sensitivity": "low",
+                "ai_use_policy": "cautious_use",
+                "occurred_at": "2026-08-24T00:00:00Z",
+            },
+            "evidence": [{"episode_id": contact_episode["id"], "excerpt": contact_content}],
+            "confidence": 0.9,
+            "sensitivity": "low",
+            "created_by": "ai_agent",
+        },
+    )
+    assert contact.status_code == 201
+
+    default_card = client.get(f"/api/entities/{casey['id']}/context-card").json()
+    provisional_card = client.get(
+        f"/api/entities/{casey['id']}/context-card",
+        params={"include_provisional": True},
+    ).json()
+    pack = client.post(
+        "/api/context/pack",
+        json={
+            "query": "Casey Provisional scheduling",
+            "entity_hints": [casey["id"]],
+            "focal_entity_id": casey["id"],
+            "include_provisional": True,
+        },
+    ).json()["context_pack"]
+
+    assert default_card["provisional_context"] == []
+    assert provisional_card["stable_context"] == []
+    item = provisional_card["provisional_context"][0]
+    assert item["candidate_id"] == candidate.json()["id"]
+    assert item["label"] == "provisional"
+    assert item["review_status"] == "unreviewed"
+    assert item["write_evidence_eligible"] is False
+    assert contact.json()["id"] not in {
+        provisional["candidate_id"] for provisional in provisional_card["provisional_context"]
+    }
+    assert contact_content not in str(provisional_card["provisional_context"])
+    assert pack["provisional_context"][0]["candidate_id"] == candidate.json()["id"]
 
 
 def test_merge_accept_preserves_context_retrieval_card_and_graph_continuity(client) -> None:

@@ -1,14 +1,18 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from kinlayer_backend.schemas.common import APIModel
 from kinlayer_backend.schemas.entities import AliasRead, EntityFactRead, EntityRead
 from kinlayer_backend.schemas.relationships import EdgeRead, ObservationRead
 
 
-class ContextRetrieveRequest(APIModel):
+class ContextRequestModel(APIModel):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+class ContextRetrieveRequest(ContextRequestModel):
     query: str
     entity_hints: list[str] = Field(default_factory=list)
     focal_entity_id: str | None = None
@@ -22,7 +26,6 @@ class RetrievedObservationRead(APIModel):
     content: str
     score: float
     match_reasons: list[str]
-    sensitivity: str
     ai_use_policy: str
     status: str
     valid_from: datetime | None = None
@@ -41,7 +44,6 @@ class MatchedEntityRead(APIModel):
     score_breakdown: dict[str, float]
     penalties: dict[str, float]
     surface_bucket: str
-    sensitivity: str
     ai_use_policy: str
     confirmation_status: str
     profile_facts: list[EntityFactRead] = Field(default_factory=list)
@@ -60,6 +62,20 @@ class ContextRetrieveResponse(APIModel):
 
 class ContextPackRequest(ContextRetrieveRequest):
     situation: str | None = None
+    include_provisional: bool = False
+
+
+class ProvisionalContextRead(APIModel):
+    candidate_id: str
+    content: str
+    observation_type: str
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    occurred_at: datetime | None = None
+    created_at: datetime
+    label: str = "provisional"
+    review_status: str = "unreviewed"
+    write_evidence_eligible: bool = False
 
 
 class ProvenanceItem(APIModel):
@@ -81,6 +97,7 @@ class ContextPack(APIModel):
     stable_context: list[RetrievedObservationRead]
     cautions: list[RetrievedObservationRead]
     provenance: list[ProvenanceItem]
+    provisional_context: list[ProvisionalContextRead] = Field(default_factory=list)
 
 
 class ContextPackResponse(APIModel):
@@ -114,3 +131,4 @@ class ContextCardResponse(APIModel):
     cautions: list[ObservationRead]
     provenance_summary: ProvenanceSummary
     retrieval_hints: RetrievalHints
+    provisional_context: list[ProvisionalContextRead] = Field(default_factory=list)
