@@ -13,7 +13,7 @@ from kinlayer_backend.schemas.ontology import (
     PoliciesRead,
     RegistryList,
 )
-from kinlayer_backend.services.ontology import OntologyReadService
+from kinlayer_backend.services.ontology import ONTOLOGY_VERSION, OntologyReadService
 
 router = APIRouter(tags=["ontology"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -26,7 +26,7 @@ def get_ontology(session: SessionDep):
 
 @router.get("/api/ontology/edge-types", response_model=EdgeTypeList)
 def get_edge_types(session: SessionDep):
-    return {"items": OntologyRepository(session).edge_types()}
+    return {"version": ONTOLOGY_VERSION, "items": OntologyReadService(session).edge_types()}
 
 
 @router.get("/api/ontology/edge-type-diagnostics", response_model=EdgeTypeDiagnosticsRead)

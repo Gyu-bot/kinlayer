@@ -6,19 +6,13 @@ import {
   errorText,
   factText,
   label,
+  relationLabel,
   type Ontology,
   type Page,
   type PersonSummary,
 } from "./data";
 import { Icon } from "./Icons";
 
-export function relationLabel(value: string, ontology?: Ontology | null) {
-  const translated = label(value);
-  return translated !== value
-    ? translated
-    : ontology?.edge_types.find((item) => item.relation_type === value)
-        ?.description || value;
-}
 function referenceDate(value: string | null) {
   if (!value) return "참조 기록 없음";
   const date = apiDate(value);
@@ -370,7 +364,7 @@ export function People({ onNavigate }: { onNavigate: (path: string) => void }) {
                                     : "방향 없는 관계"
                                 }
                               >
-                                {relationLabel(edge.relation_type, ontology)}
+                                {relationLabel(edge.relation_type, ontology, edge.directed && edge.to_entity_id === item.id)}
                                 {edge.directed
                                   ? edge.to_entity_id === item.id
                                     ? " →"
@@ -488,7 +482,7 @@ export function People({ onNavigate }: { onNavigate: (path: string) => void }) {
                 </div>
                 <p className="preview-subtitle">
                   {person.relations
-                    .map((item) => relationLabel(item.relation_type, ontology))
+                    .map((item) => relationLabel(item.relation_type, ontology, item.directed && item.to_entity_id === person.id))
                     .join(" · ") || "아직 등록된 관계 없음"}
                 </p>
                 <dl className="mini-facts">

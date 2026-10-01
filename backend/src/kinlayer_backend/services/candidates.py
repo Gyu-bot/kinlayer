@@ -9,9 +9,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
+from kinlayer_backend.services.relationship_ontology import validate_edge_write
 from kinlayer_backend.schemas.common import without_legacy_sensitivity
 from kinlayer_backend.models import (
-    AllowedEdgeType,
     AllowedObservationType,
     Candidate,
     EdgeEvidence,
@@ -725,21 +725,10 @@ class CandidateService:
             record.status = status
 
     def _validate_edge_payload(self, payload: dict[str, Any]) -> None:
-        from_entity = self._entity(payload["from_entity_id"])
-        to_entity = self._entity(payload["to_entity_id"])
+        self._entity(payload["from_entity_id"])
+        self._entity(payload["to_entity_id"])
         validate_common(payload, self.session)
-        statement = select(AllowedEdgeType).where(
-            AllowedEdgeType.relation_type == payload["relation_type"],
-            AllowedEdgeType.active.is_(True),
-        )
-        edge_type = self.session.execute(statement).scalar_one_or_none()
-        if not edge_type:
-            raise api_error(422, "validation_error", "Invalid relation_type.")
-        if (
-            from_entity.entity_type != edge_type.from_entity_type
-            or to_entity.entity_type != edge_type.to_entity_type
-        ):
-            raise api_error(422, "validation_error", "Relation endpoint entity types do not match.")
+        validate_edge_write(self.session, payload)
 
     def _validate_observation_payload(self, payload: dict[str, Any]) -> None:
         self._entity(payload["subject_entity_id"])

@@ -4,6 +4,7 @@ import {
   basisLabels,
   errorText,
   label,
+  relationLabel,
   newRequestId,
   useResource,
   type MemoryItem,
@@ -17,6 +18,14 @@ import {
 import { ErrorState, Loading, Modal, PersonPicker } from "./common";
 
 type Action = MemoryWrite["action"];
+const edgePropertyFields = [
+  ["context", "관계 배경 (학교·회사·모임)"],
+  ["relationship_detail", "세부 관계 (예: 사촌·이모)"],
+  ["origin", "알게 된 경위"],
+] as const;
+function knownEdgeProperty(key: string) {
+  return edgePropertyFields.some(([name]) => name === key);
+}
 function localTime(value: string | null | undefined) {
   if (!value) return "";
   const d = new Date(value);
@@ -86,7 +95,7 @@ export function MemoryEditor({
     p?.entity_id || p?.subject_entity_id || p?.from_entity_id || personId,
   );
   const [other, setOther] = useState(p?.to_entity_id || "");
-  const [directed, setDirected] = useState(p?.directed || false);
+  const [edgeProperties, setEdgeProperties] = useState<Record<string, unknown>>(p?.properties || {});
   const [content, setContent] = useState(item?.content || "");
   const [basis, setBasis] = useState<MemoryPayload["claim_basis"]>(
     item?.claim_basis || "reported",
@@ -124,18 +133,35 @@ export function MemoryEditor({
           .filter((t) => t.support_level === "supported" && t.is_active)
           .map((t) => t.value)
       : kind === "entity_edges"
-        ? o.data?.edge_types.filter((t) => t.active).map((t) => t.relation_type)
+        ? o.data?.edge_types
+            .filter((t) => t.active && t.write_supported === true)
+            .map((t) => t.relation_type)
         : o.data?.observation_types
             .filter((t) => t.active)
             .map((t) => t.observation_type);
-  const supported = choices?.includes(type);
+  const edgeDefinition = o.data?.edge_types.find((t) => t.relation_type === type);
+  const legacyEdge =
+    kind === "entity_edges" && edgeDefinition?.write_supported === false;
+  const sameEdgeType = kind === "entity_edges" && type === p?.relation_type;
+  const effectiveDirection = sameEdgeType ? p?.directed : edgeDefinition?.directed_default;
+  const historicalDirection = sameEdgeType && edgeDefinition &&
+    p?.directed !== edgeDefinition.directed_default;
+  const supported = choices?.includes(type) || (
+    kind === "entity_edges" && Boolean(item) &&
+    type === p?.relation_type && edgeDefinition?.active
+  );
+  const typeLabel = (value: string) =>
+    kind === "entity_edges" ? relationLabel(value, o.data) : label(value);
+  const unknownProperties = Object.entries(edgeProperties).filter(
+    ([key]) => !knownEdgeProperty(key),
+  );
   function changeKind(next: RecordType) {
     setKind(next);
     setType(
       next === "entity_facts"
         ? "organization"
         : next === "entity_edges"
-          ? "knows"
+          ? o.data?.edge_types.find((t) => t.active && t.write_supported === true)?.relation_type || ""
           : "recent_interaction",
     );
   }
@@ -150,6 +176,8 @@ export function MemoryEditor({
         );
       let payload: MemoryPayload | undefined;
       if (!retract) {
+        if (move && legacyEdge)
+          throw new Error("이전 관계 유형은 먼저 기억 정정에서 현재 유형으로 바꾼 뒤 인물을 옮겨 주세요.");
         if (!supported)
           throw new Error(
             "현재 지원하는 기억 종류를 선택해 주세요. 이전 메모는 맥락으로 정정할 수 있어요.",
@@ -182,9 +210,15 @@ export function MemoryEditor({
               from_entity_id: target,
               to_entity_id: other,
               relation_type: type,
-              directed,
+              directed: effectiveDirection,
               claim_text: content.trim(),
-              properties: p?.properties || {},
+              properties: legacyEdge ? p?.properties || {} : Object.fromEntries(
+                Object.entries(edgeProperties).map(([key, value]) => [
+                  key,
+                  knownEdgeProperty(key) && typeof value === "string" && value !== p?.properties?.[key]
+                    ? value.trim() : value,
+                ]),
+              ),
             });
           else
             Object.assign(payload, {
@@ -295,22 +329,14 @@ export function MemoryEditor({
                     <select
                       id="memory-type"
                       value={type}
-                      onChange={(e) => {
-                        setType(e.target.value);
-                        if (kind === "entity_edges")
-                          setDirected(
-                            o.data?.edge_types.find(
-                              (t) => t.relation_type === e.target.value,
-                            )?.directed_default || false,
-                          );
-                      }}
+                      onChange={(e) => setType(e.target.value)}
                     >
-                      {!supported && (
-                        <option value={type}>{label(type)} · 이전 종류</option>
+                      {(!choices?.includes(type) || legacyEdge) && (
+                        <option value={type}>{typeLabel(type)} · 이전 종류</option>
                       )}
                       {choices?.map((v) => (
                         <option key={v} value={v}>
-                          {label(v)}
+                          {typeLabel(v)}
                         </option>
                       ))}
                     </select>
@@ -339,15 +365,61 @@ export function MemoryEditor({
                     }
                     disabled={action === "correct"}
                   />
-                  <label className="row">
-                    <input
-                      type="checkbox"
-                      checked={directed}
-                      disabled={move}
-                      onChange={(e) => setDirected(e.target.checked)}
-                    />
-                    방향이 있는 관계
-                  </label>
+                  <p className="small muted">
+                    {edgeDefinition?.description}
+                  </p>
+                  <p className="small muted">
+                    {historicalDirection
+                      ? `기존 기록의 ${effectiveDirection ? "방향 (시작 인물 → 대상 인물)" : "양방향"}을 유지합니다. 현재 유형 정의와 다르지만 문장 정정만으로 바꾸지 않습니다.`
+                      : effectiveDirection
+                        ? `시작 인물은 대상 인물의 ${relationLabel(type, o.data)} · 대상 인물은 시작 인물의 ${relationLabel(type, o.data, true)}`
+                        : "두 사람 사이의 양방향 관계입니다."}
+                  </p>
+                  {legacyEdge && (
+                    <p className="small warning">
+                      {move && "인물을 옮기려면 먼저 기억 정정에서 현재 관계 유형으로 바꿔 주세요. "}
+                      이전에 저장한 관계 유형입니다. 그대로 보존하거나, 근거를 확인한 뒤 새 유형을 직접 선택해 정정하세요.
+                      {edgeDefinition?.replacement_type && ` 권장 유형: ${relationLabel(edgeDefinition.replacement_type, o.data)}.`}
+                    </p>
+                  )}
+                  {!move && (
+                    <>
+                      {edgePropertyFields.map(([key, title]) => (
+                        <div className="field" key={key}>
+                          <label htmlFor={`edge-${key}`}>{title}</label>
+                          <input
+                            id={`edge-${key}`}
+                            disabled={legacyEdge}
+                            value={typeof edgeProperties[key] === 'string' ? edgeProperties[key] as string : ''}
+                            maxLength={edgeDefinition?.allowed_properties_schema?.properties?.[key]?.maxLength || 300}
+                            onChange={(event) => setEdgeProperties((current) => {
+                              const next = { ...current };
+                              if (event.target.value) next[key] = event.target.value;
+                              else delete next[key];
+                              return next;
+                            })}
+                          />
+                        </div>
+                      ))}
+                      {unknownProperties.length > 0 && (
+                        <details><summary>보존되는 기존 속성</summary>
+                          <p className="small muted">새 유형으로 바꾸려면 기존 속성의 의미를 위 항목에 옮긴 후, 해당 속성을 직접 제거해 주세요. 원본은 변경 이력에 남습니다.</p>
+                          {unknownProperties.map(([key, value]) => (
+                            <div key={key} className="stack">
+                              <p>{key}: {JSON.stringify(value)}</p>
+                              <button type="button" className="text-link" disabled={legacyEdge}
+                                onClick={() => setEdgeProperties((current) => {
+                                  const next = { ...current };
+                                  delete next[key];
+                                  return next;
+                                })}
+                              >{key} 속성 제거</button>
+                            </div>
+                          ))}
+                        </details>
+                      )}
+                    </>
+                  )}
                 </>
               )}
               {!move && (

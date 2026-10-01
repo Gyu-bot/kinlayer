@@ -5,6 +5,8 @@ from pydantic import ConfigDict, Field, model_validator
 
 from kinlayer_backend.schemas.common import APIModel, PublicReadModel
 
+from kinlayer_backend.services.relationship_ontology import EDGE_DEFINITIONS
+
 Digest = str
 
 
@@ -78,11 +80,7 @@ class ReconciliationContextClaim(ClosedAPIModel):
     kind: Literal["profile_field", "relationship_edge", "observation"]
     fact_type: Literal["role", "job", "organization"] | None = None
     field_path: Literal["role", "job", "organization"] | None = None
-    relation_type: Literal[
-        "knows", "friend", "family", "acquaintance", "coworker", "former_coworker",
-        "client_contact", "vendor_contact", "reports_to", "manager_of", "introduced_by",
-        "referred_by", "collaborated_with",
-    ] | None = None
+    relation_type: str | None = Field(default=None, min_length=1, max_length=80)
     observation_type: Literal[
         "stable_fact", "communication_preference", "relationship_pattern", "care_point",
         "recent_interaction", "user_feeling", "follow_up_context",
@@ -104,7 +102,9 @@ class ReconciliationContextClaim(ClosedAPIModel):
             if self.relation_type is not None or self.observation_type is not None:
                 raise ValueError("invalid profile field claim")
         elif self.kind == "relationship_edge":
-            if self.relation_type is None or self.claim_type != "fact":
+            if (self.relation_type not in EDGE_DEFINITIONS
+                    or EDGE_DEFINITIONS[self.relation_type].support_level != "supported"
+                    or self.claim_type != "fact"):
                 raise ValueError("invalid relationship claim")
             if self.fact_type is not None or self.field_path is not None or self.observation_type is not None:
                 raise ValueError("invalid relationship claim")

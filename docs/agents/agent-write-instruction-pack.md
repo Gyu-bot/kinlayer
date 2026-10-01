@@ -1,8 +1,9 @@
 # Kinlayer Agent Write Contract
 
-- Contract: save-first memory, 2026-10-01
+- Contract: save-first memory and relationship ontology v1, 2026-10-01
 - Wire truth: `backend/src/kinlayer_backend/schemas/memories.py` and `/openapi.json`
 - Implementation plan: [save-first memory schema](../plans/save-first-memory-schema.md)
+- Relationship revision: [approved scope and acceptance](../plans/relationship-ontology.md)
 - Source imports: [authorized material imports](../specs/authorized-material-imports.md)
 
 ## 1. Operating rule
@@ -29,8 +30,9 @@ claim splitting, and source selection. No LLM runs inside the core write transac
    person has no match, create it with `POST /api/entities`; no approval queue is necessary.
    A minimal person body is `{"entity_type":"person","display_name":"민지","created_by":"ai_agent"}`.
    Do not send approval/AI-use-policy fields. Then use the returned ID in the memory request.
-3. Read `GET /api/ontology`, `/api/ontology/entity-fact-types`, `/api/ontology/edge-types`, and
-   `/api/ontology/observation-types`. Use actual supported values, never guessed labels.
+3. At session start, fetch `GET /api/ontology` (or `python3 scripts/kinlayer_client.py ontology`).
+   Read the definitions as well as the values. Refresh before an unknown type, after a deployment
+   notice, and after a type/direction/property validation failure. See the cache rules below.
 4. Split independently correctable claims. A profession, work schedule, appointment, and inference
    are separate records even if they came from one sentence and share one source excerpt.
 5. Choose the record type and explicit `claim_basis`, confidence, participants, and known times.
@@ -41,6 +43,28 @@ Do not create people from pronouns alone or silently merge people with similar n
 ambiguous target from conversation or ask the smallest necessary identity question. This is an
 identity requirement, not a memory approval stage. Do not record public figures, fictional examples,
 generic groups, models, or bots as the user's relationships without relevant human source context.
+
+### Ontology discovery and cache rules
+
+`GET /api/ontology` and `/api/ontology/edge-types` include an ontology `version`; relationship v1
+is `relationship-v1`. Each edge definition supplies labels, direction, descriptions, examples,
+property schema, `support_level`, `write_supported`, and any `replacement_type` hint. Registry
+presence or `active: true` alone does not permit a new write: historical types remain readable.
+Select a new relationship only when the current server definition has `write_supported: true`.
+
+Keep any adapter cache scoped to the API instance and returned version. On a version change,
+discard cached relationship definitions, direction assumptions, and property allowlists. Fetch
+at every session start even if the previous version is cached. The repository helper itself
+does not cache; its `definitions.edge_types` retains the complete server metadata. Its `values`
+field is an index, not a write allowlist. Missing version/write metadata from an older server
+must not be replaced with locally guessed defaults; inspect that server's raw contract.
+
+After an ontology-related HTTP 422, refresh the registry and read the specific reason. Do not
+loop retries, invent a relation name, swap people to fit validation, or weaken the claim into
+another type. `replacement_type` is a migration hint requiring the original source and endpoint
+meaning; it is never permission for automatic semantic conversion. Once a rejected request has
+been corrected, use a new request ID for its changed body. Transport retries retain the exact
+original body and request ID. These checks do not introduce a pre-save approval queue.
 
 ## 3. Request envelope
 
@@ -156,8 +180,34 @@ Replace example IDs with resolved real IDs; the names and statements here are fi
 }
 ```
 
-Omit `directed` to use the ontology's default. Do not infer a dating relationship solely from a
-meeting, preference, or feeling. Such context belongs in observations.
+Omit `directed` to use the ontology's direction. An explicit value must agree with that definition.
+Use the description to place the people: for `parent_of`, from is the parent and to is the child;
+for `reports_to`, from reports to to; for `client_of`, from is the customer of to. Do not create
+an extra inverse edge or invent an inverse type just to display the other person's perspective.
+
+Relationship v1 covers social, family, work, school, learning, community, and romantic relations.
+Use the fetched registry rather than a copied enum list. Optional `properties` are `context`
+(company/school/group), `relationship_detail` (specific family or relationship detail), and
+`origin` (how the people became acquainted). Each supplied value must be a nonempty string of at
+most 300 characters; unknown keys are invalid. Omit unknown details rather than guessing them.
+
+`situationship` represents a source-described “썸” symmetrically. That representation does not
+verify reciprocal attraction, exclusivity, or formal partnership. Preserve who described it and
+the source's uncertainty in `claim_text` and basis. A unilateral feeling remains an attributed
+observation. In particular, historical `dating_interest` may mean either feeling or an early
+relationship: do not automatically convert it to `situationship` or to `user_feeling`.
+
+`matched_on_app` and introduction types are historical relationship types, not new-write choices.
+An app match or introduction can supply `origin` only when there is a separately supported
+relationship claim. It does not establish an in-person meeting, friendship, 썸, or partnership.
+Do not manufacture a relationship merely to attach origin metadata. Preserve a contextual claim
+as an appropriate observation when no structural relationship is established. This revision
+does not add meeting, appointment, calendar, or reminder tracking.
+
+Existing legacy relationship records remain readable. An exact correction can retain their
+structural fields while changing prose, source, or time; this exception does not permit new
+legacy edges or changing their endpoints through reattribution. A representation change needs
+source-based mapping and preserved record/evidence lineage; see the approved migration plan.
 
 ## 4. Record semantics
 

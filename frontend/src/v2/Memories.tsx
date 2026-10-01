@@ -10,12 +10,14 @@ import {
   label,
   memoryPath,
   memoryText,
+  memoryTypeLabel,
   memoryUrl,
   query,
   useResource,
   type Episode,
   type MemoryChange,
   type MemoryItem,
+  type Ontology,
   type MemoryWrite,
   type Page,
   type Receipt,
@@ -25,6 +27,7 @@ import {
   ErrorState,
   Loading,
   MemoryCard,
+  RelationshipProperties,
   Pager,
   PersonPicker,
 } from "./common";
@@ -185,6 +188,7 @@ export function MemoryDetail({
   onNavigate: (path: string) => void;
   onChanged?: () => void;
 }) {
+  const ontology = useResource<Ontology>("/api/ontology");
   const r = useResource<MemoryItem>(memoryPath(recordRef));
   const [action, setAction] = useState<MemoryWrite["action"]>();
   const [notice, setNotice] = useState("");
@@ -209,12 +213,7 @@ export function MemoryDetail({
                 <div className="row between">
                   <span className="eyebrow">
                     {kindLabels[r.data.record_type]} ·{" "}
-                    {label(
-                      r.data.payload.fact_type ||
-                        r.data.payload.relation_type ||
-                        r.data.payload.observation_type ||
-                        "",
-                    )}
+                    {memoryTypeLabel(r.data, ontology.data)}
                   </span>
                   <span
                     className={`pill ${r.data.claim_basis === "inferred" ? "warning" : ""}`}
@@ -223,6 +222,7 @@ export function MemoryDetail({
                   </span>
                 </div>
                 <h2 className="memory-detail-content">{memoryText(r.data)}</h2>
+                {r.data.record_type === "entity_edges" && <RelationshipProperties properties={r.data.payload.properties} />}
                 <div className="context-meta">
                   {r.data.entities.map((p) => (
                     <a key={`${p.id}:${p.role}`} href={`/people/${p.id}`}>
@@ -323,6 +323,7 @@ export function Memories({
 }: {
   onNavigate: (path: string) => void;
 }) {
+  const ontology = useResource<Ontology>("/api/ontology");
   const params = new URLSearchParams(window.location.search),
     record = params.get("record");
   const [q, setQ] = useState(""),
@@ -439,7 +440,7 @@ export function Memories({
               <section className="panel content-panel">
                 <div className="memory-grid">
                   {r.data.items.map((item) => (
-                    <MemoryCard key={item.record_ref} item={item} />
+                    <MemoryCard key={item.record_ref} item={item} ontology={ontology.data} />
                   ))}
                 </div>
                 {!r.data.total && <Empty>조건에 맞는 기억이 없어요.</Empty>}
@@ -463,6 +464,7 @@ export function Memories({
   );
 }
 export function SourcePage({ id }: { id: string }) {
+  const ontology = useResource<Ontology>("/api/ontology");
   const [offset, setOffset] = useState(0);
   const source = useResource<Episode>(
       `/api/episodes/${encodeURIComponent(id)}`,
@@ -525,7 +527,7 @@ export function SourcePage({ id }: { id: string }) {
             <>
               <div className="memory-grid">
                 {r.data.items.map((item) => (
-                  <MemoryCard key={item.record_ref} item={item} />
+                  <MemoryCard key={item.record_ref} item={item} ontology={ontology.data} />
                 ))}
               </div>
               {!r.data.total && <Empty>연결된 기억이 없어요.</Empty>}
@@ -557,6 +559,7 @@ export function Changes() {
   const next = useResource<MemoryItem>(
     historyMemoryPath(detail.data?.new_record_ref),
   );
+  const ontology = useResource<Ontology>([old.data, next.data].some((item) => item?.record_type === "entity_edges") ? "/api/ontology" : null);
   const source = useResource<Episode>(
     detail.data?.source_episode_id
       ? `/api/episodes/${detail.data.source_episode_id}`
@@ -718,7 +721,7 @@ export function Changes() {
                         retry={side.resource.reload}
                       />
                     ) : side.resource.data ? (
-                      <MemoryCard item={side.resource.data} />
+                      <MemoryCard item={side.resource.data} ontology={ontology.data} />
                     ) : (
                       <p>
                         {side.ref

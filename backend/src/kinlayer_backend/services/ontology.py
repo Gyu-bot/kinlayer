@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
@@ -9,6 +11,10 @@ from kinlayer_backend.models import (
     OntologyRegistryValue,
 )
 from kinlayer_backend.repositories.ontology import OntologyRepository
+
+from kinlayer_backend.services.relationship_ontology import (
+    EDGE_DEFINITIONS, EDGE_PROPERTIES_SCHEMA, ONTOLOGY_VERSION, edge_type_metadata,
+)
 
 REGISTRY_SEEDS: dict[str, list[tuple[str, str, str]]] = {
     "entity_type": [
@@ -63,26 +69,8 @@ REGISTRY_SEEDS: dict[str, list[tuple[str, str, str]]] = {
         ("never_surface", "Never surface", "legacy"),
     ],
     "edge_type": [
-        ("knows", "Knows", "supported"),
-        ("friend", "Friend", "supported"),
-        ("family", "Family", "supported"),
-        ("acquaintance", "Acquaintance", "supported"),
-        ("coworker", "Coworker", "supported"),
-        ("former_coworker", "Former coworker", "supported"),
-        ("client_contact", "Client contact", "supported"),
-        ("vendor_contact", "Vendor contact", "supported"),
-        ("reports_to", "Reports to", "supported"),
-        ("manager_of", "Manager of", "supported"),
-        ("introduced_by", "Introduced by", "supported"),
-        ("referred_by", "Referred by", "supported"),
-        ("collaborated_with", "Collaborated with", "supported"),
-        ("dating_interest", "Dating interest", "supported"),
-        ("dating", "Dating", "supported"),
-        ("former_dating", "Former dating", "supported"),
-        ("romantic_partner", "Romantic partner", "supported"),
-        ("former_partner", "Former partner", "supported"),
-        ("introduced_for_dating", "Introduced for dating", "supported"),
-        ("matched_on_app", "Matched on app", "supported"),
+        (value, definition.label, definition.support_level)
+        for value, definition in EDGE_DEFINITIONS.items()
     ],
     "observation_type": [
         ("stable_fact", "Stable fact", "supported"),
@@ -145,7 +133,9 @@ def seed_ontology_values(session: Session) -> None:
     for category, rows in REGISTRY_SEEDS.items():
         for sort_order, (value, label, support_level) in enumerate(rows):
             description = None
-            if category == "fact_type" and support_level == "legacy":
+            if category == "edge_type":
+                description = EDGE_DEFINITIONS[value].description
+            elif category == "fact_type" and support_level == "legacy":
                 description = (
                     "Legacy free-form fact retained for compatibility. "
                     "Use a specific profile fact or an atomic observation for new records."
@@ -165,6 +155,10 @@ def seed_ontology_values(session: Session) -> None:
                 }[value]
             if (category, value) in existing:
                 # Registry documentation changes do not rewrite historical records or digests.
+                if category == "edge_type":
+                    existing[category, value].label = label
+                    existing[category, value].sort_order = sort_order
+                    existing[category, value].is_active = True
                 if description is not None:
                     existing[category, value].support_level = support_level
                     existing[category, value].description = description
@@ -186,31 +180,29 @@ def seed_ontology_values(session: Session) -> None:
 
 def seed_allowed_edge_types(session: Session) -> None:
     existing = {
-        row.relation_type
+        row.relation_type: row
         for row in session.execute(select(AllowedEdgeType)).scalars().all()
     }
-    directed = {
-        "reports_to",
-        "manager_of",
-        "introduced_by",
-        "referred_by",
-        "introduced_for_dating",
-    }
-    for sort_order, (value, label, _support) in enumerate(REGISTRY_SEEDS["edge_type"]):
-        if value in existing:
-            continue
-        session.add(
-            AllowedEdgeType(
-                relation_type=value,
-                from_entity_type="person",
-                to_entity_type="person",
-                directed_default=value in directed,
-                allowed_properties_schema={},
-                description=label,
-                examples=[],
-                active=True,
-            )
-        )
+    for value, definition in EDGE_DEFINITIONS.items():
+        row = existing.get(value)
+        if row is None:
+            row = AllowedEdgeType(relation_type=value)
+            session.add(row)
+        # Update only definitions; historical EntityEdge values are untouched.
+        row.from_entity_type = "person"
+        row.to_entity_type = "person"
+        row.directed_default = definition.directed
+        row.inverse_relation_type = None  # inverse is a view label, not a second predicate
+        row.allowed_properties_schema = deepcopy(EDGE_PROPERTIES_SCHEMA)
+        row.description = definition.description
+        row.examples = [{
+            "from_role": definition.label,
+            "to_role": definition.inverse_label or definition.label,
+            "relation_type": value,
+            "directed": definition.directed,
+            "properties": {"context": "출처에 명시된 관계 배경"},
+        }]
+        row.active = True  # legacy kinds stay readable by graph/history queries
     session.commit()
 
 
@@ -253,14 +245,22 @@ class OntologyReadService:
 
     def all_ontology(self) -> dict:
         return {
+            "version": ONTOLOGY_VERSION,
             "entity_types": self.repository.registry_values("entity_type"),
             "fact_types": self.repository.registry_values("fact_type"),
             "claim_bases": self.repository.registry_values("claim_basis"),
             "participant_roles": self.repository.registry_values("participant_role"),
-            "edge_types": self.repository.edge_types(),
+            "edge_types": self.edge_types(),
             "observation_types": self.repository.observation_types(),
             "policies": self.policies(),
         }
+
+    def edge_types(self) -> list[dict]:
+        return [
+            {**{column.name: getattr(row, column.name) for column in row.__table__.columns},
+             **edge_type_metadata(row)}
+            for row in self.repository.edge_types()
+        ]
 
     def policies(self) -> dict:
         return {

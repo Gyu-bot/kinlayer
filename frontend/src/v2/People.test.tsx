@@ -19,6 +19,7 @@ const ontology = {
   participant_roles: [],
   observation_types: [],
   edge_types: [
+    { relation_type: "parent_of", label: "부모", inverse_label: "자녀", active: true, directed_default: true },
     {
       relation_type: "friend",
       active: true,
@@ -113,6 +114,20 @@ afterEach(() => {
 });
 
 describe("real API people directory", () => {
+  it("한 관계의 양 끝점을 서버에 정의된 부모와 자녀 역할로 표시한다", async () => {
+    const linked = [
+      { ...alpha, relations: [{ relation_type: "parent_of", directed: true, from_entity_id: "person-a", to_entity_id: "self" }] },
+      { ...beta, relations: [{ relation_type: "parent_of", directed: true, from_entity_id: "self", to_entity_id: "person-b" }] },
+    ];
+    setupFetch((url) => url.pathname === "/api/people" ? response(page(linked)) : undefined);
+    render(<People onNavigate={vi.fn()} />);
+    await screen.findByRole("heading", { name: "김민지" });
+    const rows = document.querySelectorAll('.relation-tags');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('부모');
+    expect(rows[1]).toHaveTextContent('자녀');
+  });
+
   it("uses alias search and clears the old preview for an empty result", async () => {
     const fetch = setupFetch((url) =>
       url.pathname === "/api/people"

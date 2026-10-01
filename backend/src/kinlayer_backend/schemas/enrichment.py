@@ -5,6 +5,7 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from kinlayer_backend.schemas.common import APIModel, PublicReadModel
 
+from kinlayer_backend.services.relationship_ontology import EDGE_DEFINITIONS
 
 class ClosedModel(APIModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
@@ -30,24 +31,8 @@ class EdgeSlotCreate(ClosedModel):
     slot_id: str = Field(min_length=1, max_length=60, pattern=r"^[A-Za-z0-9_.:-]+$")
     kind: Literal["relationship_edge"]
     direction: Literal["self_to_subject", "subject_to_self"]
-    allowed_relation_types: list[
-        Literal[
-            "knows",
-            "friend",
-            "family",
-            "acquaintance",
-            "coworker",
-            "former_coworker",
-            "client_contact",
-            "vendor_contact",
-            "reports_to",
-            "manager_of",
-            "introduced_by",
-            "referred_by",
-            "collaborated_with",
-        ]
-    ] = Field(min_length=1, max_length=3)
-    directed: Literal[True] = True
+    allowed_relation_types: list[str] = Field(min_length=1, max_length=3)
+    directed: bool | None = None
     claim_type: Literal["fact"] = "fact"
     ai_use_policy: Literal["cautious_use"] = "cautious_use"
     sensitivity: str = Field(default="low", max_length=40, deprecated=True, description="Ignored legacy fingerprint metadata.")
@@ -57,6 +42,8 @@ class EdgeSlotCreate(ClosedModel):
     def unique_sorted_relation_types(cls, value):
         if value != sorted(set(value)):
             raise ValueError("allowed_relation_types must be unique and sorted")
+        if any(item not in EDGE_DEFINITIONS or EDGE_DEFINITIONS[item].support_level != "supported" for item in value):
+            raise ValueError("allowed_relation_types must use writable ontology types")
         return value
 
 

@@ -317,8 +317,8 @@ def test_candidate_submit_rejects_semantically_invalid_payloads(client) -> None:
             "payload": {
                 "from_entity_id": person["id"],
                 "to_entity_id": organization["id"],
-                "relation_type": "client_contact",
-                "claim_text": "Alex is a client contact.",
+                "relation_type": "collaborated_with",
+                "claim_text": "Alex is a collaborator.",
                 "claim_type": "fact",
             },
             "confidence": 0.5,
@@ -369,14 +369,14 @@ def test_relationship_edge_edit_accept_rejects_invalid_relation_type_and_audits(
             "payload": {
                 "from_entity_id": user["id"],
                 "to_entity_id": alex["id"],
-                "relation_type": "client_contact",
-                "claim_text": "Alex is a client contact.",
+                "relation_type": "collaborated_with",
+                "claim_text": "Alex is a collaborator.",
                 "claim_type": "fact",
             },
             "evidence": [
                 {
                     "episode_id": episode["id"],
-                    "excerpt": "Alex is a client contact.",
+                    "excerpt": "Alex is a collaborator.",
                     "confidence": 0.8,
                 }
             ],
@@ -409,7 +409,7 @@ def test_relationship_edge_edit_accept_rejects_invalid_relation_type_and_audits(
     operation = listed.json()["items"][0]
     assert operation["candidate_id"] == candidate["id"]
     assert operation["request_summary"]["relation_type"] == "reply_strategy"
-    assert operation["diagnostics"]["message"] == "Invalid relation_type."
+    assert "not supported for new writes" in operation["diagnostics"]["message"]
     assert client.get(f"/api/candidates/{candidate['id']}").json()["payload"] == candidate["payload"]
     assert client.get("/api/edges", params={"entity_id": alex["id"]}).json()["total"] == 0
 
@@ -448,7 +448,7 @@ def test_relationship_edge_accept_rejects_legacy_invalid_relation_type(client, d
     operation = listed.json()["items"][0]
     assert operation["candidate_id"] == candidate_id
     assert operation["request_summary"]["relation_type"] == "reply_strategy"
-    assert operation["diagnostics"]["message"] == "Invalid relation_type."
+    assert "not supported for new writes" in operation["diagnostics"]["message"]
     assert client.get("/api/edges", params={"entity_id": alex["id"]}).json()["total"] == 0
 
 
@@ -1300,14 +1300,14 @@ def test_accept_supported_candidate_types_write_matching_canonical_records(
             "payload": {
                 "from_entity_id": user["id"],
                 "to_entity_id": alex["id"],
-                "relation_type": "client_contact",
-                "claim_text": "Alex is a client contact.",
+                "relation_type": "collaborated_with",
+                "claim_text": "Alex is a collaborator.",
                 "claim_type": "fact",
             },
             "evidence": [
                 {
                     "episode_id": episode["id"],
-                    "excerpt": "Alex is a client contact.",
+                    "excerpt": "Alex is a collaborator.",
                     "confidence": 0.8,
                 }
             ],
@@ -1382,14 +1382,14 @@ def test_candidate_accept_rolls_back_canonical_write_when_evidence_copy_fails(
             "payload": {
                 "from_entity_id": user["id"],
                 "to_entity_id": alex["id"],
-                "relation_type": "client_contact",
-                "claim_text": "Alex is a client contact.",
+                "relation_type": "collaborated_with",
+                "claim_text": "Alex is a collaborator.",
                 "claim_type": "fact",
             },
             "evidence": [
                 {
                     "episode_id": episode["id"],
-                    "excerpt": "Alex is a client contact.",
+                    "excerpt": "Alex is a collaborator.",
                     "confidence": 0.8,
                 }
             ],
@@ -1449,7 +1449,7 @@ def test_accept_merge_candidate_repoints_person_records_and_creates_audit(
             "from_entity_id": source["id"],
             "to_entity_id": colleague["id"],
             "relation_type": "former_coworker",
-            "directed": True,
+            "directed": False,
             "claim_text": "Alex worked with Jordan.",
             "claim_type": "fact",
             "created_by": "user",
@@ -1645,8 +1645,8 @@ def test_merge_candidate_accept_deprecates_duplicate_aliases_and_self_edges(clie
         json={
             "from_entity_id": source["id"],
             "to_entity_id": target["id"],
-            "relation_type": "client_contact",
-            "directed": True,
+            "relation_type": "collaborated_with",
+            "directed": False,
             "claim_text": "Duplicate edge would become a self-edge.",
             "claim_type": "fact",
             "created_by": "user",

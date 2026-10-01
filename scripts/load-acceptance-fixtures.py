@@ -303,8 +303,8 @@ def load_fixtures(client: ApiClient) -> dict[str, Any]:
         client,
         self_entity["id"],
         alex["id"],
-        "client_contact",
-        "Acceptance Alex is a client contact for local smoke verification.",
+        "collaborated_with",
+        "Acceptance Alex is a collaborator for local smoke verification.",
     )
     minji_edge = ensure_edge(
         client,

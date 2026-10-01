@@ -73,6 +73,11 @@ class MemoryDataMigration:
             observed = getattr(row, key)
             if isinstance(observed, datetime):
                 value = datetime.fromisoformat(value.replace("Z", "+00:00")) if value else value
+                # API snapshots carry UTC offsets; SQLite returns naive UTC datetimes.
+                # Compare instants so the same guarded manifest can be rehearsed locally.
+                observed = utc(observed)
+                if isinstance(value, datetime):
+                    value = utc(value)
             if observed != value:
                 raise ValueError(f"Migration input drift: {row.__tablename__}:{row.id} {key}")
 

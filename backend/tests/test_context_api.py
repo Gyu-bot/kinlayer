@@ -56,8 +56,8 @@ def create_edge(client, from_entity_id: str, to_entity_id: str) -> dict:
         json={
             "from_entity_id": from_entity_id,
             "to_entity_id": to_entity_id,
-            "relation_type": "client_contact",
-            "claim_text": "Alex is a client contact.",
+            "relation_type": "collaborated_with",
+            "claim_text": "Alex is a collaborator.",
             "claim_type": "fact",
             "created_by": "user",
         },
@@ -721,7 +721,7 @@ def test_context_card_excludes_invalid_legacy_edge_types(client) -> None:
             EntityEdge(
                 from_entity_id=user["id"],
                 to_entity_id=organization["id"],
-                relation_type="client_contact",
+                relation_type="collaborated_with",
                 claim_text="Legacy endpoint mismatch edge.",
                 claim_type="fact",
                 created_by="ai_agent",

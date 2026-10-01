@@ -38,7 +38,11 @@ const ontology = {
     { value: "birth_date", is_active: true, support_level: "supported" },
   ],
   edge_types: [
-    { relation_type: "reports_to", active: true, directed_default: true },
+    { relation_type: "friend", label: "친구", active: true, directed_default: false, write_supported: true },
+    { relation_type: "reports_to", label: "부하", inverse_label: "상사", active: true, directed_default: true, write_supported: true },
+    { relation_type: "situationship", label: "썸", active: true, directed_default: false, write_supported: true, description: "서로를 알아가는 관계" },
+    { relation_type: "parent_of", label: "부모", inverse_label: "자녀", active: true, directed_default: true, write_supported: true },
+    { relation_type: "dating_interest", label: "호감 (이전 유형)", active: true, directed_default: false, write_supported: false },
   ],
   observation_types: [
     { observation_type: "recent_interaction", active: true },
@@ -170,6 +174,79 @@ function source() {
 }
 
 describe("기억 쓰기 계약", () => {
+  it("새 관계는 서버의 쓰기 가능 유형과 역할을 사용하고 썸은 양방향으로 저장한다", async () => {
+    const saved = vi.fn();
+    render(<MemoryEditor personId="person-a" onClose={() => {}} onSaved={saved} />);
+    await ready();
+    fireEvent.change(screen.getByLabelText("기억 구분"), { target: { value: "entity_edges" } });
+    expect(screen.queryByRole("option", { name: /호감/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("종류"), { target: { value: "parent_of" } });
+    expect(screen.getByText(/시작 인물은 대상 인물의 부모 · 대상 인물은 시작 인물의 자녀/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("종류"), { target: { value: "situationship" } });
+    expect(screen.getByText("서로를 알아가는 관계")).toBeInTheDocument();
+    await screen.findByRole("option", { name: /서준/ });
+    fireEvent.change(screen.getByLabelText("관계 대상 인물"), { target: { value: "person-b" } });
+    fireEvent.change(screen.getByLabelText("기억 내용"), { target: { value: "썸이라고 표현했다" } });
+    fireEvent.change(screen.getByLabelText("알게 된 경위"), { target: { value: "앱에서 알게 됨" } });
+    source();
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    expect(writes()[0].record?.payload).toMatchObject({ relation_type: "situationship", directed: false, properties: { origin: "앱에서 알게 됨" } });
+  });
+
+  it("지원 유형의 과거 방향과 임의 속성도 문장 정정만으로 변경하지 않는다", async () => {
+    const payload = {
+      from_entity_id: "person-a", to_entity_id: "person-b", relation_type: "friend",
+      directed: true, claim_text: "이전 친구 기록", claim_basis: "reported" as const,
+      confidence: 0.7, valid_from: item.valid_from, valid_to: item.valid_to,
+      properties: { previous_note: "기존 속성", context: " 원문 공백 보존 " },
+    };
+    const edge: MemoryItem = {
+      ...item, record_type: "entity_edges", record_ref: "entity_edges:historic-friend",
+      content: payload.claim_text, claim_basis: "reported", payload,
+    };
+    const saved = vi.fn();
+    render(<MemoryEditor item={edge} action="correct" onClose={() => {}} onSaved={saved} />);
+    await ready();
+    expect(screen.getByText(/기존 기록의 방향.*유지합니다/)).toBeInTheDocument();
+    expect(screen.queryByText("두 사람 사이의 양방향 관계입니다.")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("기억 내용"), { target: { value: "문장만 정정" } });
+    source();
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    expect(writes()[0].record?.payload).toEqual({ ...payload, claim_text: "문장만 정정" });
+  });
+
+  it("이전 관계의 인물 변경은 저장하지 않고 명시적 유형 정정을 안내한다", async () => {
+    const edge: MemoryItem = { ...item, record_type: "entity_edges", record_ref: "entity_edges:old", payload: {
+      ...item.payload, relation_type: "dating_interest", from_entity_id: "person-a", to_entity_id: "person-b", directed: false, properties: {},
+    } };
+    render(<MemoryEditor item={edge} action="reattribute" onClose={() => {}} onSaved={vi.fn()} />);
+    await ready();
+    source();
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("먼저 기억 정정에서 현재 유형으로");
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("이전 호감을 썸으로 자동 변경하지 않고 기존 속성을 보존한다", async () => {
+    const edge: MemoryItem = { ...item, record_type: "entity_edges", record_ref: "entity_edges:old", payload: {
+      ...item.payload, relation_type: "dating_interest", from_entity_id: "person-a", to_entity_id: "person-b", directed: false, properties: { legacy_note: "한쪽의 느낌", context: "모임" },
+    } };
+    const saved = vi.fn();
+    render(<MemoryEditor item={edge} action="correct" onClose={() => {}} onSaved={saved} />);
+    await ready();
+    expect(screen.getByLabelText("종류")).toHaveValue("dating_interest");
+    expect(screen.getByRole("option", { name: /호감.*이전 종류/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("관계 배경 (학교·회사·모임)")).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("기억 내용"), { target: { value: "한쪽의 호감이었다" } });
+    source();
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    expect(writes()[0].record?.payload).toMatchObject({ relation_type: "dating_interest", directed: false, properties: { legacy_note: "한쪽의 느낌", context: "모임" } });
+  });
+
   it("이전 서버가 저장 계약을 제공하지 않으면 저장을 막고 호환성 문제를 표시한다", async () => {
     fetchMock.mockImplementation(async (input: string) => {
       const path = new URL(input).pathname;

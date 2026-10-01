@@ -11,10 +11,12 @@ import {
   errorText,
   label,
   memoryText,
+  memoryTypeLabel,
   memoryUrl,
   query,
   useResource,
   type MemoryItem,
+  type Ontology,
   type Page,
   type Person,
 } from "./data";
@@ -185,23 +187,28 @@ export function PersonPicker({
     </div>
   );
 }
+export function RelationshipProperties({ properties }: { properties?: Record<string, unknown> }) {
+  const names: Record<string, string> = { context: "관계 배경", relationship_detail: "세부 관계", origin: "알게 된 경위" };
+  const entries = Object.entries(properties || {});
+  if (!entries.length) return null;
+  return <dl className="mini-facts">{entries.map(([key, value]) => (
+    <div key={key}><dt>{names[key] || key}</dt><dd>{typeof value === "string" ? value : JSON.stringify(value)}</dd></div>
+  ))}</dl>;
+}
 export function MemoryCard({
   item,
   onOpen,
+  ontology,
 }: {
   item: MemoryItem;
+  ontology?: Ontology;
   onOpen?: (item: MemoryItem) => void;
 }) {
   return (
     <article className="memory-card">
       <div className="row between">
         <span className="eyebrow">
-          {label(
-            item.payload.fact_type ||
-              item.payload.observation_type ||
-              item.payload.relation_type ||
-              item.record_type,
-          )}
+          {memoryTypeLabel(item, ontology)}
         </span>
         <span
           className={`pill ${item.claim_basis === "inferred" ? "warning" : ""}`}

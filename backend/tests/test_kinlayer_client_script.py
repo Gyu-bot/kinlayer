@@ -47,6 +47,82 @@ def output(capsys):
     return json.loads(capsys.readouterr().out)
 
 
+def test_ontology_retains_server_owned_write_contract(monkeypatch, capsys):
+    relation = {
+        "relation_type": "new_server_relation",
+        "label": "새 관계",
+        "inverse_label": "역방향 관계",
+        "category": "professional",
+        "from_entity_type": "person",
+        "to_entity_type": "person",
+        "directed_default": True,
+        "inverse_relation_type": None,
+        "description": "The source person holds this role relative to the target.",
+        "examples": ["A has this relationship to B."],
+        "allowed_properties_schema": {
+            "type": "object",
+            "properties": {"context": {"type": "string", "maxLength": 300}},
+            "additionalProperties": False,
+        },
+        "active": True,
+        "support_level": "supported",
+        "write_supported": True,
+        "replacement_type": None,
+        "future_semantic_hint": {"requires_source": True},
+    }
+    legacy = {
+        "relation_type": "previous_server_relation",
+        "label": "이전 관계",
+        "directed_default": False,
+        "active": True,
+        "support_level": "legacy",
+        "write_supported": False,
+        "replacement_type": "new_server_relation",
+        "description": "Read historical records; verify source before replacing.",
+    }
+    payload = {
+        "version": "server-ontology-version",
+        "entity_types": [{"value": "person", "label": "Person", "support_level": "supported"}],
+        "fact_types": [],
+        "claim_bases": [{"value": "reported", "description": "Human-reported claim."}],
+        "participant_roles": [{"value": "experiencer", "label": "Experiencer"}],
+        "edge_types": [relation, legacy],
+        "observation_types": [{"observation_type": "user_feeling", "examples": ["A feels..."]}],
+        "policies": {"claim_types": [{"value": "fact", "support_level": "legacy"}]},
+    }
+    code, transport = run(["ontology"], monkeypatch, [payload])
+    result = output(capsys)
+    assert code == 0
+    assert transport.calls[0]["method"] == "GET"
+    assert urllib.parse.urlsplit(transport.calls[0]["url"]).path == "/api/ontology"
+    assert result["version"] == "server-ontology-version"
+    assert result["definitions"]["edge_types"] == [relation, legacy]
+    assert result["definitions"]["claim_bases"] == payload["claim_bases"]
+    assert result["definitions"]["participant_roles"] == payload["participant_roles"]
+    assert result["definitions"]["observation_types"] == payload["observation_types"]
+    assert result["definitions"]["claim_types"] == payload["policies"]["claim_types"]
+    assert result["values"]["edge_types"] == ["new_server_relation", "previous_server_relation"]
+    assert result["values"]["claim_bases"] == ["reported"]
+    assert result["counts"]["edge_types"] == 2
+
+
+def test_ontology_refreshes_each_invocation_and_does_not_invent_missing_metadata(monkeypatch, capsys):
+    monkeypatch.setenv("KINLAYER_API_BASE_URL", "http://kinlayer.invalid:8765")
+    transport = FakeTransport([
+        {"edge_types": [{"relation_type": "old_server_value"}]},
+        {"version": "next-version", "edge_types": [{"relation_type": "new_server_value"}]},
+    ])
+    assert client.run(["ontology"], transport=transport) == 0
+    old = output(capsys)
+    assert old["version"] is None
+    assert old["definitions"]["edge_types"] == [{"relation_type": "old_server_value"}]
+    assert client.run(["ontology"], transport=transport) == 0
+    new = output(capsys)
+    assert new["version"] == "next-version"
+    assert new["values"]["edge_types"] == ["new_server_value"]
+    assert len(transport.calls) == 2
+
+
 def test_argument_parser_supports_required_options_and_structured_errors(capsys):
     args = client.build_parser().parse_args(
         [

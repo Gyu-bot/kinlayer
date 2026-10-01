@@ -473,18 +473,27 @@ def _compact_provisional(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def compact_ontology(payload: dict[str, Any]) -> dict[str, Any]:
-    values = {
-        "entity_types": _values(payload.get("entity_types", []), "value"),
-        "fact_types": _values(payload.get("fact_types", []), "value"),
-        "edge_types": _values(payload.get("edge_types", []), "relation_type"),
-        "observation_types": _values(payload.get("observation_types", []), "observation_type"),
+    registry_keys = {
+        "entity_types": "value",
+        "fact_types": "value",
+        "claim_bases": "value",
+        "participant_roles": "value",
+        "edge_types": "relation_type",
+        "observation_types": "observation_type",
     }
+    definitions = {key: payload.get(key, []) for key in registry_keys}
+    values = {key: _values(definitions[key], field) for key, field in registry_keys.items()}
     for key, items in payload.get("policies", {}).items():
+        definitions[key] = items
         values[key] = _values(items, "value")
     return {
         "ok": True,
+        "version": payload.get("version"),
         "counts": {key: len(items) for key, items in values.items()},
         "values": values,
+        # Names alone are insufficient for choosing a writable relationship. Keep
+        # server-owned semantics, including future metadata, without client enums.
+        "definitions": definitions,
     }
 
 

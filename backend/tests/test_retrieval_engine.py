@@ -38,7 +38,7 @@ def create_edge(client, from_entity_id: str, to_entity_id: str) -> dict:
         json={
             "from_entity_id": from_entity_id,
             "to_entity_id": to_entity_id,
-            "relation_type": "client_contact",
+            "relation_type": "collaborated_with",
             "claim_text": "They work together.",
             "claim_type": "fact",
             "created_by": "user",

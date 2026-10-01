@@ -52,15 +52,15 @@ def test_correction_apply_requires_explicit_user_source(client) -> None:
                 "payload": {
                     "from_entity_id": user["id"],
                     "to_entity_id": alex["id"],
-                    "relation_type": "client_contact",
-                    "claim_text": "Alex is a client contact.",
+                    "relation_type": "collaborated_with",
+                    "claim_text": "Alex is a collaborator.",
                     "claim_type": "fact",
                 },
             },
             "correction_source": {
                 "source_type": "agent_conversation",
                 "user_explicit": False,
-                "excerpt": "I think Alex may be a client contact instead.",
+                "excerpt": "I think Alex may be a collaborator instead.",
             },
             "created_by": "ai_agent",
         },
@@ -87,15 +87,15 @@ def test_explicit_edge_correction_supersedes_old_record_and_links_evidence(
                 "payload": {
                     "from_entity_id": user["id"],
                     "to_entity_id": alex["id"],
-                    "relation_type": "client_contact",
-                    "claim_text": "Alex is a client contact, not a former coworker.",
+                    "relation_type": "collaborated_with",
+                    "claim_text": "Alex is a collaborator, not a former coworker.",
                     "claim_type": "fact",
                 },
             },
             "correction_source": {
                 "source_type": "agent_conversation",
                 "user_explicit": True,
-                "excerpt": "No, Alex is not a former coworker; Alex is a client contact.",
+                "excerpt": "No, Alex is not a former coworker; Alex is a collaborator.",
                 "source_ref": "thread-correction-1",
             },
             "created_by": "ai_agent",
@@ -117,8 +117,8 @@ def test_explicit_edge_correction_supersedes_old_record_and_links_evidence(
     new_edge = client.get(f"/api/edges/{new_edge_id}")
     assert new_edge.status_code == 200
     assert new_edge.json()["status"] == "active"
-    assert new_edge.json()["relation_type"] == "client_contact"
-    assert new_edge.json()["claim_text"] == "Alex is a client contact, not a former coworker."
+    assert new_edge.json()["relation_type"] == "collaborated_with"
+    assert new_edge.json()["claim_text"] == "Alex is a collaborator, not a former coworker."
     assert old_after.json()["invalidated_by_edge_id"] == new_edge_id
 
     visible_edges = client.get("/api/edges", params={"entity_id": alex["id"]})
@@ -131,7 +131,7 @@ def test_explicit_edge_correction_supersedes_old_record_and_links_evidence(
         assert episode is not None
         assert episode.source_type == "correction"
         assert episode.body_excerpt == (
-            "No, Alex is not a former coworker; Alex is a client contact."
+            "No, Alex is not a former coworker; Alex is a collaborator."
         )
         assert episode.body_hash.startswith("sha256:")
         evidence_rows = (
@@ -158,8 +158,8 @@ def test_explicit_correction_records_user_source_and_agent_submitter(client, dat
                 "payload": {
                     "from_entity_id": user["id"],
                     "to_entity_id": alex["id"],
-                    "relation_type": "client_contact",
-                    "claim_text": "Alex is a client contact.",
+                    "relation_type": "collaborated_with",
+                    "claim_text": "Alex is a collaborator.",
                     "claim_type": "fact",
                 },
             },
@@ -167,7 +167,7 @@ def test_explicit_correction_records_user_source_and_agent_submitter(client, dat
                 "source_type": "agent_conversation",
                 "source_actor": "user",
                 "user_explicit": True,
-                "excerpt": "No, Alex is a client contact.",
+                "excerpt": "No, Alex is a collaborator.",
                 "source_ref": "thread-correction-source",
             },
             "created_by": "ai_agent",
@@ -206,15 +206,15 @@ def test_correction_apply_rolls_back_new_record_when_evidence_link_fails(
             "payload": {
                 "from_entity_id": user["id"],
                 "to_entity_id": alex["id"],
-                "relation_type": "client_contact",
-                "claim_text": "Alex is a client contact.",
+                "relation_type": "collaborated_with",
+                "claim_text": "Alex is a collaborator.",
                 "claim_type": "fact",
             },
         },
         "correction_source": {
             "source_type": "agent_conversation",
             "user_explicit": True,
-            "excerpt": "No, Alex is a client contact.",
+            "excerpt": "No, Alex is a collaborator.",
             "source_ref": "thread-correction-atomic",
         },
         "created_by": "ai_agent",
@@ -231,7 +231,7 @@ def test_correction_apply_rolls_back_new_record_when_evidence_link_fails(
             session.query(EntityEdge)
             .filter(
                 EntityEdge.source_candidate_id.is_(None),
-                EntityEdge.relation_type == "client_contact",
+                EntityEdge.relation_type == "collaborated_with",
             )
             .count()
             == 0
