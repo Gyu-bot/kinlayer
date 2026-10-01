@@ -653,9 +653,9 @@ Request:
 {
   "from_entity_id": "uuid",
   "to_entity_id": "uuid",
-  "relation_type": "client_contact",
+  "relation_type": "client_of",
   "directed": true,
-  "claim_text": "Alex is a client contact.",
+  "claim_text": "The source person is a customer of the target person.",
   "claim_type": "fact",
   "properties": {},
   "confidence": 0.95,
@@ -670,7 +670,12 @@ Response: edge object.
 
 Validation:
 
-- `relation_type` must be allowed edge type.
+- New `relation_type` must have `write_supported: true` in the live ontology. Legacy readable
+  types cannot be used for new writes.
+- Omit `directed` to use the type's direction, or supply the same boolean. A conflicting direction
+  is HTTP 422. From/to roles follow the returned definition, not display-label guesses.
+- Optional `properties` keys are `context`, `relationship_detail`, and `origin`, each a nonempty
+  string up to 300 characters; additional keys are invalid. Read `allowed_properties_schema`.
 - Edge represents structural relationship, not advice/feeling/pattern.
 
 ### `GET /api/edges`
@@ -1245,12 +1250,39 @@ Read-only in MVP.
 
 ### `GET /api/ontology`
 
-Returns all seed registries.
+Returns the current registries, including `version: "relationship-v1"`. The version identifies
+the relationship-definition contract, not a record revision or the application's build version.
+Refresh at agent session start and when the version changes, a requested type is unknown, or a
+relationship type/direction/property write is rejected. See the
+[agent write contract](../agents/agent-write-instruction-pack.md#ontology-discovery-and-cache-rules).
 
 ### `GET /api/ontology/edge-types`
 
-Returns active ontology edge types. UI-visible relationship type, API `relation_type`, candidate
-`relationship_edge.relation_type`, and graph edge labels must all derive from these values.
+Returns `{ "version": "relationship-v1", "items": [...] }`. Each item includes:
+
+| Field | Meaning |
+| --- | --- |
+| `relation_type` | Canonical predicate used by API records. |
+| `label`, `inverse_label` | Source role and, for directed relations, target role display labels. |
+| `category`, `description`, `examples` | Selection and endpoint meaning. |
+| `from_entity_type`, `to_entity_type`, `directed_default` | Valid endpoint types and required direction. |
+| `inverse_relation_type` | Retained metadata; clients must not materialize or invent an inverse edge. |
+| `allowed_properties_schema` | Valid optional properties and limits. |
+| `active` | The type is readable/recognized; not by itself new-write permission. |
+| `support_level`, `write_supported` | Current support and whether a new relationship may use the type. |
+| `replacement_type` | Optional source-dependent migration hint, never an automatic conversion rule. |
+
+The same definitions appear under `edge_types` in `/api/ontology`. Historical types remain
+readable with `support_level: "legacy"` and `write_supported: false`. Existing records are not
+rewritten or hidden merely because new writes are disabled. A tracked memory's exact legacy
+structure may be retained while correcting prose/source/time; changing its type, endpoints,
+direction or properties must satisfy the current structural contract. Reattribution is not an
+exception permitting a new legacy structure.
+
+UI labels, agent selection, API `relation_type`, retained candidate writes, and graph display
+must derive from this registry. `situationship` is symmetric, but does not independently confirm
+mutual attraction or formal partnership. In particular, do not automatically map historical
+`dating_interest` to it. See [relationship semantics](ontology-design.md#8-relationship-v1-meaning-and-compatibility).
 
 ### `GET /api/ontology/edge-type-diagnostics`
 
@@ -1507,8 +1539,10 @@ all entity IDs. Each immutable authorization entity snapshot contains exactly `i
 `display_name`, nullable `canonical_name`, nullable `system_role`, `confirmation_status`, `status`,
 `updated_at`, and `entity_digest`. The existing digest/stale comparison remains exact. Snapshots do
 not contain aliases, raw context, properties, question/reply text, or capabilities. The backend fixes
-policy/claim type, validates the small proactive ontology
-allowlists, rejects duplicate semantic slot authority, and rejects already-filled gaps. A gap is
+policy/claim type, validates the proactive ontology
+allowlists, rejects duplicate semantic slot authority, and rejects already-filled gaps. Relationship
+slots use the current writable relationship definitions. Omitted/null direction follows that
+definition; an explicitly conflicting direction is invalid. A gap is
 also filled when an exact semantically matching candidate for the subject is `pending` or
 `needs_clarification`; stage and answer-time revalidation return `409 pending_gap_filled` before any
 authorization, action, Episode, candidate, canonical, or slot mutation. The stage body contains no
@@ -1581,7 +1615,8 @@ rest. Rename does the same after validating the supplied stable person name. Onl
 `relationship_to_self`: the service resolves the single active protected-self person internally,
 creates one user-authored `relationship_edge` candidate from self to the new person with
 `claim_type=fact`, empty properties, and confirmation-episode-only evidence, and accepts it before
-the same commit. The caller cannot supply either endpoint ID. No profile field is produced.
+the same commit. Its relation must be currently writable and its direction is derived from the
+ontology. The caller cannot supply either endpoint ID. No profile field is produced.
 `accept_existing_entity_observation_group` requires exact snapshots for one or more pending
 observation candidates plus exactly one exact snapshot for the supplied active non-system, non-self
 person target. Candidate targets and payload subjects must all equal that target. It accepts every

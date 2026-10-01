@@ -686,8 +686,8 @@ def test_agent_correction_apply_uses_filter_normalization(client, database_url) 
                 "payload": {
                     "from_entity_id": user["id"],
                     "to_entity_id": alex["id"],
-                    "relation_type": "Client contact",
-                    "claim_text": "Alex is a client contact.",
+                    "relation_type": "협업자",
+                    "claim_text": "Alex is a collaborator.",
                     "claim_type": "fact",
                 },
             },
@@ -695,7 +695,7 @@ def test_agent_correction_apply_uses_filter_normalization(client, database_url) 
                 "source_type": "agent_conversation",
                 "source_actor": "user",
                 "user_explicit": True,
-                "excerpt": "No, Alex is a client contact.",
+                "excerpt": "No, Alex is a collaborator.",
                 "source_ref": "thread-correction-filter",
             },
             "created_by": "ai_agent",
@@ -705,7 +705,7 @@ def test_agent_correction_apply_uses_filter_normalization(client, database_url) 
     assert response.status_code == 200
     new_edge_id = response.json()["new_record_ref"].split(":", 1)[1]
     with create_session_maker(Settings(database_url=database_url))() as session:
-        assert session.get(EntityEdge, new_edge_id).relation_type == "client_contact"
+        assert session.get(EntityEdge, new_edge_id).relation_type == "collaborated_with"
 
 
 def test_correction_dry_run_supports_retract_reattribute_and_typed_basis(client):
@@ -761,15 +761,15 @@ def test_correction_dry_run_normalizes_typed_edge_without_losing_basis(client):
     payload = {
         "old_record_ref": f"entity_edges:{old['id']}",
         "new_record": {"record_type": "entity_edges", "payload": {
-            "from_entity_id": user["id"], "to_entity_id": alex["id"], "relation_type": "Client contact",
-            "claim_text": "Alex may be a client contact.", "claim_basis": "inferred", "confidence": 0.6,
+            "from_entity_id": user["id"], "to_entity_id": alex["id"], "relation_type": "협업자",
+            "claim_text": "Alex may be a collaborator.", "claim_basis": "inferred", "confidence": 0.6,
         }},
-        "correction_source": {"source_type": "agent_conversation", "user_explicit": True, "excerpt": "I meant a client contact, I think."},
+        "correction_source": {"source_type": "agent_conversation", "user_explicit": True, "excerpt": "I meant a collaborator, I think."},
     }
     response = client.post("/api/agent-writes/validate", json={"write_type": "correction", "payload": payload})
     assert response.status_code == 200, response.text
     assert response.json()["accepted"] is True, response.text
     result = response.json()["validated_payload"]["new_record"]["payload"]
-    assert result["relation_type"] == "client_contact"
+    assert result["relation_type"] == "collaborated_with"
     assert result["claim_basis"] == "inferred"
     assert "claim_type" not in result

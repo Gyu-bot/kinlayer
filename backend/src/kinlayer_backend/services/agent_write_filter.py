@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any
 from typing import assert_never
 
+from fastapi import HTTPException
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,6 +24,7 @@ from kinlayer_backend.schemas.corrections import CorrectionApplyRequest
 from kinlayer_backend.schemas.memories import MemoryRecord, MemorySource
 from kinlayer_backend.services.entities import JsonValue, validate_common
 from kinlayer_backend.services.ontology import is_allowed_registry_value
+from kinlayer_backend.services.relationship_ontology import EDGE_DEFINITIONS, validate_edge_write
 from kinlayer_backend.services.structured_facts import (
     InvalidStructuredFactContent,
     ValidStructuredFactContent,
@@ -293,7 +295,10 @@ class AgentWriteFilter:
             elif payload["action"] == "correct" and old_targets != new_targets and not (old_fact and parsed.record_type == "entity_facts"):
                 self._add_error("record_target_mismatch", "Use reattribute to change the record target.", "new_record.payload")
         if new_record["record_type"] == "entity_edges":
-            self._validate_edge_payload(new_record["payload"], "new_record.payload.relation_type")
+            self._validate_edge_payload(
+                new_record["payload"], "new_record.payload.relation_type",
+                previous=old if payload["action"] == "correct" and isinstance(old, EntityEdge) else None,
+            )
         elif new_record["record_type"] == "entity_facts":
             fact_payload = new_record["payload"]
             self._entity(fact_payload["entity_id"], "new_record.payload.entity_id")
@@ -421,7 +426,7 @@ class AgentWriteFilter:
                 "payload.content",
             )
 
-    def _validate_edge_payload(self, payload: dict[str, Any], relation_field: str) -> None:
+    def _validate_edge_payload(self, payload: dict[str, Any], relation_field: str, *, previous: EntityEdge | None = None) -> None:
         from_entity = self._entity(payload["from_entity_id"], relation_field.rsplit(".", 1)[0] + ".from_entity_id")
         to_entity = self._entity(payload["to_entity_id"], relation_field.rsplit(".", 1)[0] + ".to_entity_id")
         normalized = self._normalize_edge_type(payload["relation_type"], relation_field)
@@ -456,6 +461,11 @@ class AgentWriteFilter:
                     "expected_to_entity_type": edge_type.to_entity_type,
                 },
             )
+        if from_entity and to_entity:
+            try:
+                validate_edge_write(self.session, payload, previous=previous)
+            except HTTPException as exc:
+                self._add_error("invalid_relationship_write", exc.detail["error"]["message"], relation_field)
         if "claim_basis" in payload:
             self._check_registry("claim_basis", payload["claim_basis"], relation_field.rsplit(".", 1)[0] + ".claim_basis")
         else:
@@ -624,16 +634,17 @@ class AgentWriteFilter:
         self.diagnostics["allowed_edge_types"] = allowed
         self._add_error(
             "relation_type_not_allowed",
-            "relation_type must be an active ontology edge type.",
+            "relation_type must be a writable active ontology edge type.",
             field,
             {"submitted_relation_type": value, "allowed_edge_types": allowed},
         )
 
     def _allowed_edge_types(self) -> list[str]:
+        writable = [key for key, value in EDGE_DEFINITIONS.items() if value.support_level == "supported"]
         return list(
             self.session.execute(
                 select(AllowedEdgeType.relation_type)
-                .where(AllowedEdgeType.active.is_(True))
+                .where(AllowedEdgeType.active.is_(True), AllowedEdgeType.relation_type.in_(writable))
                 .order_by(AllowedEdgeType.relation_type)
             ).scalars()
         )

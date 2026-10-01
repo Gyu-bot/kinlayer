@@ -4,9 +4,12 @@
 > The 2026-10-01 revision separates claim basis from observation topic and removes candidate-first
 > approval and AI-use-policy gating. Earlier physical-field examples are compatibility descriptions.
 > Always fetch the running registry; illustrative value lists are not permission to invent values.
+> The approved relationship-v1 revision is tracked in
+> [relationship ontology plan](../plans/relationship-ontology.md). It broadens ordinary social,
+> family, work, school and community relations without adding appointment tracking.
 
 
-- Status: Draft v0.1
+- Status: Relationship v1; older physical-field examples below remain compatibility descriptions
 - Scope: Ontology registry and relationship-edge design for Kinlayer
 - Parent PRD: `prd.md`
 - Related docs: `../agents/agent-write-instruction-pack.md`
@@ -91,9 +94,12 @@ Examples:
 
 ```text
 User --former_coworker--> Alex
-Alex --introduced_by--> Jamie
-User --client_contact--> Dana
+Alex --parent_of--> Jamie
+User --client_of--> Dana
 ```
+
+`introduced_by` in earlier versions described acquaintance background. New records put supported
+background in `properties.origin` or an observation; it is no longer a new-write edge type.
 
 ### Use `observations` for
 
@@ -178,7 +184,7 @@ Examples:
 
 - `friend`: usually undirected.
 - `reports_to`: directed.
-- `introduced_by`: directed.
+- `parent_of`: directed, with parent as from and child as to.
 
 #### `claim_text`
 
@@ -207,7 +213,11 @@ For edges, `fact` and `inference` are expected to be common; `preference` and `p
 
 #### `properties`
 
-Relation-type-specific structured metadata. Should be validated against the relation type's `allowed_properties_schema` when possible.
+Optional source-supported metadata, validated against the type's `allowed_properties_schema`.
+Relationship v1 admits only `context` (company/school/group), `relationship_detail` (specific
+kinship or relationship detail), and `origin` (acquaintance background). Each supplied value is a
+nonempty string of at most 300 characters. Unknown keys and non-string values are rejected.
+Do not invent exact kinship, an institution, an app, or a meeting from a vague source.
 
 #### `status`
 
@@ -223,7 +233,9 @@ superseded
 deleted
 ```
 
-Pending proposed relationships should normally live in `candidates`, not as `entity_edges.status = candidate`.
+New memory claims save immediately with their basis and source; candidates remain a legacy
+interface. Record lifecycle status is separate from whether a relationship exists now or existed
+in the past.
 
 #### `source_candidate_id`
 
@@ -260,7 +272,10 @@ Evidence B: imported relationship map also says former coworker
 
 ## 7. Allowed Edge Type Registry
 
-`allowed_edge_types` defines which relationship types may be used and how they behave.
+`allowed_edge_types` and the server-owned relationship definitions determine readable types and
+their write semantics. `GET /api/ontology` and `/api/ontology/edge-types` return
+`version: relationship-v1`. Existing historical types remain readable with `active: true`,
+`support_level: legacy`, and `write_supported: false`; active does not mean writable.
 
 Suggested table:
 
@@ -300,88 +315,78 @@ person -> person
 
 Default directionality for this relationship type.
 
+New writes either omit `directed` or supply this exact value. The server rejects an incompatible
+explicit direction. Both endpoints are people; neither is required to be protected self.
+
+#### Labels, descriptions, and write support
+
+`label` names the source person's role relative to the target, and `inverse_label` names the
+target's role for a directional relation. For `parent_of`, these are 부모 and 자녀; for `reports_to`,
+부하 and 상사; for `client_of`, 고객 and 서비스 제공자. A person-centric UI must use the focal
+person's endpoint to choose the label. `category`, `description`, and `examples` explain selection.
+The symmetric case has one shared label. `support_level` and `write_supported` govern whether a
+type can be selected for a new write. `replacement_type`, when present, suggests a source-based
+migration target; it does not authorize a blind rename or endpoint swap.
+
 #### `inverse_relation_type`
 
-Optional inverse type.
-
-Examples:
-
-```text
-reports_to inverse manager_of
-introduced_by inverse introduced
-```
-
-For symmetric relationships, inverse can be null or self.
+Compatibility metadata, not an instruction to create a second edge. Relationship v1 keeps one
+canonical predicate for a directional pair and provides the inverse display label. Do not invent
+`child_of`, `manager_of`, or another inverse as a new-write type because a UI needs reversed wording.
 
 #### `allowed_properties_schema`
 
-JSON Schema-like object describing allowed `properties` for edges of this type.
-
-MVP may start permissive but should define the field to avoid later migration.
+The schema declares the three optional string properties described above, their length limits,
+and `additionalProperties: false`. Agent clients must preserve and read this schema rather than
+copy a permissive local dictionary.
 
 ---
 
-## 8. Recommended MVP Edge Types
+## 8. Relationship v1 meaning and compatibility
 
-MVP should keep edge types narrow and structural.
+The following is the approved design map, not a substitute for the running registry. Clients
+discover current values and metadata from the API; the server definitions remain authoritative.
 
-### Social/professional structural edges
+| Domain | Supported relationship meanings |
+| --- | --- |
+| Social | `acquaintance`, `friend` |
+| Family | `family`, `parent_of`, `sibling`, `spouse`, `relative`, `in_law`, `former_spouse` |
+| Work | `coworker`, `former_coworker`, `reports_to`, `collaborated_with`, `business_partner`, `client_of` |
+| School and learning | `classmate`, `schoolmate`, `cohort_peer`, `senior_of`, `teacher_of`, `mentor_of` |
+| Community and living | `neighbor`, `housemate`, `community_peer` |
+| Romantic | `situationship`, `romantic_partner`, `former_partner` |
 
-```text
-knows
-friend
-family
-acquaintance
-coworker
-former_coworker
-client_contact
-vendor_contact
-```
+Only `parent_of`, `reports_to`, `client_of`, `senior_of`, `teacher_of`, and `mentor_of` are directed.
+Their from person is respectively the parent, subordinate, customer, senior, teacher, or mentor.
+Other types are symmetric. Family detail can remain broad when the source says only “family”;
+use the specific type and optional `relationship_detail` only when the source establishes it.
+Several independently supported relationships can coexist, such as classmate and coworker.
 
-### Directional work/social edges
+`situationship` stores a relationship the source describes as “썸” symmetrically. It does not
+establish independently verified mutual attraction, exclusivity, or a formal partnership. Keep
+the source's wording and basis. A one-sided feeling is still an observation with its experiencer
+and target, not a situationship inferred from interest.
 
-Prefer direction-explicit names.
+`knows`, `dating`, `former_dating`, `dating_interest`, `manager_of`, `client_contact`,
+`vendor_contact`, `introduced_by`, `referred_by`, `introduced_for_dating`, and `matched_on_app`
+are legacy readable types. They cannot be selected for new edges. In particular:
 
-```text
-reports_to
-manager_of
-introduced_by
-referred_by
-collaborated_with
-```
+- `dating_interest` is ambiguous across historical sources; neither a blanket `situationship`
+  conversion nor a blanket feeling conversion is valid.
+- App matching and introduction describe acquaintance background. They do not prove an actual
+  meeting or a romantic relationship. Preserve supported origin information without creating a
+  stronger structural claim.
+- Legacy inverse/contact types require checking endpoint meaning before any canonical mapping.
+- A correction may retain the exact legacy relationship structure while correcting text, source,
+  or time. This does not authorize new legacy records or a legacy reattribution to different people.
 
-### Dating/romantic structural edges
+Current/past types such as `former_coworker`, `former_partner`, and `former_spouse` are retained.
+Do not collapse them into expired current edges: current context intentionally excludes elapsed
+validity intervals, so that would hide useful past-relationship context. Generic timelines,
+pair-scoped retrieval, event entities, and calendar/appointment tracking are outside this revision.
 
-Keep these structural. Emotional/advisory dating context should remain observations.
-
-```text
-dating_interest
-dating
-former_dating
-romantic_partner
-former_partner
-introduced_for_dating
-matched_on_app
-```
-
-### Deferred / observation-preferred concepts
-
-Do not add as MVP edge types unless a later review explicitly promotes them.
-
-```text
-avoid_topic
-follow_up_needed
-emotionally_salient
-communication_preference
-reply_strategy
-sensitive_subject
-has_crush_on
-ambiguous_interest
-avoid_pressure
-high_expectation_risk
-dating_anxiety
-needs_expectation_setting
-```
+Preferences, feelings, reply strategy, cautions and inferred expectations remain observations.
+No edge type should convert subjective interpretation into an established reciprocal relation.
 
 ---
 
@@ -413,16 +418,9 @@ patterns to reported facts. `unknown` is preferable to invented certainty.
 
 ### `allowed_observation_types`
 
-Examples:
-
-```text
-communication_preference
-relationship_context
-recent_interaction
-caution
-care_point
-user_preference_about_person
-```
+Fetch current values from `GET /api/ontology/observation-types`. Existing topics include
+`communication_preference`, `recent_interaction`, `caution`, `care_point`, and `user_feeling`.
+This relationship revision does not add a new event or appointment observation type.
 
 ### `allowed_candidate_types`
 
@@ -458,8 +456,9 @@ Saving immediately does not broaden the edge ontology or imply verified truth.
 
 ## 11. Validation Rules
 
-1. `relation_type` exists in the active edge registry and its endpoint entity types are valid.
-2. Omitted `directed` uses the registry default; clients must not invent inverse types.
+1. A new `relation_type` has `write_supported: true` in the running registry and valid endpoint types.
+2. Omitted `directed` uses the registry direction; an explicit conflicting direction is invalid.
+   Properties must follow the supplied schema; clients must not invent inverse types or keys.
 3. New memories explicitly supply `claim_basis`, bounded confidence and an admitted human source.
 4. Supported profile facts use the typed-value contract. Generic note fact types are legacy only.
 5. Agents split semantic claims; Kinlayer deterministically validates shapes and references.
@@ -467,14 +466,17 @@ Saving immediately does not broaden the edge ontology or imply verified truth.
 7. Existing candidate/correction interfaces retain their compatibility validation and diagnostics.
 8. `/api/ontology/edge-type-diagnostics` identifies invalid legacy edges without silently rewriting
    them. Human-approved data conversion handles bounded known repairs with traceable lineage.
+9. Agents fetch the ontology at session start and before an unknown type, invalidate cached
+   definitions when the version changes, and refresh after ontology validation errors. A refresh
+   does not authorize changing meaning merely to make a write pass. See the
+   [agent cache contract](../agents/agent-write-instruction-pack.md#ontology-discovery-and-cache-rules).
 
 ---
 
-## 12. Open Questions
+## 12. Scope decisions and deferred work
 
-1. Should `user_self` be represented as a special person entity?
-2. Should `family` be a generic edge type or split into parent/sibling/spouse/etc. later?
-3. Should relation type registry be editable in the Web UI during MVP, or seed-only through migrations/config?
-4. Should `properties` validation be strict from day one or warning-only?
-5. How should inverse edges be materialized: stored explicitly or computed through registry?
-6. Should `topic` remain tags/properties only in MVP, or be allowed as experimental entity type?
+The [approved plan](../plans/relationship-ontology.md) records the decision history. Family detail,
+symmetric 썸, canonical directed predicates and strict optional properties are now decided.
+The registry is server-owned; this revision does not add Web editing of ontology definitions.
+Pair-level context, generic relationship timelines, dispute workflows, and observation regrouping
+remain separate proposals, not implied deliverables of this relationship-type change.

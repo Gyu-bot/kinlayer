@@ -15,6 +15,12 @@ class RegistryValueRead(APIModel):
 
 
 class EdgeTypeRead(APIModel):
+    label: str
+    inverse_label: str | None = None
+    category: str
+    support_level: str
+    write_supported: bool
+    replacement_type: str | None = None
     relation_type: str
     from_entity_type: str
     to_entity_type: str
@@ -42,6 +48,7 @@ class RegistryList(APIModel):
 
 
 class EdgeTypeList(APIModel):
+    version: str
     items: list[EdgeTypeRead]
 
 
@@ -83,6 +90,7 @@ class PoliciesRead(APIModel):
 
 
 class OntologyRead(APIModel):
+    version: str
     entity_types: list[RegistryValueRead]
     fact_types: list[RegistryValueRead]
     claim_bases: list[RegistryValueRead]

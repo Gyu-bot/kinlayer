@@ -8,8 +8,10 @@ import {
   label,
   memoryUrl,
   query,
+  relationLabel,
   useResource,
   type MemoryItem,
+  type Ontology,
   type Page,
   type Person as PersonRecord,
   type Receipt,
@@ -26,6 +28,7 @@ export function Person({
   id: string;
   onNavigate: (path: string) => void;
 }) {
+  const ontology = useResource<Ontology>("/api/ontology");
   const [tab, setTab] = useState("overview"),
     [offset, setOffset] = useState(0),
     [version, setVersion] = useState(0),
@@ -234,7 +237,7 @@ export function Person({
                   <>
                     {records.data.items.map((item) => (
                       <div key={item.record_ref} className="stack">
-                        <MemoryCard item={item} />
+                        <MemoryCard item={item} ontology={ontology.data} />
                         {tab === "sources" && <SourceEvidence item={item} />}
                       </div>
                     ))}
@@ -284,8 +287,7 @@ export function Person({
                       .join(" · ")}
                   </span>
                   <span className="small muted">
-                    {item.payload.directed ? "방향 있음 · " : ""}
-                    {label(item.payload.relation_type || "")}
+                    {relationLabel(item.payload.relation_type || "", ontology.data, Boolean(item.payload.directed) && item.payload.from_entity_id === id)}
                   </span>
                 </a>
               ))

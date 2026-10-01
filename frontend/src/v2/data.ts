@@ -122,6 +122,7 @@ export type Episode = {
   created_at: string;
 };
 export type Ontology = {
+  version?: string;
   fact_types: {
     value: string;
     label: string;
@@ -132,6 +133,14 @@ export type Ontology = {
   participant_roles: { value: string; label: string; support_level: string }[];
   edge_types: {
     relation_type: string;
+    label?: string;
+    inverse_label?: string | null;
+    category?: string;
+    support_level?: string;
+    write_supported?: boolean;
+    replacement_type?: string | null;
+    examples?: string[];
+    allowed_properties_schema?: { properties?: Record<string, { type?: string; maxLength?: number; description?: string }> };
     directed_default: boolean;
     inverse_relation_type: string | null;
     active: boolean;
@@ -327,6 +336,15 @@ export const typeLabels: Record<string, string> = {
 };
 export function label(value: string) {
   return typeLabels[value] || value;
+}
+export function relationLabel(value: string, ontology?: Ontology | null, inverse = false) {
+  const definition = ontology?.edge_types.find((item) => item.relation_type === value);
+  return (inverse ? definition?.inverse_label : definition?.label) || definition?.label || (label(value) !== value ? label(value) : definition?.description || value);
+}
+export function memoryTypeLabel(item: MemoryItem, ontology?: Ontology | null) {
+  return item.payload.relation_type
+    ? relationLabel(item.payload.relation_type, ontology)
+    : label(item.payload.fact_type || item.payload.observation_type || item.record_type);
 }
 // SQLite compatibility responses omit the zone; backend storage timestamps are UTC.
 export function apiDate(value: string) {

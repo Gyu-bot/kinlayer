@@ -313,7 +313,7 @@ def run_smoke(client: SmokeClient, fixtures: dict[str, Any]) -> dict[str, Any]:
         {
             "from_entity_id": self_id,
             "to_entity_id": entity["id"],
-            "relation_type": "knows",
+            "relation_type": "acquaintance",
             "claim_text": f"Disposable edge {stamp}",
             "claim_type": "fact",
             "confidence": 0.8,

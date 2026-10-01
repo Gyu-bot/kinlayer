@@ -50,8 +50,8 @@ def test_edge_lifecycle_validates_relation_type_and_soft_deletes(client) -> None
         json={
             "from_entity_id": user["id"],
             "to_entity_id": alex["id"],
-            "relation_type": "client_contact",
-            "claim_text": "Alex is a client contact.",
+            "relation_type": "collaborated_with",
+            "claim_text": "Alex is a collaborator.",
             "claim_type": "fact",
             "confidence": 0.95,
             "sensitivity": "medium",
@@ -61,7 +61,7 @@ def test_edge_lifecycle_validates_relation_type_and_soft_deletes(client) -> None
     )
     assert created.status_code == 201
     edge = created.json()
-    assert edge["relation_type"] == "client_contact"
+    assert edge["relation_type"] == "collaborated_with"
     assert edge["directed"] is False
 
     listed = client.get("/api/edges", params={"entity_id": alex["id"]})
@@ -117,8 +117,8 @@ def test_edge_create_and_patch_write_relationship_audit_records(client) -> None:
         json={
             "from_entity_id": user["id"],
             "to_entity_id": alex["id"],
-            "relation_type": "client_contact",
-            "claim_text": "Alex is a client contact.",
+            "relation_type": "collaborated_with",
+            "claim_text": "Alex is a collaborator.",
             "claim_type": "fact",
             "created_by": "ai_agent",
         },
@@ -162,7 +162,7 @@ def test_edge_create_and_patch_write_relationship_audit_records(client) -> None:
     assert create_success["actor"] == "ai_agent"
     assert create_success["audit_id"] == create_success["id"]
     assert create_success["canonical_record_ref"] == f"entity_edges:{edge['id']}"
-    assert create_success["request_summary"]["relation_type"] == "client_contact"
+    assert create_success["request_summary"]["relation_type"] == "collaborated_with"
     assert create_success["related_refs"]["edge_type_match"] == "active_allowed_edge_type"
     assert create_success["related_refs"]["from_entity_id"] == user["id"]
     assert create_success["related_refs"]["to_entity_id"] == alex["id"]
@@ -202,8 +202,8 @@ def test_edge_patch_rejects_relation_type_endpoint_mismatch(client, database_url
         json={
             "from_entity_id": user["id"],
             "to_entity_id": alex["id"],
-            "relation_type": "client_contact",
-            "claim_text": "Alex is a client contact.",
+            "relation_type": "collaborated_with",
+            "claim_text": "Alex is a collaborator.",
             "claim_type": "fact",
             "created_by": "user",
         },
@@ -217,7 +217,7 @@ def test_edge_patch_rejects_relation_type_endpoint_mismatch(client, database_url
 
     assert patched.status_code == 422
     assert patched.json()["error"]["code"] == "validation_error"
-    assert patched.json()["error"]["message"] == "Relation endpoint entity types do not match."
+    assert "not supported for new writes" in patched.json()["error"]["message"]
 
 
 def test_inactive_entity_rejects_new_edge_and_observation(client) -> None:
@@ -230,7 +230,7 @@ def test_inactive_entity_rejects_new_edge_and_observation(client) -> None:
         json={
             "from_entity_id": inactive["id"],
             "to_entity_id": active["id"],
-            "relation_type": "client_contact",
+            "relation_type": "collaborated_with",
             "claim_text": "Should fail.",
             "claim_type": "fact",
             "created_by": "user",
@@ -304,7 +304,7 @@ def test_episode_create_list_get_exposes_excerpt_and_hash_only(client) -> None:
             "source_type": "agent_conversation",
             "source_ref": "thread-1",
             "source_description": "Agent conversation excerpt",
-            "body_excerpt": "No, Alex is a client contact.",
+            "body_excerpt": "No, Alex is a collaborator.",
             "body_hash": "sha256:abc",
             "actor": "user",
             "sensitivity": "medium",
@@ -313,7 +313,7 @@ def test_episode_create_list_get_exposes_excerpt_and_hash_only(client) -> None:
     )
     assert created.status_code == 201
     episode = created.json()
-    assert episode["body_excerpt"] == "No, Alex is a client contact."
+    assert episode["body_excerpt"] == "No, Alex is a collaborator."
     assert "body" not in episode
 
     fetched = client.get(f"/api/episodes/{episode['id']}")

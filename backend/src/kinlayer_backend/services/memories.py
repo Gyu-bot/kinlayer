@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
 from kinlayer_backend.models import (
-    AllowedEdgeType,
     AllowedObservationType,
     EdgeEvidence,
     Entity,
@@ -28,6 +27,7 @@ from kinlayer_backend.models import (
 from kinlayer_backend.schemas.memories import MemoryWriteRequest
 from kinlayer_backend.services.entity_guards import lock_active_entities
 from kinlayer_backend.services.ontology import is_allowed_registry_value
+from kinlayer_backend.services.relationship_ontology import validate_edge_write
 
 RECORD_MODELS = {
     "entity_facts": EntityFact,
@@ -150,7 +150,8 @@ class MemoryService:
             change.source_episode_id = episode.id
             if body.record is not None:
                 new_ref = self._write_record(
-                    body.record.record_type, body.record.payload.model_dump(), body.created_by
+                    body.record.record_type, body.record.payload.model_dump(), body.created_by,
+                    previous=old if body.action == "correct" and isinstance(old, EntityEdge) else None,
                 )
                 self._link_evidence(new_ref, episode.id, body.source.excerpt)
                 change.new_record_ref = new_ref
@@ -240,7 +241,7 @@ class MemoryService:
         self.session.flush()
         return episode
 
-    def _write_record(self, record_type: str, payload: dict[str, Any], created_by: str) -> str:
+    def _write_record(self, record_type: str, payload: dict[str, Any], created_by: str, *, previous: EntityEdge | None = None) -> str:
         payload = dict(payload)
         for field in ("valid_from", "valid_to", "occurred_at"):
             if payload.get(field) is not None:
@@ -270,23 +271,10 @@ class MemoryService:
                 raise api_error(422, "validation_error", str(exc)) from exc
             row = EntityFact(**payload)
         elif record_type == "entity_edges":
-            entities = lock_active_entities(
+            lock_active_entities(
                 self.session, [payload["from_entity_id"], payload["to_entity_id"]]
             )
-            kind = self.session.scalar(
-                select(AllowedEdgeType).where(
-                    AllowedEdgeType.relation_type == payload["relation_type"],
-                    AllowedEdgeType.active.is_(True),
-                )
-            )
-            if (
-                kind is None
-                or entities[payload["from_entity_id"]].entity_type != kind.from_entity_type
-                or entities[payload["to_entity_id"]].entity_type != kind.to_entity_type
-            ):
-                raise api_error(422, "validation_error", "Invalid relation type or endpoint types.")
-            if payload["directed"] is None:
-                payload["directed"] = kind.directed_default
+            validate_edge_write(self.session, payload, previous=previous)
             row = EntityEdge(**payload)
         else:
             related = payload.pop("related_entities")

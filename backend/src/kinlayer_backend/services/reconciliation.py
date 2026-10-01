@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from kinlayer_backend.api.errors import api_error
+from kinlayer_backend.services.relationship_ontology import EDGE_DEFINITIONS
 from kinlayer_backend.models import (
     AgentWriteOperationAudit,
     Candidate,
@@ -430,7 +431,7 @@ class ReconciliationService:
                 protected_self = protected_self or self._single_active_protected_self()
                 payload = {
                     "from_entity_id": protected_self.id, "to_entity_id": primary.id,
-                    "relation_type": claim.relation_type, "directed": True,
+                    "relation_type": claim.relation_type, "directed": EDGE_DEFINITIONS[claim.relation_type].directed,
                     "claim_text": excerpt, "claim_type": claim.claim_type, "properties": {},
                     "ai_use_policy": claim.ai_use_policy,
                 }

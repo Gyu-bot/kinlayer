@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from kinlayer_backend.api.errors import api_error
+from kinlayer_backend.services.relationship_ontology import EDGE_DEFINITIONS
 from kinlayer_backend.config import Settings
 from kinlayer_backend.models import (
     AllowedEdgeType,
@@ -582,7 +583,8 @@ class EnrichmentService:
                         )
                     )
                 )
-                if not set(slot["allowed_relation_types"]) <= active:
+                writable = {key for key, value in EDGE_DEFINITIONS.items() if value.support_level == "supported"}
+                if not set(slot["allowed_relation_types"]) <= active & writable:
                     raise api_error(409, "ontology_inactive", "Authorized ontology is inactive.")
             if slot["kind"] == "observation":
                 active = set(
@@ -764,7 +766,7 @@ class EnrichmentService:
                 "from_entity_id": slot["from_entity_id"],
                 "to_entity_id": slot["to_entity_id"],
                 "relation_type": relation_type,
-                "directed": slot["directed"],
+                "directed": EDGE_DEFINITIONS[relation_type].directed if slot.get("directed") is None else slot["directed"],
                 "claim_text": answer.value,
                 "claim_type": slot["claim_type"],
                 "properties": slot["properties"],
@@ -884,7 +886,10 @@ class EnrichmentService:
                 payload.get("from_entity_id") != slot["from_entity_id"]
                 or payload.get("to_entity_id") != slot["to_entity_id"]
                 or payload.get("relation_type") not in slot["allowed_relation_types"]
-                or payload.get("directed") is not True
+                or payload.get("directed") != (
+                    EDGE_DEFINITIONS[payload["relation_type"]].directed
+                    if slot.get("directed") is None else slot["directed"]
+                )
                 or payload.get("claim_type") != slot["claim_type"]
                 or payload.get("properties") != slot["properties"]
             ):
@@ -944,7 +949,7 @@ class EnrichmentService:
             or record.to_entity_id != slot["to_entity_id"]
             or record.relation_type != payload["relation_type"]
             or record.relation_type not in slot["allowed_relation_types"]
-            or record.directed is not True
+            or record.directed != payload.get("directed")
             or record.claim_text != payload["claim_text"]
             or record.claim_type != slot["claim_type"]
             or record.properties != slot["properties"]

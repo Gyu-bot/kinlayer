@@ -7,12 +7,13 @@ import {
   useState,
 } from "react";
 import type { EgoGraph, GraphEdge } from "../types/graph";
-import { ErrorState, Loading, Modal, PersonPicker } from "./common";
+import { ErrorState, Loading, Modal, PersonPicker, RelationshipProperties } from "./common";
 import {
   basisLabels,
   dateTime,
   memoryUrl,
   query,
+  relationLabel,
   useResource,
   type MemoryItem,
   type Ontology,
@@ -20,7 +21,7 @@ import {
   type Person,
 } from "./data";
 import { Icon } from "./Icons";
-import { relationLabel } from "./People";
+
 
 type Point = [number, number];
 const presets: Point[] = [
@@ -487,7 +488,7 @@ export function Graph({ onNavigate }: { onNavigate: (path: string) => void }) {
                         : item.from_entity_id,
                     )}
                     <small>
-                      {relationLabel(item.relation_type, ontology.data)}
+                      {relationLabel(item.relation_type, ontology.data, item.directed && item.from_entity_id === renderedFocal)}
                       {item.directed
                         ? ` · ${item.from_entity_id === renderedFocal ? "중심에서 상대에게" : "상대에서 중심에게"}`
                         : " · 양방향"}
@@ -513,7 +514,7 @@ export function Graph({ onNavigate }: { onNavigate: (path: string) => void }) {
                   </div>
                   <p className="preview-subtitle">
                     {edge
-                      ? relationLabel(edge.relation_type, ontology.data)
+                      ? relationLabel(edge.relation_type, ontology.data, edge.directed && edge.from_entity_id === renderedFocal)
                       : node.entity_id === renderedFocal
                         ? "관계의 중심"
                         : "직접 연결된 인물"}
@@ -535,6 +536,7 @@ export function Graph({ onNavigate }: { onNavigate: (path: string) => void }) {
                       ) : (
                         detail.data && (
                           <>
+                            <RelationshipProperties properties={detail.data.payload.properties} />
                             <div className="context-meta">
                               <span
                                 className={`pill ${detail.data.claim_basis === "inferred" ? "warning" : ""}`}

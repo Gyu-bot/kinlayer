@@ -47,32 +47,32 @@ def test_ego_graph_returns_generic_depth_one_nodes_edges_and_filters(client) -> 
     user = create_person(client, "User")
     alex = create_person(client, "Alex", sensitivity="low")
     dana = create_person(client, "Dana", sensitivity="high")
-    client_contact = create_edge(client, user["id"], alex["id"], "client_contact", sensitivity="low")
+    collaborated_with = create_edge(client, user["id"], alex["id"], "collaborated_with", sensitivity="low")
     create_edge(client, user["id"], dana["id"], "former_coworker", sensitivity="high")
 
     graph = client.get(
         f"/api/graph/ego/{user['id']}",
-        params={"depth": 1, "relation_type": "client_contact", "sensitivity": "low"},
+        params={"depth": 1, "relation_type": "collaborated_with", "sensitivity": "low"},
     )
 
     assert graph.status_code == 200
     body = graph.json()
     assert body["focal_entity_id"] == user["id"]
     assert body["depth"] == 1
-    assert body["filters_applied"]["relation_type"] == "client_contact"
+    assert body["filters_applied"]["relation_type"] == "collaborated_with"
     assert "sensitivity" not in body["filters_applied"]
     node_ids = {node["entity_id"] for node in body["nodes"]}
     assert node_ids == {user["id"], alex["id"]}
     assert [node for node in body["nodes"] if node["is_focal"]][0]["entity_id"] == user["id"]
     assert body["edges"] == [
         {
-            "edge_id": client_contact["id"],
+            "edge_id": collaborated_with["id"],
             "from_entity_id": user["id"],
             "to_entity_id": alex["id"],
-            "relation_type": "client_contact",
-            "directed": client_contact["directed"],
+            "relation_type": "collaborated_with",
+            "directed": collaborated_with["directed"],
             "status": "active",
-            "confidence": client_contact["confidence"],
+            "confidence": collaborated_with["confidence"],
         }
     ]
     assert "source" not in body["edges"][0]
@@ -86,7 +86,7 @@ def test_ego_graph_returns_generic_depth_one_nodes_edges_and_filters(client) -> 
 def test_ego_graph_status_filter_excludes_deleted_by_default(client) -> None:
     user = create_person(client, "User")
     alex = create_person(client, "Alex")
-    deleted = create_edge(client, user["id"], alex["id"], "client_contact")
+    deleted = create_edge(client, user["id"], alex["id"], "collaborated_with")
     delete_response = client.delete(f"/api/edges/{deleted['id']}")
     assert delete_response.status_code == 200
 
@@ -106,7 +106,7 @@ def test_ego_graph_excludes_invalid_legacy_edge_types(client) -> None:
         "/api/entities",
         json={"entity_type": "organization", "display_name": "Acme", "created_by": "user"},
     ).json()
-    valid = create_edge(client, user["id"], alex["id"], "client_contact")
+    valid = create_edge(client, user["id"], alex["id"], "collaborated_with")
     with client.app.state.session_factory() as session:
         session.add(
             EntityEdge(
@@ -122,7 +122,7 @@ def test_ego_graph_excludes_invalid_legacy_edge_types(client) -> None:
             EntityEdge(
                 from_entity_id=user["id"],
                 to_entity_id=organization["id"],
-                relation_type="client_contact",
+                relation_type="collaborated_with",
                 claim_text="Legacy endpoint mismatch edge.",
                 claim_type="fact",
                 created_by="ai_agent",
@@ -164,7 +164,7 @@ def test_ontology_read_endpoints_return_seed_registries(client) -> None:
     assert all(item["support_level"] == "legacy" for item in body["policies"]["ai_use_policies"])
     assert any(item["value"] == "person" for item in body["entity_types"])
     assert any(item["observation_type"] == "preference" for item in body["observation_types"])
-    assert any(item["relation_type"] == "client_contact" for item in body["edge_types"])
+    assert any(item["relation_type"] == "collaborated_with" for item in body["edge_types"])
     assert any(
         item["observation_type"] == "recent_interaction"
         for item in body["observation_types"]
@@ -186,7 +186,7 @@ def test_edge_type_diagnostics_reports_invalid_legacy_rows(client) -> None:
         "/api/entities",
         json={"entity_type": "organization", "display_name": "Acme", "created_by": "user"},
     ).json()
-    create_edge(client, user["id"], alex["id"], "client_contact")
+    create_edge(client, user["id"], alex["id"], "collaborated_with")
     with client.app.state.session_factory() as session:
         invalid_edge = EntityEdge(
             from_entity_id=user["id"],
@@ -201,7 +201,7 @@ def test_edge_type_diagnostics_reports_invalid_legacy_rows(client) -> None:
         mismatch_edge = EntityEdge(
             from_entity_id=user["id"],
             to_entity_id=organization["id"],
-            relation_type="client_contact",
+            relation_type="collaborated_with",
             claim_text="Legacy endpoint mismatch edge.",
             claim_type="fact",
             created_by="ai_agent",
@@ -216,7 +216,7 @@ def test_edge_type_diagnostics_reports_invalid_legacy_rows(client) -> None:
     assert response.status_code == 200
     body = response.json()
     relation_types = {item["relation_type"]: item for item in body["relation_types"]}
-    assert relation_types["client_contact"]["exists_in_allowed_edge_types"] is True
+    assert relation_types["collaborated_with"]["exists_in_allowed_edge_types"] is True
     assert relation_types["reply_strategy"]["exists_in_allowed_edge_types"] is False
     assert relation_types["reply_strategy"]["active_edge_count"] == 1
 
@@ -228,7 +228,7 @@ def test_edge_type_diagnostics_reports_invalid_legacy_rows(client) -> None:
     assert invalid_edges[invalid_edge_id]["status"] == "active"
     assert invalid_edges[invalid_edge_id]["created_by"] == "ai_agent"
     assert invalid_edges[invalid_edge_id]["source_candidate_id"] == "candidate-legacy"
-    assert invalid_edges[mismatch_edge_id]["relation_type"] == "client_contact"
+    assert invalid_edges[mismatch_edge_id]["relation_type"] == "collaborated_with"
     assert invalid_edges[mismatch_edge_id]["edge_type_match"] == "endpoint_type_mismatch"
     assert invalid_edges[mismatch_edge_id]["to_entity_type"] == "organization"
 

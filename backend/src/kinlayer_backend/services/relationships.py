@@ -8,7 +8,6 @@ from kinlayer_backend.api.errors import api_error
 from kinlayer_backend.schemas.common import without_retired_write_metadata
 from kinlayer_backend.config import Settings
 from kinlayer_backend.models import (
-    AllowedEdgeType,
     AllowedObservationType,
     Entity,
     EntityEdge,
@@ -20,6 +19,7 @@ from kinlayer_backend.services.embeddings import EmbeddingService
 from kinlayer_backend.services.entity_guards import lock_active_entities, require_memory_change_for_tracked_record
 from kinlayer_backend.services.entities import validate_common
 from kinlayer_backend.services.ontology import is_allowed_registry_value
+from kinlayer_backend.services.relationship_ontology import validate_edge_write
 
 OBSERVATION_ROLES = {"subject", "related", "mentioned", "speaker", "target", "experiencer", "about"}
 
@@ -36,32 +36,11 @@ class RelationshipService:
             raise api_error(404, "not_found", "Entity not found.")
         return entity
 
-    def _edge_type(self, relation_type: str) -> AllowedEdgeType:
-        statement = select(AllowedEdgeType).where(
-            AllowedEdgeType.relation_type == relation_type,
-            AllowedEdgeType.active.is_(True),
-        )
-        edge_type = self.session.execute(statement).scalar_one_or_none()
-        if not edge_type:
-            raise api_error(422, "validation_error", "Invalid relation_type.")
-        return edge_type
-
     def create_edge(self, payload: dict[str, Any], commit: bool = True) -> EntityEdge:
         payload = without_retired_write_metadata(payload)
         validate_common(payload, self.session)
-        entities = lock_active_entities(
-            self.session, [payload["from_entity_id"], payload["to_entity_id"]]
-        )
-        from_entity = entities[payload["from_entity_id"]]
-        to_entity = entities[payload["to_entity_id"]]
-        edge_type = self._edge_type(payload["relation_type"])
-        if (
-            from_entity.entity_type != edge_type.from_entity_type
-            or to_entity.entity_type != edge_type.to_entity_type
-        ):
-            raise api_error(422, "validation_error", "Relation endpoint entity types do not match.")
-        if payload.get("directed") is None:
-            payload["directed"] = edge_type.directed_default
+        lock_active_entities(self.session, [payload["from_entity_id"], payload["to_entity_id"]])
+        validate_edge_write(self.session, payload)
         return self.repository.add_edge(payload, commit=commit)
 
     def patch_edge(self, edge: EntityEdge, payload: dict[str, Any]) -> EntityEdge:
@@ -71,19 +50,14 @@ class RelationshipService:
         lock_active_entities(
             self.session, [edge.from_entity_id, edge.to_entity_id]
         )
-        if "relation_type" in payload and payload["relation_type"]:
-            from_entity = self._entity(edge.from_entity_id)
-            to_entity = self._entity(edge.to_entity_id)
-            edge_type = self._edge_type(payload["relation_type"])
-            if (
-                from_entity.entity_type != edge_type.from_entity_type
-                or to_entity.entity_type != edge_type.to_entity_type
-            ):
-                raise api_error(
-                    422,
-                    "validation_error",
-                    "Relation endpoint entity types do not match.",
-                )
+        merged = {key: getattr(edge, key) for key in (
+            "from_entity_id", "to_entity_id", "relation_type", "directed", "properties"
+        )}
+        merged.update(payload)
+        if "relation_type" in payload and payload["relation_type"] != edge.relation_type and "directed" not in payload:
+            merged["directed"] = None
+        validate_edge_write(self.session, merged, previous=edge)
+        payload["directed"] = merged["directed"]
         for key, value in payload.items():
             setattr(edge, key, value)
         self.repository.commit_refresh(edge)
