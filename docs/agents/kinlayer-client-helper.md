@@ -37,7 +37,10 @@ schema-summary
 ontology
 entities [--query TEXT] [--entity-type TYPE] [--status STATUS]
          [--system-role ROLE] [--limit N] [--offset N]
+         [--closeness VALUE] [--importance VALUE] [--interaction-frequency VALUE]
+         [--connection-state VALUE]
 context-card --entity-id ID [--include-provisional]
+relationship-profile --entity-id ID
 observations [--subject-entity-id ID] [--related-entity-id ID]
              [--observation-type TYPE] [--status STATUS] [--claim-type TYPE]
              [--limit N] [--offset N]
@@ -88,3 +91,17 @@ defines refresh and retry behavior.
 Updating this repository helper and documentation does not update an installed external agent,
 its skill copy, or an already running session. Those consumers must receive the revised contract
 and fetch the live registry after deployment; no automatic notification is performed here.
+
+## Relationship profile reads
+
+`relationship-profile --entity-id ID` reads the current self→person projection. It preserves the
+complete axis objects, including explicit null/unset values and the full source-backed MemoryRead
+record (`record_ref`, `updated_at`, `payload`, `sources`). The same object is retained on context
+cards and matched entities in retrieval/context packs. Observation compaction retains
+`perspective_entity_id`, `relationship_axis`, and `relationship_value`.
+
+`ontology` also preserves the full `relationship_profile` registry object with its independent
+version and server-owned axis/value definitions. Never translate a missing field to a lowest value.
+People reads preserve profile summaries; the four axis flags pass server values or `unset` to
+server-side filters, with no client enum or local pagination filtering. These remain read-only
+commands; edits use the source/history-aware memory API.

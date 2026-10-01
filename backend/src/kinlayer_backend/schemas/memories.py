@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator, model_serializer
 
 
 class MemoryModel(BaseModel):
@@ -73,6 +73,25 @@ class MemoryObservationPayload(MemoryClaim):
     content: Content
     occurred_at: AwareDatetime | None = None
     related_entities: list[MemoryRelatedEntity] = Field(default_factory=list, max_length=20)
+
+    perspective_entity_id: Identifier | None = None
+    relationship_axis: Annotated[str, Field(min_length=1, max_length=40)] | None = None
+    relationship_value: Annotated[str, Field(min_length=1, max_length=40)] | None = None
+
+    @model_serializer(mode="wrap")
+    def omit_absent_profile_fields(self, handler):
+        result = handler(self)
+        if self.observation_type != "relationship_assessment":
+            for field in ("perspective_entity_id", "relationship_axis", "relationship_value"):
+                if result.get(field) is None:
+                    result.pop(field, None)
+        return result
+
+    @model_validator(mode="after")
+    def relationship_profile_shape(self):
+        from kinlayer_backend.services.relationship_profiles import validate_profile_shape
+        validate_profile_shape(self.model_dump())
+        return self
 
     @model_validator(mode="after")
     def unique_links(self):

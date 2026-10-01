@@ -46,6 +46,7 @@ export type PersonSummary = Person & {
   }[];
   profile_facts: Fact[];
   memory_count: number;
+  relationship_profile?: Record<string, string | null>;
 };
 export type Participant = {
   entity_id: string;
@@ -69,6 +70,9 @@ export type MemoryPayload = {
   properties?: Record<string, unknown>;
   subject_entity_id?: string;
   observation_type?: string;
+  perspective_entity_id?: string;
+  relationship_axis?: string;
+  relationship_value?: string;
   occurred_at?: string | null;
   related_entities?: Participant[];
 };
@@ -121,7 +125,22 @@ export type Episode = {
   ingested_at: string;
   created_at: string;
 };
+export type RelationshipProfileRegistry = {
+  version: string;
+  axes: Record<string, {
+    label: string;
+    description: string;
+    values: { value: string; label: string; description: string }[];
+  }>;
+};
+export type RelationshipProfileRead = {
+  version: string;
+  entity_id: string;
+  perspective_entity_id: string | null;
+  axes: Record<string, { value: string | null; label: string | null; record: MemoryItem | null }>;
+};
 export type Ontology = {
+  relationship_profile?: RelationshipProfileRegistry;
   version?: string;
   fact_types: {
     value: string;
@@ -298,6 +317,7 @@ export const typeLabels: Record<string, string> = {
   relationship_pattern: "관계 패턴",
   recent_context: "최근 맥락",
   recent_interaction: "최근 상호작용",
+  relationship_assessment: "나와의 관계 평가",
   user_feeling: "감정",
   follow_up_context: "후속 맥락",
   care_point: "챙길 점",
@@ -308,6 +328,7 @@ export const typeLabels: Record<string, string> = {
   about: "내용의 대상",
   speaker: "말한 사람",
   experiencer: "느낀 사람",
+  perspective: "기록의 관점",
   related: "관련 인물",
   mentioned: "언급된 인물",
   target: "대상",
@@ -342,6 +363,11 @@ export function relationLabel(value: string, ontology?: Ontology | null, inverse
   return (inverse ? definition?.inverse_label : definition?.label) || definition?.label || (label(value) !== value ? label(value) : definition?.description || value);
 }
 export function memoryTypeLabel(item: MemoryItem, ontology?: Ontology | null) {
+  if (item.payload.observation_type === "relationship_assessment") {
+    const axis = ontology?.relationship_profile?.axes[item.payload.relationship_axis || ""];
+    const value = axis?.values.find((v) => v.value === item.payload.relationship_value);
+    return `나와의 관계 · ${axis?.label || item.payload.relationship_axis || "관계 평가"}: ${value?.label || item.payload.relationship_value || "미설정"}`;
+  }
   return item.payload.relation_type
     ? relationLabel(item.payload.relation_type, ontology)
     : label(item.payload.fact_type || item.payload.observation_type || item.record_type);

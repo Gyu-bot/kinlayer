@@ -20,6 +20,7 @@ from kinlayer_backend.services.entity_guards import lock_active_entities, requir
 from kinlayer_backend.services.entities import validate_common
 from kinlayer_backend.services.ontology import is_allowed_registry_value
 from kinlayer_backend.services.relationship_ontology import validate_edge_write
+from kinlayer_backend.services.relationship_profiles import reject_compatibility_assessment
 
 OBSERVATION_ROLES = {"subject", "related", "mentioned", "speaker", "target", "experiencer", "about"}
 
@@ -79,6 +80,7 @@ class RelationshipService:
             raise api_error(422, "validation_error", "Invalid observation_type.")
 
     def create_observation(self, payload: dict[str, Any], commit: bool = True) -> Observation:
+        reject_compatibility_assessment(payload)
         payload = without_retired_write_metadata(payload)
         related_entities = payload.pop("related_entities", [])
         validate_common(payload, self.session)
@@ -98,6 +100,7 @@ class RelationshipService:
         return observation
 
     def patch_observation(self, observation: Observation, payload: dict[str, Any]) -> Observation:
+        reject_compatibility_assessment(payload, observation)
         require_memory_change_for_tracked_record(self.session, observation)
         payload = without_retired_write_metadata(payload)
         validate_common(payload, self.session)
@@ -132,6 +135,7 @@ class RelationshipService:
                     raise api_error(422, "validation_error", f"Invalid {field}.") from exc
 
     def delete_observation(self, observation: Observation) -> Observation:
+        reject_compatibility_assessment({}, observation)
         require_memory_change_for_tracked_record(self.session, observation)
         observation.status = "deleted"
         observation.valid_to = datetime.now(UTC)

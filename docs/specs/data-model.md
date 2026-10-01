@@ -807,3 +807,19 @@ supported by linked user-authored evidence and with no self, role/title, pronoun
 exact active name/alias, schema, evidence, identity, or conflict reason. Fuzzy similarity alone is
 not a blocker. Executors refresh run, decision, and candidates after acquiring locks; work already
 committed by another executor is reconciled/read back instead of being overwritten.
+
+## Self-perspective relationship assessment fields
+
+An observation with `observation_type=relationship_assessment` adds nullable storage columns
+`perspective_entity_id`, `relationship_axis`, and `relationship_value`; the canonical memory write
+requires all three for this subtype and rejects them on other observation types. Its subject is
+another active person and its perspective is the protected self. Each axis requires reported user
+source and a server registry value. Related participants are empty.
+
+Only one active/disputed assertion may occupy a self/target/axis. Source, evidence, supersession,
+retraction, exact record history and concurrency follow the existing atomic memory change model.
+A correction preserves perspective/axis; a reattribution changes the target subject subject to the
+same conflict check. Unset has no active assertion. The current profile is a projection of these
+records, not a second mutable profile table or an edge property. Current-only validation rejects
+future applicable/evaluation times and any valid_to. See the
+[relationship profile API](api-spec.md#get-apientitiesidrelationship-profile).

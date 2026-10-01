@@ -9,11 +9,13 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { People } from "./People";
+import { relationshipProfileFixture } from "./relationshipProfileFixtures";
 import { Graph } from "./Graph";
 import { Shell } from "./Shell";
 import type { PersonSummary } from "./data";
 
 const ontology = {
+  relationship_profile: relationshipProfileFixture,
   fact_types: [],
   claim_bases: [],
   participant_roles: [],
@@ -114,6 +116,25 @@ afterEach(() => {
 });
 
 describe("real API people directory", () => {
+  it.each(Object.keys(relationshipProfileFixture.axes))("%s 필터는 미설정을 포함해 서버에 전달하고 페이지를 초기화한다", async (axis) => {
+    const definition = relationshipProfileFixture.axes[axis];
+    const fetch = setupFetch((url) => url.pathname === "/api/people" ? response(page([alpha], 60, Number(url.searchParams.get("offset")))) : undefined);
+    render(<People onNavigate={vi.fn()} />);
+    await screen.findByRole("heading", { name: "김민지" });
+    fireEvent.click(screen.getByRole("button", { name: "다음" }));
+    await waitFor(() => expect(fetch.mock.calls.some(([url]) => new URL(url).searchParams.get("offset") === "25")).toBe(true));
+    const filter = screen.getByLabelText(`${definition.label} 필터`);
+    expect(within(filter).getAllByRole("option", { hidden: true }).map((option) => option.textContent)).toEqual(["모든 값", "미설정", ...definition.values.map((v) => v.label)]);
+    fireEvent.change(filter, { target: { value: definition.values[0].value } });
+    await waitFor(() => expect(fetch.mock.calls.some(([url]) => {
+      const q = new URL(url).searchParams;
+      return q.get(axis) === definition.values[0].value && q.get("offset") === "0";
+    })).toBe(true));
+    expect(await screen.findByRole("heading", { name: "김민지" })).toBeInTheDocument();
+    fireEvent.change(filter, { target: { value: "unset" } });
+    await waitFor(() => expect(fetch.mock.calls.some(([url]) => new URL(url).searchParams.get(axis) === "unset")).toBe(true));
+  });
+
   it("한 관계의 양 끝점을 서버에 정의된 부모와 자녀 역할로 표시한다", async () => {
     const linked = [
       { ...alpha, relations: [{ relation_type: "parent_of", directed: true, from_entity_id: "person-a", to_entity_id: "self" }] },

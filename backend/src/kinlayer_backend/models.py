@@ -274,6 +274,18 @@ class EntityEdge(Base, TimestampMixin):
 class Observation(Base, TimestampMixin):
     __tablename__ = "observations"
     __table_args__ = (
+        Index("ux_observations_current_relationship_axis", "perspective_entity_id", "subject_entity_id", "relationship_axis",
+              unique=True,
+              sqlite_where=text("relationship_axis IS NOT NULL AND status IN ('active', 'disputed')"),
+              postgresql_where=text("relationship_axis IS NOT NULL AND status IN ('active', 'disputed')")),
+        CheckConstraint(
+            "(observation_type <> 'relationship_assessment' AND perspective_entity_id IS NULL AND relationship_axis IS NULL AND relationship_value IS NULL) OR "
+            "(observation_type = 'relationship_assessment' AND perspective_entity_id IS NOT NULL AND perspective_entity_id <> subject_entity_id AND relationship_axis IS NOT NULL AND relationship_value IS NOT NULL AND claim_basis = 'reported' AND "
+            "((relationship_axis = 'closeness' AND relationship_value IN ('recognize','acquainted','comfortable','close','very_close')) OR "
+            "(relationship_axis = 'importance' AND relationship_value IN ('normal','important','very_important')) OR "
+            "(relationship_axis = 'interaction_frequency' AND relationship_value IN ('frequent','occasional','rare','none')) OR "
+            "(relationship_axis = 'connection_state' AND relationship_value IN ('maintained','distant','disconnected'))))",
+            name="ck_observations_relationship_profile"),
         Index("ix_observations_subject_entity_id", "subject_entity_id"),
         Index("ix_observations_observation_type", "observation_type"),
         Index("ix_observations_status", "status"),
@@ -289,6 +301,9 @@ class Observation(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     subject_entity_id: Mapped[str] = mapped_column(ForeignKey("entities.id"), nullable=False)
+    perspective_entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id"))
+    relationship_axis: Mapped[str | None] = mapped_column(String(40))
+    relationship_value: Mapped[str | None] = mapped_column(String(40))
     observation_type: Mapped[str] = mapped_column(String(120), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     # Legacy topic/basis mixture retained for historical compatibility.

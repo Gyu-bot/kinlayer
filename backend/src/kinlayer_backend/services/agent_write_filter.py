@@ -25,6 +25,7 @@ from kinlayer_backend.schemas.memories import MemoryRecord, MemorySource
 from kinlayer_backend.services.entities import JsonValue, validate_common
 from kinlayer_backend.services.ontology import is_allowed_registry_value
 from kinlayer_backend.services.relationship_ontology import EDGE_DEFINITIONS, validate_edge_write
+from kinlayer_backend.services.relationship_profiles import validate_assessment_change, validate_assessment_write
 from kinlayer_backend.services.structured_facts import (
     InvalidStructuredFactContent,
     ValidStructuredFactContent,
@@ -157,6 +158,8 @@ class AgentWriteFilter:
         if candidate_type == "relationship_edge":
             self._validate_edge_payload(payload, "payload.relation_type")
         elif candidate_type == "observation":
+            if payload.get("observation_type") == "relationship_assessment" or any(payload.get(key) is not None for key in ("perspective_entity_id", "relationship_axis", "relationship_value")):
+                self._add_error("memory_write_required", "Use source-backed /api/memories for relationship assessments.", "payload.observation_type")
             self._entity(payload["subject_entity_id"], "payload.subject_entity_id")
             self._check_registry(
                 "observation_type",
@@ -286,6 +289,10 @@ class AgentWriteFilter:
         upgraded = deepcopy(new_record)
         CorrectionService._upgrade_legacy_payload(upgraded)
         parsed = TypeAdapter(MemoryRecord).validate_python(upgraded)
+        try:
+            validate_assessment_change(old, parsed.record_type, parsed.payload.model_dump())
+        except HTTPException as exc:
+            self._add_error("invalid_relationship_assessment", exc.detail["error"]["message"], "new_record.payload")
         old_fact = old if isinstance(old, EntityFact) else None
         if old is not None:
             old_targets = MemoryService._targets(prefix, vars(old))
@@ -340,6 +347,12 @@ class AgentWriteFilter:
                 fact_payload["content"] = normalized_content
         else:
             observation = parsed.payload
+            try:
+                validate_assessment_write(self.session, observation.model_dump(),
+                    exclude_record_id=old.id if isinstance(old, Observation) else None,
+                    check_conflict=old is None or old.status in {"active", "disputed"})
+            except HTTPException as exc:
+                self._add_error("invalid_relationship_assessment", exc.detail["error"]["message"], "new_record.payload")
             self._entity(observation.subject_entity_id, "new_record.payload.subject_entity_id")
             self._check_registry("observation_type", observation.observation_type, "new_record.payload.observation_type")
             for index, link in enumerate(observation.related_entities):

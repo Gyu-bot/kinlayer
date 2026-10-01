@@ -222,6 +222,7 @@ export function MemoryDetail({
                   </span>
                 </div>
                 <h2 className="memory-detail-content">{memoryText(r.data)}</h2>
+                {r.data.payload.perspective_entity_id && <a className="small text-link" href={`/people/${encodeURIComponent(r.data.payload.perspective_entity_id)}`}>기록의 관점: 나</a>}
                 {r.data.record_type === "entity_edges" && <RelationshipProperties properties={r.data.payload.properties} />}
                 <div className="context-meta">
                   {r.data.entities.map((p) => (
@@ -267,12 +268,12 @@ export function MemoryDetail({
                     >
                       이 기억 정정
                     </button>
-                    <button
+                    {r.data.payload.observation_type !== "relationship_assessment" && <button
                       className="button"
                       onClick={() => setAction("reattribute")}
                     >
                       다른 인물로 옮기기
-                    </button>
+                    </button>}
                     <button
                       className="button ghost"
                       onClick={() => setAction("retract")}

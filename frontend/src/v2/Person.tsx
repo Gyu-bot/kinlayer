@@ -18,6 +18,7 @@ import {
 } from "./data";
 import { Empty, ErrorState, Loading, MemoryCard, Modal, Pager } from "./common";
 import { MemoryEditor } from "./MemoryEditor";
+import { RelationshipProfile } from "./RelationshipProfile";
 import { ChangeRows, SourceEvidence } from "./Memories";
 
 type Alias = { id: string; alias: string; status: string };
@@ -156,6 +157,10 @@ export function Person({
       </div>
       <div className="detail-layout">
         <div className="stack">
+          {["overview", "relations"].includes(tab) && p.system_role !== "self" && (
+            <RelationshipProfile personId={p.id} ontology={ontology.data} version={version}
+              editable={p.status === "active"} onChanged={() => setVersion((v) => v + 1)} />
+          )}
           {tab === "overview" && (
             <section className="panel content-panel stack">
               <div className="section-heading">

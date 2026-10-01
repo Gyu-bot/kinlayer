@@ -243,6 +243,7 @@ def compact_entities(payload: dict[str, Any]) -> dict[str, Any]:
         "status",
         "confirmation_status",
         "system_role",
+        "relationship_profile",
     )
     return _compact_list(payload, [_pick(item, keys) for item in payload.get("items", [])])
 
@@ -264,6 +265,7 @@ def compact_context_card(payload: dict[str, Any]) -> dict[str, Any]:
         "counts": {section: len(payload.get(section, []) or []) for section in sections},
         "profile_facts": [_compact_fact(item) for item in payload.get("profile_facts", [])],
         "relationship_edges": [_compact_edge(item) for item in payload.get("relationship_edges", [])],
+        "relationship_profile": payload.get("relationship_profile"),
         "provenance_summary": {
             **_pick(
                 payload.get("provenance_summary", {}),
@@ -307,6 +309,9 @@ def _compact_observation(item: dict[str, Any]) -> dict[str, Any]:
         (
             "subject_entity_id",
             "observation_type",
+            "perspective_entity_id",
+            "relationship_axis",
+            "relationship_value",
             "claim_basis",
             "confidence",
             "content",
@@ -462,6 +467,8 @@ def _compact_matched_entity(item: dict[str, Any]) -> dict[str, Any]:
         result["profile_facts"] = [_compact_fact(fact) for fact in item["profile_facts"]]
     if "observations" in item:
         result["observations"] = [_compact_observation(obs) for obs in item["observations"]]
+    if "relationship_profile" in item:
+        result["relationship_profile"] = item["relationship_profile"]
     return result
 
 
@@ -489,6 +496,7 @@ def compact_ontology(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "ok": True,
         "version": payload.get("version"),
+        "relationship_profile": payload.get("relationship_profile"),
         "counts": {key: len(items) for key, items in values.items()},
         "values": values,
         # Names alone are insufficient for choosing a writable relationship. Keep
@@ -589,10 +597,15 @@ def build_parser() -> argparse.ArgumentParser:
     entities.add_argument("--system-role")
     entities.add_argument("--limit", type=_limit(200), default=50)
     entities.add_argument("--offset", type=_nonnegative, default=0)
+    for axis in ("closeness", "importance", "interaction_frequency", "connection_state"):
+        entities.add_argument("--" + axis.replace("_", "-"))
 
     context_card = command("context-card")
     context_card.add_argument("--entity-id", required=True)
     context_card.add_argument("--include-provisional", action="store_true")
+
+    relationship_profile = command("relationship-profile")
+    relationship_profile.add_argument("--entity-id", required=True)
 
     observations = command("observations")
     observations.add_argument("--subject-entity-id")
@@ -662,6 +675,10 @@ def _dispatch(args: argparse.Namespace, transport: Transport) -> dict[str, Any]:
                 ("entity_type", args.entity_type),
                 ("status", args.status),
                 ("system_role", args.system_role),
+                ("closeness", args.closeness),
+                ("importance", args.importance),
+                ("interaction_frequency", args.interaction_frequency),
+                ("connection_state", args.connection_state),
                 ("limit", args.limit),
                 ("offset", args.offset),
             ],
@@ -674,6 +691,10 @@ def _dispatch(args: argparse.Namespace, transport: Transport) -> dict[str, Any]:
             [("include_provisional", str(args.include_provisional).lower())],
         )
         return _get(args, path, compact_context_card, transport)
+    if args.command == "relationship-profile":
+        entity_id = urllib.parse.quote(args.entity_id, safe="")
+        return _get(args, f"/api/entities/{entity_id}/relationship-profile",
+                    lambda payload: {"ok": True, **payload}, transport)
     if args.command == "observations":
         path = _query_path(
             "/api/observations",

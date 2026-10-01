@@ -16,6 +16,7 @@ import {
 } from "@testing-library/react";
 
 import { MemoryEditor } from "./MemoryEditor";
+import { relationshipProfileFixture } from "./relationshipProfileFixtures";
 import type { MemoryItem, MemoryWrite } from "./data";
 
 const fetchMock = vi.fn();
@@ -32,6 +33,7 @@ const response = (body: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 const ontology = {
+  relationship_profile: relationshipProfileFixture,
   fact_types: [
     { value: "organization", is_active: true, support_level: "supported" },
     { value: "birthday", is_active: true, support_level: "supported" },
@@ -45,6 +47,7 @@ const ontology = {
     { relation_type: "dating_interest", label: "호감 (이전 유형)", active: true, directed_default: false, write_supported: false },
   ],
   observation_types: [
+    { observation_type: "relationship_assessment", active: true },
     { observation_type: "recent_interaction", active: true },
     { observation_type: "feeling", active: true },
   ],
@@ -174,6 +177,73 @@ function source() {
 }
 
 describe("기억 쓰기 계약", () => {
+  it("관계 정정에서 배경과 경위를 수정하고 세부 관계를 비우며 명시적 유형 변환을 보낸다", async () => {
+    const edge: MemoryItem = { ...item, record_type: "entity_edges", record_ref: "entity_edges:editable", payload: {
+      claim_basis: "reported", confidence: 0.7, valid_from: item.valid_from, valid_to: item.valid_to,
+      from_entity_id: "person-a", to_entity_id: "person-b", relation_type: "friend", directed: false,
+      claim_text: item.content, properties: { context: "이전 회사", relationship_detail: "이전 상세", origin: "이전 경위" },
+    } };
+    const saved = vi.fn();
+    render(<MemoryEditor item={edge} action="correct" onClose={() => {}} onSaved={saved} />);
+    await ready();
+    expect(screen.getByLabelText("관계 배경 (학교·회사·모임)")).toHaveValue("이전 회사");
+    expect(screen.getByLabelText("세부 관계 (예: 사촌·이모)")).toHaveValue("이전 상세");
+    expect(screen.getByLabelText("알게 된 경위")).toHaveValue("이전 경위");
+    fireEvent.change(screen.getByLabelText("관계 배경 (학교·회사·모임)"), { target: { value: "새 배경" } });
+    fireEvent.change(screen.getByLabelText("세부 관계 (예: 사촌·이모)"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("알게 된 경위"), { target: { value: "정정한 경위" } });
+    fireEvent.change(screen.getByLabelText("종류"), { target: { value: "parent_of" } });
+    source();
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    expect(writes()[0].record?.payload).toMatchObject({ relation_type: "parent_of", directed: true,
+      properties: { context: "새 배경", origin: "정정한 경위" } });
+    expect(writes()[0].record?.payload.properties).not.toHaveProperty("relationship_detail");
+  });
+
+
+  it("관계 평가의 같은 값에서 문장만 정정하면 원래 시점 정밀도를 보존한다", async () => {
+    const when = "2020-01-01T00:00:00.123456Z";
+    const assessment: MemoryItem = { ...item, claim_basis: "reported", valid_from: when, valid_to: null, payload: {
+      claim_basis: "reported", confidence: 0.7, valid_from: when, valid_to: null,
+      subject_entity_id: "person-a", observation_type: "relationship_assessment", content: item.content,
+      perspective_entity_id: "self", relationship_axis: "closeness", relationship_value: "comfortable",
+      occurred_at: when, related_entities: [],
+    } };
+    const saved = vi.fn();
+    render(<MemoryEditor item={assessment} action="correct" onClose={() => {}} onSaved={saved} />);
+    await ready();
+    fireEvent.change(screen.getByLabelText("기억 내용"), { target: { value: "시점과 평가값은 그대로" } });
+    source();
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    expect(writes()[0].record?.payload).toEqual({ ...assessment.payload, content: "시점과 평가값은 그대로" });
+  });
+
+  it("구조화된 관계 평가를 일반 정정 화면에서 수정해도 관점과 축을 보존한다", async () => {
+    const assessment: MemoryItem = { ...item, claim_basis: "reported", payload: {
+      claim_basis: "reported", confidence: 0.7, valid_from: "2020-01-01T00:00:00.123456Z", valid_to: null,
+      subject_entity_id: "person-a", observation_type: "relationship_assessment", content: item.content,
+      perspective_entity_id: "self", relationship_axis: "closeness", relationship_value: "comfortable",
+      occurred_at: "2020-01-01T00:00:00.123456Z", related_entities: [],
+    }, valid_from: null, valid_to: null };
+    const saved = vi.fn();
+    render(<MemoryEditor item={assessment} action="correct" onClose={() => {}} onSaved={saved} />);
+    await ready();
+    expect(screen.getByLabelText("기억 구분")).toBeDisabled();
+    expect(screen.getByLabelText("종류")).toBeDisabled();
+    expect(screen.getByLabelText("관계 속성")).toBeDisabled();
+    expect(screen.getByLabelText("근거 구분")).toBeDisabled();
+    expect(screen.queryByLabelText("유효 종료 시점")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("관계 속성값"), { target: { value: "close" } });
+    source();
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    expect(writes()[0].record?.payload).toEqual({ ...assessment.payload, relationship_value: "close", content: "친밀도: 친한", valid_from: null, occurred_at: null });
+    expect(writes()[0].old_record_ref).toBe(assessment.record_ref);
+    expect(writes()[0].expected_updated_at).toBe(assessment.updated_at);
+  });
+
   it("새 관계는 서버의 쓰기 가능 유형과 역할을 사용하고 썸은 양방향으로 저장한다", async () => {
     const saved = vi.fn();
     render(<MemoryEditor personId="person-a" onClose={() => {}} onSaved={saved} />);

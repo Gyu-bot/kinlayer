@@ -11,6 +11,7 @@ from kinlayer_backend.models import (
     OntologyRegistryValue,
 )
 from kinlayer_backend.repositories.ontology import OntologyRepository
+from kinlayer_backend.services.relationship_profiles import profile_definition
 
 from kinlayer_backend.services.relationship_ontology import (
     EDGE_DEFINITIONS, EDGE_PROPERTIES_SCHEMA, ONTOLOGY_VERSION, edge_type_metadata,
@@ -73,6 +74,7 @@ REGISTRY_SEEDS: dict[str, list[tuple[str, str, str]]] = {
         for value, definition in EDGE_DEFINITIONS.items()
     ],
     "observation_type": [
+        ("relationship_assessment", "내 관점의 관계 평가", "supported"),
         ("stable_fact", "Stable fact", "supported"),
         ("preference", "General preferences and interests", "supported"),
         ("communication_preference", "Communication preference", "supported"),
@@ -246,6 +248,7 @@ class OntologyReadService:
     def all_ontology(self) -> dict:
         return {
             "version": ONTOLOGY_VERSION,
+            "relationship_profile": profile_definition(),
             "entity_types": self.repository.registry_values("entity_type"),
             "fact_types": self.repository.registry_values("fact_type"),
             "claim_bases": self.repository.registry_values("claim_basis"),

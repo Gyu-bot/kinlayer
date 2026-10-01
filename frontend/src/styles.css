@@ -380,3 +380,6 @@ body:has(.modal[open]){overflow:hidden}
 .review-queue .table-footer{position:sticky;bottom:0;background:var(--surface);padding:12px}
 .review-detail{scroll-margin-top:90px}
 @media(max-width:1030px){.review-queue{max-height:360px}}
+
+.profile-chips{gap:4px;margin:6px 0}
+.profile-chips .pill{white-space:normal;overflow-wrap:anywhere;max-width:100%}

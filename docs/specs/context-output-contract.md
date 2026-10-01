@@ -179,3 +179,17 @@ candidates are excluded.
 - Low confidence or ambiguity yields `ask_clarifying_question`.
 - Kinlayer returns basis, provenance and ambiguity metadata, not polished clarification wording.
 - Full episode bodies and conversations are never context outputs.
+
+## Current relationship profile
+
+Person context cards and matched entities in retrieval/context packs include
+`relationship_profile: {version,entity_id,perspective_entity_id,axes}`. Each axis contains value,
+label and the full source-backed MemoryRead record, or explicit nulls when unset. Consumers retain
+record_ref, updated_at, perspective and sources, including when compacting output. Structured
+relationship assessments do not also appear in generic stable-context observation lists.
+
+The profile describes the user's perspective, not a global trait of the person or the other
+person's feelings. All axes are explicitly reported; absence is not low closeness/importance or
+no contact/disconnection. Importance may only break ties among already relevant matches and must
+not create relevance, increase confidence or exclude less-important/unset people. This projection
+adds no meeting history, frequency counter, automatic decay or relationship-type changes.

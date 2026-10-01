@@ -123,6 +123,57 @@ def test_ontology_refreshes_each_invocation_and_does_not_invent_missing_metadata
     assert len(transport.calls) == 2
 
 
+def test_relationship_profile_preserves_unset_axes_and_exact_source_record(monkeypatch, capsys):
+    profile = {
+        "version": "relationship-profile-v1", "entity_id": "person/1",
+        "perspective_entity_id": "owner",
+        "axes": {
+            "closeness": {"value": None, "label": None, "record": None},
+            "importance": {
+                "value": "important", "label": "중요",
+                "record": {"record_ref": "observations:axis-1", "updated_at": "2026-10-01T00:00:00Z",
+                           "payload": {"perspective_entity_id": "owner", "relationship_axis": "importance",
+                                       "relationship_value": "important"},
+                           "sources": [{"excerpt": "This relationship matters to me.", "occurred_at": None}]},
+            },
+        },
+    }
+    code, transport = run(["relationship-profile", "--entity-id", "person/1"], monkeypatch, [profile])
+    assert code == 0
+    assert output(capsys) == {"ok": True, **profile}
+    assert transport.calls[0]["method"] == "GET"
+    assert transport.calls[0]["url"].endswith("/api/entities/person%2F1/relationship-profile")
+    assert client.compact_context_card({"relationship_profile": profile})["relationship_profile"] == profile
+    pack = client.compact_pack({"context_pack": {"matched_entities": [{"entity_id": "person/1", "relationship_profile": profile}]}})
+    assert pack["context_pack"]["matched_entities"][0]["relationship_profile"] == profile
+    retrieved = client.compact_retrieve({"matched_entities": [{"relationship_profile": profile}]})
+    assert retrieved["matched_entities"][0]["relationship_profile"] == profile
+
+
+def test_profile_registry_and_assessment_fields_survive_compaction():
+    registry = {"version": "future-profile-version", "axes": {"future_axis": {
+        "label": "Future", "description": "Server-owned meaning",
+        "values": [{"value": "future_value", "label": "Future value", "description": "Meaning"}],
+    }}}
+    assert client.compact_ontology({"relationship_profile": registry})["relationship_profile"] == registry
+    observation = {"id": "o1", "observation_type": "relationship_assessment", "subject_entity_id": "target",
+                   "perspective_entity_id": "owner", "relationship_axis": "future_axis", "relationship_value": "future_value"}
+    assert client.compact_observations({"items": [observation]})["items"] == [observation]
+
+
+def test_people_profile_filters_and_summary_do_not_invent_defaults(monkeypatch, capsys):
+    summary = {"closeness": None, "importance": "important", "interaction_frequency": "rare", "connection_state": None}
+    code, transport = run(["entities", "--closeness", "unset", "--importance", "important",
+                           "--interaction-frequency", "rare", "--connection-state", "unset"],
+                          monkeypatch, [{"items": [{"id": "person-1", "relationship_profile": summary}]}])
+    assert code == 0
+    assert output(capsys)["items"][0]["relationship_profile"] == summary
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(transport.calls[0]["url"]).query)
+    assert {key: query[key][0] for key in summary} == {
+        "closeness": "unset", "importance": "important", "interaction_frequency": "rare", "connection_state": "unset",
+    }
+
+
 def test_argument_parser_supports_required_options_and_structured_errors(capsys):
     args = client.build_parser().parse_args(
         [
@@ -465,6 +516,7 @@ def test_command_surface_is_write_free_and_keeps_secrets_out_of_output(monkeypat
         "ontology",
         "entities",
         "context-card",
+        "relationship-profile",
         "observations",
         "candidates",
         "candidate",

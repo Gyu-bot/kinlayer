@@ -26,6 +26,7 @@ from kinlayer_backend.services.retrieval import RetrievalMatch, RetrievalResult,
 from kinlayer_backend.services.curation import CurationService
 from kinlayer_backend.schemas.relationships import ObservationRead
 from kinlayer_backend.services.memory_reads import current_condition
+from kinlayer_backend.services.relationship_profiles import RelationshipProfileService
 
 SURFACE_BUCKETS = ["direct_surface", "conditional_surface", "internal_only", "blocked"]
 PROVISIONAL_MAX_AGE_DAYS = 30
@@ -39,6 +40,7 @@ class ContextService:
 
     def retrieve(self, payload: dict[str, Any]) -> dict[str, Any]:
         result = self._retrieve(payload)
+        self._profiles = RelationshipProfileService(self.session).for_entities([match.entity_id for match in result.matches])
         matches = [self._match_dict(match) for match in result.matches]
         observations = [
             self._observation_dict(observation)
@@ -61,6 +63,7 @@ class ContextService:
 
     def pack(self, payload: dict[str, Any]) -> dict[str, Any]:
         result = self._retrieve(payload)
+        self._profiles = RelationshipProfileService(self.session).for_entities([match.entity_id for match in result.matches])
         confidence = result.matches[0].confidence_band if result.matches else "low"
         response_policy = self._suggested_response_policy(result, confidence)
         buckets = {
@@ -121,7 +124,7 @@ class ContextService:
         observations = self._observations(entity_id)
         stable = [
             item for item in observations
-            if item.observation_type not in {"recent_interaction", "communication_preference", "caution"}
+            if item.observation_type not in {"recent_interaction", "communication_preference", "caution", "relationship_assessment"}
         ]
         recent = [item for item in observations if item.observation_type == "recent_interaction"]
         communication = [
@@ -144,6 +147,7 @@ class ContextService:
         evidence = self._provenance_for_records(facts, edges, observations)
         return {
             "entity": entity,
+            "relationship_profile": RelationshipProfileService(self.session).for_entities([entity.id])[entity.id],
             "aliases": aliases,
             "profile_facts": facts,
             "relationship_edges": edges,
@@ -254,6 +258,7 @@ class ContextService:
     def _match_dict(self, match: RetrievalMatch) -> dict[str, Any]:
         return {
             **asdict(match),
+            "relationship_profile": self._profiles[match.entity_id],
             "profile_facts": self._facts(match.entity_id),
             "observations": [
                 self._observation_dict(observation)

@@ -90,6 +90,7 @@ class PoliciesRead(APIModel):
 
 
 class OntologyRead(APIModel):
+    relationship_profile: dict[str, Any]
     version: str
     entity_types: list[RegistryValueRead]
     fact_types: list[RegistryValueRead]
