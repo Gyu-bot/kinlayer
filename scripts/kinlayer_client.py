@@ -262,6 +262,18 @@ def compact_context_card(payload: dict[str, Any]) -> dict[str, Any]:
         "ok": True,
         "entity": _pick(payload.get("entity", {}), ("id", "display_name", "entity_type")),
         "counts": {section: len(payload.get(section, []) or []) for section in sections},
+        "profile_facts": [_compact_fact(item) for item in payload.get("profile_facts", [])],
+        "relationship_edges": [_compact_edge(item) for item in payload.get("relationship_edges", [])],
+        "provenance_summary": {
+            **_pick(
+                payload.get("provenance_summary", {}),
+                ("fact_count", "edge_count", "observation_count", "evidence_count"),
+            ),
+            "evidence": [
+                _compact_provenance(item)
+                for item in payload.get("provenance_summary", {}).get("evidence", [])
+            ],
+        },
         "summary": {
             section: [_compact_observation(item) for item in payload.get(section, [])]
             for section in (
@@ -295,11 +307,11 @@ def _compact_observation(item: dict[str, Any]) -> dict[str, Any]:
         (
             "subject_entity_id",
             "observation_type",
-            "claim_type",
+            "claim_basis",
+            "confidence",
             "content",
             "score",
             "match_reasons",
-            "ai_use_policy",
             "status",
             "valid_from",
             "valid_to",
@@ -309,9 +321,47 @@ def _compact_observation(item: dict[str, Any]) -> dict[str, Any]:
         ),
     )
     result["id"] = item.get("id") or item.get("observation_id")
+    if "related_entities" in item:
+        result["related_entities"] = [
+            _pick(related, ("entity_id", "role", "confidence"))
+            for related in item["related_entities"]
+            if isinstance(related, dict) and related.get("entity_id")
+        ]
     if related_ids:
         result["related_entity_ids"] = related_ids
     return {key: value for key, value in result.items() if value is not None}
+
+
+def _compact_fact(item: dict[str, Any]) -> dict[str, Any]:
+    return _pick(
+        item,
+        (
+            "id", "entity_id", "fact_type", "content", "value", "claim_basis", "confidence",
+            "status", "valid_from", "valid_to", "created_at", "updated_at",
+        ),
+    )
+
+
+def _compact_edge(item: dict[str, Any]) -> dict[str, Any]:
+    return _pick(
+        item,
+        (
+            "id", "from_entity_id", "to_entity_id", "relation_type", "directed", "claim_text",
+            "properties", "claim_basis", "confidence", "status", "valid_from", "valid_to",
+            "first_seen_at", "last_seen_at", "created_at", "updated_at",
+        ),
+    )
+
+
+def _compact_provenance(item: dict[str, Any]) -> dict[str, Any]:
+    # Source statement time and actor must not be inferred from record metadata.
+    return _pick(
+        item,
+        (
+            "record_type", "record_id", "episode_id", "actor", "source_type", "source_ref",
+            "source_occurred_at", "excerpt", "confidence", "created_at",
+        ),
+    )
 
 
 def compact_candidate(item: dict[str, Any], *, detail: bool = False) -> dict[str, Any]:
@@ -351,6 +401,7 @@ def compact_retrieve(payload: dict[str, Any]) -> dict[str, Any]:
             _compact_matched_entity(item) for item in payload.get("matched_entities", [])
         ],
         "observations": [_compact_observation(item) for item in payload.get("observations", [])],
+        "provenance": [_compact_provenance(item) for item in payload.get("provenance", [])],
         "scores": payload.get("scores", {}),
         "match_reasons": payload.get("match_reasons", {}),
         "score_breakdown": payload.get("score_breakdown", {}),
@@ -385,11 +436,7 @@ def compact_pack(payload: dict[str, Any]) -> dict[str, Any]:
                 _compact_provisional(item) for item in pack.get("provisional_context", [])
             ],
             "provenance": [
-                _pick(
-                    item,
-                    ("record_type", "record_id", "episode_id", "confidence", "created_at"),
-                )
-                for item in pack.get("provenance", [])
+                _compact_provenance(item) for item in pack.get("provenance", [])
             ],
         },
         "debug_present": bool(payload.get("debug")),
@@ -397,7 +444,7 @@ def compact_pack(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _compact_matched_entity(item: dict[str, Any]) -> dict[str, Any]:
-    return _pick(
+    result = _pick(
         item,
         (
             "entity_id",
@@ -409,10 +456,13 @@ def _compact_matched_entity(item: dict[str, Any]) -> dict[str, Any]:
             "score_breakdown",
             "penalties",
             "surface_bucket",
-            "ai_use_policy",
-            "confirmation_status",
         ),
     )
+    if "profile_facts" in item:
+        result["profile_facts"] = [_compact_fact(fact) for fact in item["profile_facts"]]
+    if "observations" in item:
+        result["observations"] = [_compact_observation(obs) for obs in item["observations"]]
+    return result
 
 
 def _compact_provisional(item: dict[str, Any]) -> dict[str, Any]:
