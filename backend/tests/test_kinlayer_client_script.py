@@ -546,6 +546,154 @@ def test_command_surface_is_write_free_and_keeps_secrets_out_of_output(monkeypat
     assert "private-host.invalid" not in text
 
 
+@pytest.fixture(autouse=True)
+def block_live_io(monkeypatch):
+    """This file must never launch Hermes or contact a real API."""
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Live network/subprocess access is forbidden in helper tests")
+
+    monkeypatch.setattr(client.subprocess, "run", forbidden)
+    monkeypatch.setattr(client.urllib.request, "urlopen", forbidden)
+
+
+@pytest.fixture
+def v2_records():
+    times = {
+        "valid_from": "2026-09-01T00:00:00Z",
+        "valid_to": "2026-12-01T00:00:00Z",
+        "created_at": "2026-10-01T00:00:00Z",
+        "updated_at": "2026-10-01T01:00:00Z",
+    }
+    fact = {
+        "id": "fact_synthetic", "entity_id": "person_synthetic",
+        "fact_type": "occupation", "content": "Works as an engineer.",
+        "value": {"text": "engineer"}, "claim_basis": "reported",
+        "confidence": 0.6, "status": "disputed", **times,
+    }
+    edge = {
+        "id": "edge_synthetic", "from_entity_id": "person_synthetic",
+        "to_entity_id": "person_other", "relation_type": "friend_of", "directed": False,
+        "claim_text": "They are friends.", "properties": {"since": "school"},
+        "claim_basis": "inferred", "confidence": 0.4, "status": "active", **times,
+    }
+    observation = {
+        "id": "obs_synthetic", "subject_entity_id": "person_synthetic",
+        "observation_type": "communication_preference", "content": "Prefers short messages.",
+        "claim_basis": "unknown", "confidence": 0.0, "status": "disputed",
+        "related_entities": [
+            {"entity_id": "person_other", "role": "recipient", "confidence": 0.0},
+            {"entity_id": "person_third", "role": "mentioned"},
+        ],
+        "occurred_at": "2026-09-15T00:00:00Z", **times,
+    }
+    provenance = [{
+        "record_type": record_type, "record_id": record["id"],
+        "episode_id": "episode_synthetic", "actor": "actual_human_author",
+        "source_type": "authorized_material", "source_ref": "material://synthetic/message/42",
+        "source_occurred_at": "2026-09-20T00:00:00Z", "excerpt": "Bounded human statement.",
+        "confidence": 0.0, "created_at": "2026-10-01T00:00:00Z",
+    } for record_type, record in (
+        ("entity_fact", fact), ("edge", edge), ("observation", observation),
+    )]
+    return fact, edge, observation, provenance
+
+
+def noisy_record(record):
+    # These compatibility values must not suppress current records or replace basis.
+    return {**record, "claim_type": "fact", "ai_use_policy": "never_surface",
+            "embedding": [0.125, 0.25], "embedding_status": "ready"}
+
+
+def test_v2_context_card_retains_typed_claims_roles_and_sources(v2_records, monkeypatch, capsys):
+    fact, edge, observation, provenance = v2_records
+    summary = {"fact_count": 1, "edge_count": 1, "observation_count": 1,
+               "evidence_count": 3, "evidence": provenance}
+    card = {
+        "entity": {"id": "person_synthetic", "display_name": "Synthetic", "entity_type": "person"},
+        "profile_facts": [noisy_record(fact)], "relationship_edges": [noisy_record(edge)],
+        **{section: [noisy_record(observation)] for section in (
+            "stable_context", "recent_context", "communication_context", "cautions",
+        )},
+        "provenance_summary": summary,
+    }
+    code, transport = run(["context-card", "--entity-id", "person_synthetic"], monkeypatch, [card])
+    result = output(capsys)
+    assert code == 0
+    assert result["profile_facts"] == [fact]
+    assert result["relationship_edges"] == [edge]
+    assert result["provenance_summary"] == summary
+    assert result["counts"]["profile_facts"] == result["counts"]["relationship_edges"] == 1
+    for records in result["summary"].values():
+        assert records == [{**observation, "related_entity_ids": ["person_other", "person_third"]}]
+    assert [(call["method"], urllib.parse.urlsplit(call["url"]).path)
+            for call in transport.calls] == [("GET", "/api/entities/person_synthetic/context-card")]
+    assert "embedding" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("command", ["retrieve", "pack"])
+@pytest.mark.parametrize("basis", ["reported", "inferred", "unknown"])
+def test_v2_context_commands_keep_nested_claims_and_provenance(
+    command, basis, v2_records, monkeypatch, capsys
+):
+    fact, _, observation, provenance = v2_records
+    observation["claim_basis"] = basis
+    expected = {**observation, "related_entity_ids": ["person_other", "person_third"]}
+    wire_observation = noisy_record(observation)
+    wire_observation["observation_id"] = wire_observation.pop("id")
+    match = {
+        "entity_id": "person_synthetic", "display_name": "Synthetic", "entity_type": "person",
+        "score": 0.5, "confidence_band": "medium", "match_reasons": ["entity_hint"],
+        "score_breakdown": {}, "penalties": {}, "surface_bucket": "blocked",
+        "profile_facts": [noisy_record(fact)], "observations": [wire_observation],
+        "ai_use_policy": "never_surface", "confirmation_status": "unconfirmed",
+    }
+    payload = {"matched_entities": [match], "provenance": provenance, "ambiguity_detected": True}
+    if command == "retrieve":
+        payload["observations"] = [wire_observation]
+    else:
+        payload.update(
+            buckets={"blocked": [match]}, stable_context=[wire_observation],
+            recent_context=[wire_observation], cautions=[wire_observation],
+            confidence="low", suggested_response_policy="ask_clarifying_question",
+        )
+        payload = {"context_pack": payload}
+    code, transport = run([command, "--query", "synthetic context"], monkeypatch, [payload])
+    result = output(capsys)
+    assert code == 0
+    context = result if command == "retrieve" else result["context_pack"]
+    assert context["provenance"] == provenance
+    assert context["ambiguity_detected"] is True
+    assert context["matched_entities"][0]["profile_facts"] == [fact]
+    assert context["matched_entities"][0]["observations"] == [expected]
+    for section in (["observations"] if command == "retrieve" else ["stable_context", "recent_context", "cautions"]):
+        assert context[section] == [expected]
+    if command == "pack":
+        assert context["buckets"]["blocked"] == context["matched_entities"]
+        assert context["suggested_response_policy"] == "ask_clarifying_question"
+    for removed in ("embedding", "claim_type", "ai_use_policy", "confirmation_status"):
+        assert removed not in json.dumps(result)
+    assert [(call["method"], urllib.parse.urlsplit(call["url"]).path)
+            for call in transport.calls] == [("POST", f"/api/context/{command}")]
+
+
+def test_v2_projection_does_not_invent_missing_basis_or_source_times():
+    item = client._compact_observation({"id": "legacy", "claim_type": "fact", "created_at": "storage-time"})
+    assert "claim_basis" not in item
+    assert "occurred_at" not in item
+    source = {"record_type": "observation", "record_id": "legacy", "created_at": "storage-time"}
+    assert client.compact_retrieve({"provenance": [source]})["provenance"] == [source]
+
+
+@pytest.mark.parametrize("command", ["memories", "correct", "retract", "reattribute", "accept"])
+def test_read_helper_rejects_write_commands(command, monkeypatch, capsys):
+    transport = FakeTransport([])
+    with pytest.raises(SystemExit) as exc:
+        client.run([command], transport=transport)
+    assert exc.value.code == 2
+    assert output(capsys)["error"] == "argument_error"
+    assert transport.calls == []
+
+
 def test_degraded_health_is_json_and_nonzero(monkeypatch, capsys):
     code, _ = run(
         ["health"],
