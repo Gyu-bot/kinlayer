@@ -1,5 +1,11 @@
 # Kinlayer Ontology Design
 
+> Current write contract: [Agent Write Contract](../agents/agent-write-instruction-pack.md).
+> The 2026-10-01 revision separates claim basis from observation topic and removes candidate-first
+> approval and AI-use-policy gating. Earlier physical-field examples are compatibility descriptions.
+> Always fetch the running registry; illustrative value lists are not permission to invent values.
+
+
 - Status: Draft v0.1
 - Scope: Ontology registry and relationship-edge design for Kinlayer
 - Parent PRD: `prd.md`
@@ -29,7 +35,7 @@ Kinlayer uses:
 
 - Postgres as the canonical source of truth.
 - Entity-generic schema with person-first MVP behavior.
-- Registry-backed allowed types for entities, edges, claims, candidates, and AI-use policy.
+- Registry-backed types for entities, edges, facts, observation topics, claim basis and participants; legacy candidate/policy values remain marked as compatibility.
 - Relationship edges for durable relationship structure.
 - Observations for situational, advisory, or behavior/context knowledge.
 
@@ -394,24 +400,16 @@ allowed_entity_types
 - active
 ```
 
-### `allowed_claim_types`
+### Claim basis and legacy claim types
 
-```text
-allowed_claim_types
-- claim_type
-- description
-- default_review_requirement
-- active
-```
+New memory writes require `claim_basis` from `reported`, `inferred`, or `unknown`. This axis describes
+how a claim was obtained. `observation_type` describes what it is about. The general `preference` type covers food, travel,
+colors and interests; `communication_preference` remains specific to communication style. A preference or pattern can
+be reported or inferred; do not encode both axes in one value.
 
-Initial values:
-
-```text
-fact
-inference
-preference
-pattern
-```
+Legacy `claim_type: fact|inference|preference|pattern` remains only for old APIs/records. In migration,
+use source evidence/wording to establish basis; do not blindly map all historical preferences or
+patterns to reported facts. `unknown` is preferable to invented certainty.
 
 ### `allowed_observation_types`
 
@@ -441,54 +439,34 @@ conflict
 supersede
 ```
 
-### `allowed_ai_use_policies`
+### Retired AI-use policies
 
-Initial values:
+The former `freely_use`, `cautious_use`, `ask_before_use`, and `never_surface` values remain only
+where an old-client response or historical record requires compatibility. They have no active
+storage/retrieval gating semantics. Do not ask agents to choose them for new `/api/memories` writes.
 
-```text
-freely_use
-cautious_use
-ask_before_use
-never_surface
-```
-
----
-
-## 10. Candidate-to-Edge Flow
-
-Pending proposed relationships should be represented as candidate items first.
-
-Flow:
+## 10. Immediate Edge and Observation Flow
 
 ```text
-AI detects possible relationship
-→ candidates row created with candidate_type = relationship_edge
-→ user reviews candidate
-→ accept or edit_accept
-→ entity_edges row created
-→ edge_evidence rows created
-→ candidate status becomes accepted or edited_accepted
+agent interprets human source → resolves both people → selects an existing edge type
+→ POST /api/memories with one entity_edges claim and basis
+→ canonical edge, Episode/evidence and memory change commit together
 ```
 
-`entity_edges` should represent accepted/canonical relationship facts or inferences, not unresolved suggestions.
-
----
+A feeling, preference, caution, inferred reply strategy or recent event remains an observation.
+Saving immediately does not broaden the edge ontology or imply verified truth.
 
 ## 11. Validation Rules
 
-MVP validation should enforce:
-
-1. `entity_edges.relation_type` exists in `allowed_edge_types` and is active.
-2. `from_entity.entity_type` and `to_entity.entity_type` match the allowed edge type.
-3. If `directed` is omitted, use `allowed_edge_types.directed_default`.
-4. `claim_type` exists in `allowed_claim_types`.
-5. Pending AI-generated relationship suggestions enter `candidates`, not directly active `entity_edges`.
-6. Accepted AI-generated edges must have at least one evidence episode or explicit user confirmation.
-7. Observation-like concepts should not be accepted as edges unless the edge type registry allows them.
-8. Edge create/update, relationship-edge candidate resolution, and correction apply paths should
-   record bounded write diagnostics for accepted and rejected AI-agent relation types.
-9. `/api/ontology/edge-type-diagnostics` and `kinlayer ontology edge-diagnostics` report existing
-   invalid legacy edge rows without rewriting them.
+1. `relation_type` exists in the active edge registry and its endpoint entity types are valid.
+2. Omitted `directed` uses the registry default; clients must not invent inverse types.
+3. New memories explicitly supply `claim_basis`, bounded confidence and an admitted human source.
+4. Supported profile facts use the typed-value contract. Generic note fact types are legacy only.
+5. Agents split semantic claims; Kinlayer deterministically validates shapes and references.
+6. The write, source/evidence and common change history commit atomically; no human approval queue.
+7. Existing candidate/correction interfaces retain their compatibility validation and diagnostics.
+8. `/api/ontology/edge-type-diagnostics` identifies invalid legacy edges without silently rewriting
+   them. Human-approved data conversion handles bounded known repairs with traceable lineage.
 
 ---
 

@@ -1,5 +1,12 @@
 # Relationship Reconciliation & Clarification Cycle
 
+> **2026-10-01 supersession:** Ordinary memory now uses immediate canonical writes through
+> `POST /api/memories`; no candidate approval or AI-use policy is required. The existing
+> candidate/curation/reconciliation material below describes retained compatibility and history,
+> not the default ingestion loop. Source authorization, bounded evidence, provenance, idempotency,
+> and identity safeguards remain. See [save-first schema](save-first-memory-schema.md).
+
+
 One authenticated reply resolves identity and every clear bounded same-person context claim together. Prior
 promotion accepts only original user-authored evidence locked to the reviewed candidate snapshot, never an
 assistant summary. Do not ask the user to repeat authenticated text; report only freshly verified categories.

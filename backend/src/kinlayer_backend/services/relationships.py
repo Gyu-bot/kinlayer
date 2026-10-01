@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
-from kinlayer_backend.schemas.common import without_legacy_sensitivity
+from kinlayer_backend.schemas.common import without_retired_write_metadata
 from kinlayer_backend.config import Settings
 from kinlayer_backend.models import (
     AllowedEdgeType,
@@ -17,11 +17,11 @@ from kinlayer_backend.models import (
 )
 from kinlayer_backend.repositories.relationships import RelationshipRepository
 from kinlayer_backend.services.embeddings import EmbeddingService
-from kinlayer_backend.services.entity_guards import lock_active_entities
+from kinlayer_backend.services.entity_guards import lock_active_entities, require_memory_change_for_tracked_record
 from kinlayer_backend.services.entities import validate_common
 from kinlayer_backend.services.ontology import is_allowed_registry_value
 
-OBSERVATION_ROLES = {"subject", "related", "mentioned", "speaker", "target"}
+OBSERVATION_ROLES = {"subject", "related", "mentioned", "speaker", "target", "experiencer", "about"}
 
 
 class RelationshipService:
@@ -47,7 +47,7 @@ class RelationshipService:
         return edge_type
 
     def create_edge(self, payload: dict[str, Any], commit: bool = True) -> EntityEdge:
-        payload = without_legacy_sensitivity(payload)
+        payload = without_retired_write_metadata(payload)
         validate_common(payload, self.session)
         entities = lock_active_entities(
             self.session, [payload["from_entity_id"], payload["to_entity_id"]]
@@ -65,7 +65,8 @@ class RelationshipService:
         return self.repository.add_edge(payload, commit=commit)
 
     def patch_edge(self, edge: EntityEdge, payload: dict[str, Any]) -> EntityEdge:
-        payload = without_legacy_sensitivity(payload)
+        require_memory_change_for_tracked_record(self.session, edge)
+        payload = without_retired_write_metadata(payload)
         validate_common(payload, self.session)
         lock_active_entities(
             self.session, [edge.from_entity_id, edge.to_entity_id]
@@ -89,6 +90,7 @@ class RelationshipService:
         return edge
 
     def delete_edge(self, edge: EntityEdge) -> EntityEdge:
+        require_memory_change_for_tracked_record(self.session, edge)
         edge.status = "deleted"
         edge.valid_to = datetime.now(UTC)
         self.repository.commit_refresh(edge)
@@ -103,7 +105,7 @@ class RelationshipService:
             raise api_error(422, "validation_error", "Invalid observation_type.")
 
     def create_observation(self, payload: dict[str, Any], commit: bool = True) -> Observation:
-        payload = without_legacy_sensitivity(payload)
+        payload = without_retired_write_metadata(payload)
         related_entities = payload.pop("related_entities", [])
         validate_common(payload, self.session)
         lock_active_entities(
@@ -122,7 +124,8 @@ class RelationshipService:
         return observation
 
     def patch_observation(self, observation: Observation, payload: dict[str, Any]) -> Observation:
-        payload = without_legacy_sensitivity(payload)
+        require_memory_change_for_tracked_record(self.session, observation)
+        payload = without_retired_write_metadata(payload)
         validate_common(payload, self.session)
         related = self.repository.list_observation_entities(observation.id)
         lock_active_entities(
@@ -155,13 +158,14 @@ class RelationshipService:
                     raise api_error(422, "validation_error", f"Invalid {field}.") from exc
 
     def delete_observation(self, observation: Observation) -> Observation:
+        require_memory_change_for_tracked_record(self.session, observation)
         observation.status = "deleted"
         observation.valid_to = datetime.now(UTC)
         self.repository.commit_refresh(observation)
         return observation
 
     def create_episode(self, payload: dict[str, Any], commit: bool = True) -> Episode:
-        payload = without_legacy_sensitivity(payload)
+        payload = without_retired_write_metadata(payload)
         validate_common(payload, self.session)
         if not is_allowed_registry_value(self.session, "retention_policy", payload["retention_policy"]):
             raise api_error(422, "validation_error", "Invalid retention_policy.")

@@ -11,6 +11,7 @@ from sqlalchemy import inspect
 from kinlayer_backend.api.agent_operations import router as agent_operations_router
 from kinlayer_backend.api.agent_writes import router as agent_writes_router
 from kinlayer_backend.api.material_imports import router as material_imports_router
+from kinlayer_backend.api.memories import router as memories_router
 from kinlayer_backend.api.candidates import router as candidates_router
 from kinlayer_backend.api.context import router as context_router
 from kinlayer_backend.api.curation import router as curation_router
@@ -120,6 +121,7 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
     app.include_router(candidates_router)
     app.include_router(material_imports_router)
     app.include_router(corrections_router)
+    app.include_router(memories_router)
     app.include_router(context_router)
     app.include_router(curation_router)
     app.include_router(graph_router)

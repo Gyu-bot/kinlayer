@@ -1,5 +1,38 @@
 # Kinlayer Agent Integration Notes
 
+## Current adapter contract — 2026-10-01
+
+Use the [Agent Write Contract](agent-write-instruction-pack.md) for all new integrations. Ordinary
+post-turn extraction sends one canonical `/api/memories` request per independently correctable
+claim, with a stable request ID, explicit basis/confidence and bounded human source. No candidate,
+curation cycle, enrichment question or user approval is needed before a new memory is available.
+
+On a user correction, read the exact old record and submit correct/retract/reattribute. Preserve
+writer identity separately from source authorship, source statement time separately from event
+time, and confidence separately from reported/inferred basis. Transport retries reuse the exact
+same request ID/body. Readback verifies the record, evidence, history and affected context.
+
+The adapter owns semantic extraction and atomic claim splitting; core owns deterministic validation,
+transactionality and retrieval. Context output, assistant text and previous memory are never fresh
+write evidence. Authorized human-source imports retain their dedicated transport and authorization.
+Embeddings remain supported; missing embeddings do not defer storage or trigger approval.
+
+Existing runtime adapters must be switched to this endpoint before claiming that their post-turn
+flow is save-first. Merely deploying the backend does not update an external skill/plugin.
+
+## Prior integration and specialized compatibility interfaces
+
+The remainder preserves the previously implemented candidate, curation, reconciliation and
+conversational-enrichment contracts, including their authentication and source-integrity safeguards.
+Existing source-pack/PCR v1 payload and digest semantics remain unchanged for historical
+compatibility; do not reserialize/re-sign those records under the new memory envelope.
+Their older “default”, “recommended”, “phase”, and candidate-review instructions apply only when
+maintaining those compatibility interfaces. They do not override the current adapter contract above
+or authorize a new approval inbox. See the [superseding plan](../plans/save-first-memory-schema.md).
+
+---
+
+
 Compile one composite reconciliation action per resolved person using exact reply spans or opaque
 manifest-bound user-evidence handles. Never send an independent value/paraphrase, call generic enrichment
 after reconciliation, or consume a second reply proof.

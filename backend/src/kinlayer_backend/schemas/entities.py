@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, JsonValue
 
@@ -12,8 +12,8 @@ class EntityBase(APIModel):
     display_name: str
     canonical_name: str | None = None
     properties: dict[str, Any] = Field(default_factory=dict)
-    confirmation_status: str = "confirmed"
-    ai_use_policy: str = "cautious_use"
+    confirmation_status: str = Field(default="confirmed", deprecated=True, description="Legacy metadata; no save approval required.")
+    ai_use_policy: str = Field(default="cautious_use", deprecated=True, description="Legacy inert metadata; ignored on writes.")
     created_by: str = "user"
     system_role: str | None = None
     is_system: bool = False
@@ -27,9 +27,9 @@ class EntityPatch(APIModel):
     display_name: str | None = None
     canonical_name: str | None = None
     properties: dict[str, Any] | None = None
-    confirmation_status: str | None = None
+    confirmation_status: str | None = Field(default=None, deprecated=True)
     status: str | None = None
-    ai_use_policy: str | None = None
+    ai_use_policy: str | None = Field(default=None, deprecated=True)
     system_role: str | None = None
 
 
@@ -124,8 +124,9 @@ class EntityFactCreate(APIModel):
     content: str
     value: dict[str, Any] | None = None
     claim_type: str = "fact"
+    claim_basis: Literal["reported", "inferred", "unknown"] = "unknown"
     confidence: float = 1.0
-    ai_use_policy: str = "cautious_use"
+    ai_use_policy: str = Field(default="cautious_use", deprecated=True, description="Legacy inert metadata; ignored on writes.")
     status: str = "active"
     valid_from: datetime | None = None
     valid_to: datetime | None = None
@@ -138,8 +139,9 @@ class EntityFactPatch(APIModel):
     content: str | None = None
     value: dict[str, Any] | None = None
     claim_type: str | None = None
+    claim_basis: Literal["reported", "inferred", "unknown"] | None = None
     confidence: float | None = None
-    ai_use_policy: str | None = None
+    ai_use_policy: str | None = Field(default=None, deprecated=True)
     status: str | None = None
     valid_from: datetime | None = None
     valid_to: datetime | None = None
@@ -151,7 +153,7 @@ class EntityFactPromoteRequest(APIModel):
     content: str
     field_path: str | None = None
     value: JsonValue = None
-    ai_use_policy: str | None = None
+    ai_use_policy: str | None = Field(default=None, deprecated=True)
 
 
 class EntityFactRead(EntityFactCreate):

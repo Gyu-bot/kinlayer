@@ -28,25 +28,39 @@ REGISTRY_SEEDS: dict[str, list[tuple[str, str, str]]] = {
         ("role", "Role", "supported"),
         ("job", "Job", "supported"),
         ("organization", "Organization", "supported"),
-        ("memo", "Memo", "supported"),
+        ("memo", "Memo (legacy)", "legacy"),
         ("birthday", "Birthday", "supported"),
-        ("contact_note", "Contact note", "supported"),
-        ("relationship_note", "Relationship note", "supported"),
-        ("important_context", "Important context", "supported"),
+        ("contact_note", "Contact note (legacy)", "legacy"),
+        ("relationship_note", "Relationship note (legacy)", "legacy"),
+        ("important_context", "Important context (legacy)", "legacy"),
         ("external_handle", "External handle", "supported"),
         ("location_hint", "Location hint", "supported"),
     ],
     "claim_type": [
-        ("fact", "Fact", "supported"),
-        ("inference", "Inference", "supported"),
-        ("preference", "Preference", "supported"),
-        ("pattern", "Pattern", "supported"),
+        ("fact", "Fact", "legacy"),
+        ("inference", "Inference", "legacy"),
+        ("preference", "Preference", "legacy"),
+        ("pattern", "Pattern", "legacy"),
+    ],
+    "claim_basis": [
+        ("reported", "Reported by a source", "supported"),
+        ("inferred", "Inferred from sources", "supported"),
+        ("unknown", "Basis unknown", "supported"),
+    ],
+    "participant_role": [
+        ("about", "About this person", "supported"),
+        ("speaker", "Speaker", "supported"),
+        ("experiencer", "Experiencer", "supported"),
+        ("subject", "Subject", "supported"),
+        ("related", "Related person", "supported"),
+        ("mentioned", "Mentioned person", "legacy"),
+        ("target", "Target person", "legacy"),
     ],
     "ai_use_policy": [
-        ("freely_use", "Freely use", "supported"),
-        ("cautious_use", "Cautious use", "supported"),
-        ("ask_before_use", "Ask before use", "supported"),
-        ("never_surface", "Never surface", "supported"),
+        ("freely_use", "Freely use", "legacy"),
+        ("cautious_use", "Cautious use", "legacy"),
+        ("ask_before_use", "Ask before use", "legacy"),
+        ("never_surface", "Never surface", "legacy"),
     ],
     "edge_type": [
         ("knows", "Knows", "supported"),
@@ -72,6 +86,7 @@ REGISTRY_SEEDS: dict[str, list[tuple[str, str, str]]] = {
     ],
     "observation_type": [
         ("stable_fact", "Stable fact", "supported"),
+        ("preference", "General preferences and interests", "supported"),
         ("communication_preference", "Communication preference", "supported"),
         ("relationship_pattern", "Relationship pattern", "supported"),
         ("care_point", "Care point", "supported"),
@@ -124,12 +139,35 @@ def normalize_name(value: str) -> str:
 
 def seed_ontology_values(session: Session) -> None:
     existing = {
-        (row.category, row.value)
+        (row.category, row.value): row
         for row in session.execute(select(OntologyRegistryValue)).scalars().all()
     }
     for category, rows in REGISTRY_SEEDS.items():
         for sort_order, (value, label, support_level) in enumerate(rows):
+            description = None
+            if category == "fact_type" and support_level == "legacy":
+                description = (
+                    "Legacy free-form fact retained for compatibility. "
+                    "Use a specific profile fact or an atomic observation for new records."
+                )
+            elif category == "ai_use_policy":
+                description = "Retired metadata; it does not authorize or restrict AI use."
+            elif category == "claim_type":
+                description = (
+                    "Legacy classification. New records use claim_basis separately "
+                    "from their semantic fact, relationship, or observation type."
+                )
+            elif category == "claim_basis":
+                description = {
+                    "reported": "A source explicitly states this; it is not independent verification.",
+                    "inferred": "An interpretation derived from linked sources.",
+                    "unknown": "The stored evidence does not establish the assertion basis.",
+                }[value]
             if (category, value) in existing:
+                # Registry documentation changes do not rewrite historical records or digests.
+                if description is not None:
+                    existing[category, value].support_level = support_level
+                    existing[category, value].description = description
                 continue
             session.add(
                 OntologyRegistryValue(
@@ -137,6 +175,7 @@ def seed_ontology_values(session: Session) -> None:
                     value=value,
                     label=label,
                     support_level=support_level,
+                    description=description,
                     sort_order=sort_order,
                 )
             )
@@ -216,6 +255,8 @@ class OntologyReadService:
         return {
             "entity_types": self.repository.registry_values("entity_type"),
             "fact_types": self.repository.registry_values("fact_type"),
+            "claim_bases": self.repository.registry_values("claim_basis"),
+            "participant_roles": self.repository.registry_values("participant_role"),
             "edge_types": self.repository.edge_types(),
             "observation_types": self.repository.observation_types(),
             "policies": self.policies(),

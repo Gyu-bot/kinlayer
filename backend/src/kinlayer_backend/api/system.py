@@ -15,7 +15,7 @@ def health(request: Request) -> dict[str, str]:
     return {
         "status": "ok" if database_status == "ok" else "degraded",
         "database": database_status,
-        "embedding": "disabled",
+        "embedding": _embedding_config(request.app.state.settings)["status"],
     }
 
 
@@ -35,6 +35,11 @@ def config(request: Request) -> dict[str, Any]:
             "policy_version": settings.curation_policy_version,
         },
         "embedding": _embedding_config(settings),
+        "memory_write": {
+            "endpoint": "/api/memories",
+            "review_required": False,
+            "contract_version": "2",
+        },
     }
 
 

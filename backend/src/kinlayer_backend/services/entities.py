@@ -8,12 +8,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
-from kinlayer_backend.schemas.common import without_legacy_sensitivity
+from kinlayer_backend.schemas.common import without_retired_write_metadata
 from kinlayer_backend.models import Entity, EntityAlias, EntityFact, EntityFactEvidence
 from kinlayer_backend.repositories.entities import EntityRepository
-from kinlayer_backend.services.entity_guards import lock_active_entities
+from kinlayer_backend.services.entity_guards import lock_active_entities, require_memory_change_for_tracked_record
 from kinlayer_backend.services.ontology import (
-    CONFIRMATION_STATUSES,
     CREATED_BY_VALUES,
     ENTITY_STATUSES,
     RECORD_STATUSES,
@@ -26,6 +25,7 @@ from kinlayer_backend.services.structured_facts import (
     ValidStructuredFactContent,
     is_structured_fact_type,
     validate_structured_fact_content,
+    normalize_profile_fact,
 )
 
 STRONG_RESOLVE_THRESHOLD = 0.85
@@ -56,10 +56,9 @@ class FactPromotionResult:
 
 def validate_common(payload: dict[str, Any], session: Session, fact_type: bool = False) -> None:
     checks = {
-        "ai_use_policy": allowed_values("ai_use_policy"),
         "claim_type": allowed_values("claim_type"),
+        "claim_basis": {"reported", "inferred", "unknown"},
         "created_by": CREATED_BY_VALUES,
-        "confirmation_status": CONFIRMATION_STATUSES,
         "status": RECORD_STATUSES | ENTITY_STATUSES | {"confirmed"},
     }
     if "entity_type" in payload and not is_allowed_registry_value(
@@ -94,7 +93,7 @@ class EntityService:
         self.repository = EntityRepository(session)
 
     def create_entity(self, payload: dict[str, Any], commit: bool = True) -> Entity:
-        payload = without_legacy_sensitivity(payload)
+        payload = without_retired_write_metadata(payload)
         validate_common(payload, self.session)
         if payload.get("system_role") == "self":
             payload["entity_type"] = "person"
@@ -112,7 +111,7 @@ class EntityService:
             raise api_error(409, "conflict", "Entity conflicts with an existing record.") from exc
 
     def patch_entity(self, entity: Entity, payload: dict[str, Any]) -> Entity:
-        payload = without_legacy_sensitivity(payload)
+        payload = without_retired_write_metadata(payload)
         validate_common(payload, self.session)
         if entity.system_role == "self":
             if payload.get("system_role") != "self" and "system_role" in payload:
@@ -168,17 +167,34 @@ class EntityService:
         return alias
 
     def create_fact(self, payload: dict[str, Any], commit: bool = True) -> EntityFact:
-        payload = without_legacy_sensitivity(payload)
+        payload = without_retired_write_metadata(payload)
         validate_common(payload, self.session, fact_type=True)
         lock_active_entities(self.session, [payload["entity_id"]])
-        payload["content"] = _normalized_fact_content(payload["fact_type"], payload["content"])
+        value = payload.get("value")
+        if isinstance(value, dict) and ("text" in value or "precision" in value):
+            try:
+                payload["content"], payload["value"] = normalize_profile_fact(
+                    payload["fact_type"], payload["content"], value)
+            except ValueError as exc:
+                raise api_error(422, "validation_error", str(exc)) from exc
+        else:
+            payload["content"] = _normalized_fact_content(payload["fact_type"], payload["content"])
         return self.repository.add_fact(payload, commit=commit)
 
     def patch_fact(self, fact: EntityFact, payload: dict[str, Any]) -> EntityFact:
-        payload = without_legacy_sensitivity(payload)
+        require_memory_change_for_tracked_record(self.session, fact)
+        payload = without_retired_write_metadata(payload)
         validate_common(payload, self.session, fact_type="fact_type" in payload)
         lock_active_entities(self.session, [fact.entity_id])
-        if "fact_type" in payload or "content" in payload:
+        next_value = payload.get("value", fact.value)
+        if isinstance(next_value, dict) and ("text" in next_value or "precision" in next_value):
+            try:
+                content, value = normalize_profile_fact(
+                    payload.get("fact_type", fact.fact_type), payload.get("content", fact.content), next_value)
+                payload.update(content=content, value=value)
+            except ValueError as exc:
+                raise api_error(422, "validation_error", str(exc)) from exc
+        elif "fact_type" in payload or "content" in payload:
             fact_type = payload["fact_type"] if "fact_type" in payload else fact.fact_type
             content = payload["content"] if "content" in payload else fact.content
             payload["content"] = _normalized_fact_content(fact_type, content)
@@ -188,6 +204,7 @@ class EntityService:
         return fact
 
     def delete_fact(self, fact: EntityFact) -> EntityFact:
+        require_memory_change_for_tracked_record(self.session, fact)
         fact.status = "deleted"
         self.repository.commit_refresh([fact])
         return fact
@@ -488,9 +505,6 @@ class EntityService:
                     reasons.add("normalized_display_name")
                 if 0 < score < 0.85:
                     reasons.add("pg_trgm_name_alias")
-        if entity.confirmation_status == "confirmed" and best_score > 0:
-            best_score = min(1.0, best_score + 0.05)
-            reasons.add("confirmation_policy")
         return round(best_score, 3), reasons
 
     def _name_match_score(

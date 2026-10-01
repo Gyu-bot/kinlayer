@@ -22,6 +22,8 @@ ontology_app = typer.Typer(help="Inspect ontology registries and diagnostics.")
 agent_operations_app = typer.Typer(help="Inspect and export agent write operations.")
 agent_write_app = typer.Typer(help="Validate agent write payloads.")
 fact_app = typer.Typer(help="Promote and inspect profile facts.")
+memory_app = typer.Typer(help="Save, correct, retract or reattribute memories immediately.")
+app.add_typer(memory_app, name="memory")
 app.add_typer(person_app, name="person")
 app.add_typer(embedding_app, name="embedding")
 app.add_typer(candidate_app, name="candidate")
@@ -1015,3 +1017,14 @@ def person_show(
 
 if __name__ == "__main__":
     app()
+
+
+@memory_app.command("apply")
+def memory_apply(
+    request_json: Path,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    response = _request("POST", "/api/memories", payload=_read_json_file(request_json))
+    _raise_for_api(response)
+    payload = response.json()
+    _emit(payload, json_output=json_output)

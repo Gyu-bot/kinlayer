@@ -706,3 +706,70 @@ def test_agent_correction_apply_uses_filter_normalization(client, database_url) 
     new_edge_id = response.json()["new_record_ref"].split(":", 1)[1]
     with create_session_maker(Settings(database_url=database_url))() as session:
         assert session.get(EntityEdge, new_edge_id).relation_type == "client_contact"
+
+
+def test_correction_dry_run_supports_retract_reattribute_and_typed_basis(client):
+    alex, blair = create_person(client, "Alex"), create_person(client, "Blair")
+    old = client.post("/api/entity-facts", json={
+        "entity_id": alex["id"], "fact_type": "organization", "content": "Old Corp", "created_by": "user",
+    }).json()
+    payload = {
+        "action": "retract", "old_record_ref": f"entity_facts:{old['id']}",
+        "correction_source": {"source_type": "agent_conversation", "source_actor": "user", "user_explicit": True, "excerpt": "Remove that claim."},
+    }
+    response = client.post("/api/agent-writes/validate", json={"write_type": "correction", "payload": payload})
+    assert response.status_code == 200, response.text
+    assert response.json()["accepted"] is True
+    payload.update(action="reattribute", new_record={"record_type": "entity_facts", "payload": {
+        "entity_id": blair["id"], "fact_type": "birth_date", "content": "1994",
+        "value": {"year": 1994, "precision": "year"}, "claim_basis": "inferred", "confidence": 0.7,
+    }})
+    response = client.post("/api/agent-writes/validate", json={"write_type": "correction", "payload": payload})
+    assert response.status_code == 200, response.text
+    assert response.json()["accepted"] is True, response.text
+    result = response.json()["validated_payload"]["new_record"]["payload"]
+    assert result["claim_basis"] == "inferred" and result["confidence"] == 0.7
+    assert result["value"]["year"] == 1994
+    assert client.get(f"/api/entity-facts/{old['id']}").json()["status"] == "active"
+
+
+def test_correction_dry_run_malformed_new_record_and_source_are_diagnostics(client):
+    alex = create_person(client, "Alex")
+    old = client.post("/api/entity-facts", json={
+        "entity_id": alex["id"], "fact_type": "organization", "content": "Old Corp", "created_by": "user",
+    }).json()
+    payload = {
+        "old_record_ref": f"entity_facts:{old['id']}",
+        "new_record": {"record_type": "entity_edges", "payload": {}},
+        "correction_source": {"source_type": "agent_conversation", "source_actor": "user", "user_explicit": True, "excerpt": "Correct that claim."},
+    }
+    for source_actor, record_type in (("user", "entity_edges"), ("assistant", "entity_facts"), ("user", "unsupported")):
+        payload["correction_source"]["source_actor"] = source_actor
+        payload["new_record"]["record_type"] = record_type
+        response = client.post("/api/agent-writes/validate", json={"write_type": "correction", "payload": payload})
+        assert response.status_code == 200, response.text
+        assert response.json()["accepted"] is False
+        assert response.json()["errors"]
+
+
+def test_correction_dry_run_normalizes_typed_edge_without_losing_basis(client):
+    user, alex = create_person(client, "User"), create_person(client, "Alex")
+    old = client.post("/api/edges", json={
+        "from_entity_id": user["id"], "to_entity_id": alex["id"], "relation_type": "coworker",
+        "claim_text": "Alex worked with me.", "created_by": "user",
+    }).json()
+    payload = {
+        "old_record_ref": f"entity_edges:{old['id']}",
+        "new_record": {"record_type": "entity_edges", "payload": {
+            "from_entity_id": user["id"], "to_entity_id": alex["id"], "relation_type": "Client contact",
+            "claim_text": "Alex may be a client contact.", "claim_basis": "inferred", "confidence": 0.6,
+        }},
+        "correction_source": {"source_type": "agent_conversation", "user_explicit": True, "excerpt": "I meant a client contact, I think."},
+    }
+    response = client.post("/api/agent-writes/validate", json={"write_type": "correction", "payload": payload})
+    assert response.status_code == 200, response.text
+    assert response.json()["accepted"] is True, response.text
+    result = response.json()["validated_payload"]["new_record"]["payload"]
+    assert result["relation_type"] == "client_contact"
+    assert result["claim_basis"] == "inferred"
+    assert "claim_type" not in result

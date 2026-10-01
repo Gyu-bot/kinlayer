@@ -38,15 +38,19 @@ backend/
   CORS, startup ontology seed, protected self bootstrap.
 - `config.py:Settings` owns env defaults. Compose may override bind host and DB URL.
 - `services/ontology.py:REGISTRY_SEEDS` owns controlled values. Docs must not invent
-  `relation_type`, `observation_type`, `fact_type`, or policy values.
-- `created_by = ai_agent` candidate/correction payloads must pass `AgentWriteFilter`
-  before persistence.
+  `relation_type`, `observation_type`, `fact_type`, or claim-basis values.
+- New agent writes use `/api/memories`: explicit basis, one claim, typed value, bounded human
+  source, atomic evidence/change history, and request-id idempotency. No approval stage.
+- Existing `created_by = ai_agent` candidate/correction compatibility payloads still pass their
+  source filter before persistence; they are not the default ingestion contract.
 - Candidate `accept` writes canonical records for `new_entity`, `alias`,
   `profile_field`, `relationship_edge`, `observation`, and `merge`.
 - Candidate `conflict` and `supersede` validate as payloads but do not have direct
   canonical accept execution yet.
-- Explicit correction apply requires `correction_source.user_explicit = true` and
-  exactly one supported `old_record_ref`.
+- Legacy correction apply retains its explicit-human-source condition. New memory corrections
+  carry a human source and one exact old record; retraction requires no replacement.
+- AI-use-policy and confirmation fields are compatibility-only and cannot gate new memory writes
+  or current retrieval. Preserve embedding/index capabilities.
 
 ## ANTI-PATTERNS
 

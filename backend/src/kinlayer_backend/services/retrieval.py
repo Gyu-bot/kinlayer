@@ -17,7 +17,6 @@ SCORE_WEIGHTS = {
     "semantic_observation": 0.20,
     "recency": 0.15,
     "graph_proximity": 0.10,
-    "confirmation_policy": 0.10,
 }
 CONFIDENCE_HIGH_THRESHOLD = 0.75
 CONFIDENCE_MEDIUM_THRESHOLD = 0.45
@@ -27,16 +26,19 @@ AMBIGUOUS_HIGH_CONFIDENCE_CAP = 0.74
 @dataclass
 class RetrievedObservation:
     observation_id: str
+    subject_entity_id: str
+    observation_type: str
+    claim_basis: str
+    confidence: float
     content: str
     score: float
     match_reasons: list[str]
-    ai_use_policy: str
     status: str
+    related_entities: list[dict[str, Any]] = field(default_factory=list)
     valid_from: datetime | None = None
     valid_to: datetime | None = None
     occurred_at: datetime | None = None
     created_at: datetime | None = None
-    surface_eligible: bool = True
 
 
 @dataclass
@@ -50,8 +52,6 @@ class RetrievalMatch:
     score_breakdown: dict[str, float]
     penalties: dict[str, float]
     surface_bucket: str
-    ai_use_policy: str
-    confirmation_status: str
     observations: list[RetrievedObservation] = field(default_factory=list)
 
 
@@ -83,6 +83,15 @@ class RetrievalService:
         observations = self.repository.observations()
         aliases_by_entity = self._aliases_by_entity(aliases)
         observations_by_entity = self._observations_by_entity(observations)
+        participants_by_observation: dict[str, list[dict[str, Any]]] = {}
+        for participant in self.repository.observation_entities({item.id for item in observations}):
+            participants_by_observation.setdefault(participant.observation_id, []).append({
+                "entity_id": participant.entity_id,
+                "role": participant.role,
+                "confidence": (
+                    float(participant.confidence) if participant.confidence is not None else None
+                ),
+            })
         graph_neighbors = self._graph_neighbors({entity.id for entity in entities}, focal_entity_id)
 
         scored = [
@@ -95,6 +104,7 @@ class RetrievalService:
                 hints=hints,
                 graph_neighbors=graph_neighbors,
                 query_embedding=query_embedding,
+                participants_by_observation=participants_by_observation,
             )
             for entity in entities
         ]
@@ -138,6 +148,7 @@ class RetrievalService:
         hints: set[str],
         graph_neighbors: set[str],
         query_embedding: list[float] | None,
+        participants_by_observation: dict[str, list[dict[str, Any]]],
     ) -> RetrievalMatch:
         score_breakdown = {key: 0.0 for key in SCORE_WEIGHTS}
         penalties: dict[str, float] = {}
@@ -158,6 +169,7 @@ class RetrievalService:
             normalized_query,
             query_tokens,
             query_embedding,
+            participants_by_observation,
         )
         if retrieved_observations:
             best_observation = max(retrieved_observations, key=lambda item: item.score)
@@ -172,13 +184,7 @@ class RetrievalService:
             score_breakdown["graph_proximity"] = SCORE_WEIGHTS["graph_proximity"]
             reasons.append("graph_proximity")
 
-        if entity.confirmation_status == "confirmed" and entity.ai_use_policy != "never_surface":
-            score_breakdown["confirmation_policy"] = SCORE_WEIGHTS["confirmation_policy"]
-            reasons.append("confirmation_policy")
-
         score = round(sum(score_breakdown.values()), 3)
-        score = self._apply_penalties(entity, observations, score, penalties)
-        bucket = self._surface_bucket(entity, observations, score)
         return RetrievalMatch(
             entity_id=entity.id,
             display_name=entity.display_name,
@@ -188,9 +194,11 @@ class RetrievalService:
             match_reasons=sorted(set(reasons)),
             score_breakdown=score_breakdown,
             penalties=penalties,
-            surface_bucket=bucket,
-            ai_use_policy=entity.ai_use_policy,
-            confirmation_status=entity.confirmation_status,
+            surface_bucket=(
+                "conditional_surface"
+                if any(item.status == "disputed" for item in retrieved_observations)
+                else "direct_surface"
+            ),
             observations=retrieved_observations,
         )
 
@@ -200,6 +208,7 @@ class RetrievalService:
         normalized_query: str,
         query_tokens: set[str],
         query_embedding: list[float] | None,
+        participants_by_observation: dict[str, list[dict[str, Any]]],
     ) -> list[RetrievedObservation]:
         results: list[RetrievedObservation] = []
         now = datetime.now(UTC)
@@ -219,56 +228,27 @@ class RetrievalService:
             if recency_score > 0:
                 reasons.append("recent")
             score = round(max(semantic_score, lexical_score) + recency_score * 0.1, 3)
-            if score > 0 or observation.status != "active":
+            if score > 0:
                 results.append(
                     RetrievedObservation(
                         observation_id=observation.id,
+                        subject_entity_id=observation.subject_entity_id,
+                        observation_type=observation.observation_type,
+                        claim_basis=observation.claim_basis,
+                        confidence=float(observation.confidence),
                         content=observation.content,
                         score=score,
                         match_reasons=sorted(set(reasons)),
-                        ai_use_policy=observation.ai_use_policy,
                         status=observation.status,
+                        related_entities=participants_by_observation.get(observation.id, []),
                         valid_from=observation.valid_from,
                         valid_to=observation.valid_to,
                         occurred_at=observation.occurred_at,
                         created_at=observation.created_at,
-                        surface_eligible=observation.ai_use_policy != "never_surface",
                     )
                 )
         results.sort(key=lambda item: -item.score)
         return results
-
-    def _apply_penalties(
-        self,
-        entity: Entity,
-        observations: list[Observation],
-        score: float,
-        penalties: dict[str, float],
-    ) -> float:
-        if entity.confirmation_status in {"deprecated", "rejected", "merged", "disputed"}:
-            penalties["stale_status"] = 0.20
-        if any(observation.status in {"deprecated", "superseded", "disputed"} for observation in observations):
-            penalties["stale_status"] = max(penalties.get("stale_status", 0), 0.20)
-        if entity.ai_use_policy == "never_surface" or any(
-            observation.ai_use_policy == "never_surface" for observation in observations
-        ):
-            penalties["policy_block"] = 0.30
-        elif entity.ai_use_policy == "ask_before_use" or any(
-            observation.ai_use_policy == "ask_before_use" for observation in observations
-        ):
-            penalties["surface_constraint"] = 0.10
-        return round(max(0.0, score - sum(penalties.values())), 3)
-
-    def _surface_bucket(self, entity: Entity, observations: list[Observation], score: float) -> str:
-        policies = {entity.ai_use_policy, *(observation.ai_use_policy for observation in observations)}
-        statuses = {entity.confirmation_status, *(observation.status for observation in observations)}
-        if "never_surface" in policies:
-            return "blocked"
-        if statuses & {"deprecated", "superseded", "disputed", "rejected", "merged"}:
-            return "internal_only"
-        if "ask_before_use" in policies:
-            return "conditional_surface"
-        return "direct_surface"
 
     def _graph_neighbors(self, entity_ids: set[str], focal_entity_id: str | None) -> set[str]:
         if not focal_entity_id:

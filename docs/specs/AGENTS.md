@@ -14,7 +14,8 @@ Active product contracts; keep them synchronized with live code, not archive doc
 | CLI | `cli-spec.md` | Verify against `backend/src/kinlayer_backend/cli.py` |
 | Web | `web-ui-spec.md` | Verify against `frontend/src/App.tsx` and routes |
 | Retrieval/context | `context-output-contract.md` | Verify against context/retrieval services |
-| Candidate lifecycle | `candidate-lifecycle-and-payload.md` | Verify against candidate schemas/service |
+| Memory writes | `../agents/agent-write-instruction-pack.md` | Verify memories schema/service/OpenAPI |
+| Candidate lifecycle | `candidate-lifecycle-and-payload.md` | Compatibility only; not default writes |
 | Ontology | `ontology-design.md` | Verify against `services/ontology.py` |
 | Acceptance | `acceptance-scenarios.md` | Keep journey-level; fixture detail belongs in scripts/tests |
 
@@ -23,8 +24,8 @@ Active product contracts; keep them synchronized with live code, not archive doc
 - HTTP API remains the canonical capability layer; CLI/Web are clients.
 - Postgres is the canonical store; models/migrations own table truth.
 - Use exact canonical values from `services/ontology.py` or ontology API responses.
-- `merge` candidate accept is implemented; `conflict` and `supersede` are review
-  payloads until specific execution workflows exist.
+- The new memory contract uses immediate atomic create/correct/retract/reattribute with evidence.
+  Existing candidate APIs are retained compatibility; do not make them a new-write dependency.
 - `GET /api/system/config` examples must show effective non-secret config, not
   desired defaults.
 

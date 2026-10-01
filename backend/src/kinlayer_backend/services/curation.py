@@ -573,8 +573,6 @@ class CurationService:
             or candidate.target_entity_id != entity_id
             or candidate.payload.get("subject_entity_id") != entity_id
             or candidate.payload.get("observation_type") not in AUTO_OBSERVATION_TYPES
-            or candidate.payload.get("ai_use_policy", "cautious_use")
-            in RESTRICTED_AI_USE_POLICIES
             or self._has_high_impact_content(str(candidate.payload.get("content") or ""))
             or not candidate.evidence
             or any(self._evidence_reasons(evidence) for evidence in candidate.evidence)
@@ -1312,11 +1310,17 @@ class CurationService:
             )
             if len(evidence_items) >= max_evidence:
                 break
+        # The legacy source-pack contract predates claim_basis. Do not add the
+        # new schema's default to historical payloads that never stored it.
+        # Explicit source fields and the digest of the original remain intact.
+        source_payload = deepcopy(validation["safe_payload"])
+        if "claim_basis" not in candidate.payload and source_payload.get("claim_basis") == "unknown":
+            source_payload.pop("claim_basis")
         return {
             "id": candidate.id,
             "candidate_type": candidate.candidate_type,
             "target_entity_id": candidate.target_entity_id,
-            "payload": validation["safe_payload"],
+            "payload": source_payload,
             "confidence": float(candidate.confidence),
             "suggested_action": candidate.suggested_action,
             "status": candidate.status,

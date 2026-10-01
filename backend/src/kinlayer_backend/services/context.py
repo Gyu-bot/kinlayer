@@ -17,12 +17,14 @@ from kinlayer_backend.models import (
     EntityEdge,
     EntityFact,
     EntityFactEvidence,
+    Episode,
     Observation,
     ObservationEntity,
     ObservationEvidence,
 )
 from kinlayer_backend.services.retrieval import RetrievalMatch, RetrievalResult, RetrievalService
 from kinlayer_backend.services.curation import CurationService
+from kinlayer_backend.schemas.relationships import ObservationRead
 
 SURFACE_BUCKETS = ["direct_surface", "conditional_surface", "internal_only", "blocked"]
 PROVISIONAL_MAX_AGE_DAYS = 30
@@ -46,6 +48,7 @@ class ContextService:
         return {
             "matched_entities": matches,
             "observations": observations,
+            "provenance": self._provenance_for_matches(result.matches),
             "scores": {match.entity_id: match.score for match in result.matches},
             "match_reasons": {match.entity_id: match.match_reasons for match in result.matches},
             "score_breakdown": {
@@ -88,7 +91,7 @@ class ContextService:
             "cautions": [
                 self._observation_dict(item)
                 for item in all_observations
-                if item.ai_use_policy == "ask_before_use"
+                if item.observation_type == "caution" or item.status == "disputed"
             ],
             "provenance": self._provenance_for_matches(result.matches),
             "provisional_context": self._provisional_for_pack(payload, result),
@@ -108,6 +111,8 @@ class ContextService:
         if not entity:
             raise api_error(404, "not_found", "Entity not found.")
         entity = self._redirect_merged_entity(entity)
+        if entity.status != "active":
+            raise api_error(404, "not_found", "Active entity not found.")
         entity_id = entity.id
         aliases = self._aliases(entity_id)
         facts = self._facts(entity_id)
@@ -124,19 +129,27 @@ class ContextService:
         cautions = [
             item
             for item in observations
-            if item.observation_type == "caution"
-            or item.ai_use_policy in {"ask_before_use", "never_surface"}
+            if item.observation_type == "caution" or item.status == "disputed"
         ]
+        participants: dict[str, list[ObservationEntity]] = {}
+        for row in self.retrieval.repository.observation_entities({item.id for item in observations}):
+            participants.setdefault(row.observation_id, []).append(row)
+
+        def observation_payload(item: Observation) -> dict[str, Any]:
+            result = ObservationRead.model_validate(item).model_dump()
+            result["related_entities"] = participants.get(item.id, [])
+            return result
+
         evidence = self._provenance_for_records(facts, edges, observations)
         return {
             "entity": entity,
             "aliases": aliases,
             "profile_facts": facts,
             "relationship_edges": edges,
-            "stable_context": stable,
-            "recent_context": recent,
-            "communication_context": communication,
-            "cautions": cautions,
+            "stable_context": [observation_payload(item) for item in stable],
+            "recent_context": [observation_payload(item) for item in recent],
+            "communication_context": [observation_payload(item) for item in communication],
+            "cautions": [observation_payload(item) for item in cautions],
             "provenance_summary": {
                 "fact_count": len(facts),
                 "edge_count": len(edges),
@@ -233,8 +246,6 @@ class ContextService:
             return "no_relevant_context"
         if result.ambiguity_detected or confidence == "low":
             return "ask_clarifying_question"
-        if result.matches and all(match.surface_bucket == "blocked" for match in result.matches):
-            return "blocked_by_policy"
         if result.surface_buckets["direct_surface"] and confidence == "high":
             return "natural_use"
         return "conditional_use"
@@ -251,12 +262,10 @@ class ContextService:
         }
 
     def _should_surface_observation(self, observation) -> bool:
-        return observation.status == "active" and observation.surface_eligible
+        return observation.status in {"active", "disputed"}
 
     def _observation_dict(self, observation) -> dict[str, Any]:
-        raw = asdict(observation)
-        raw.pop("surface_eligible", None)
-        return raw
+        return asdict(observation)
 
     def _aliases(self, entity_id: str) -> list[EntityAlias]:
         statement = (
@@ -269,7 +278,7 @@ class ContextService:
     def _facts(self, entity_id: str) -> list[EntityFact]:
         statement = (
             select(EntityFact)
-            .where(EntityFact.entity_id == entity_id, EntityFact.status == "active")
+            .where(EntityFact.entity_id == entity_id, EntityFact.status.in_({"active", "disputed"}))
             .order_by(EntityFact.created_at.desc())
         )
         return self.session.execute(statement).scalars().all()
@@ -287,7 +296,9 @@ class ContextService:
                     EntityEdge.from_entity_id == entity_id,
                     EntityEdge.to_entity_id == entity_id,
                 ),
-                EntityEdge.status == "active",
+                EntityEdge.status.in_({"active", "disputed"}),
+                from_entity.status == "active",
+                to_entity.status == "active",
                 AllowedEdgeType.active.is_(True),
                 from_entity.entity_type == AllowedEdgeType.from_entity_type,
                 to_entity.entity_type == AllowedEdgeType.to_entity_type,
@@ -305,7 +316,7 @@ class ContextService:
                     Observation.subject_entity_id == entity_id,
                     ObservationEntity.entity_id == entity_id,
                 ),
-                Observation.status == "active",
+                Observation.status.in_({"active", "disputed"}),
             )
             .distinct()
             .order_by(Observation.created_at.desc())
@@ -317,17 +328,17 @@ class ContextService:
             observation.observation_id
             for match in matches
             for observation in match.observations
-            if observation.status == "active"
+            if self._should_surface_observation(observation)
         }
-        if not observation_ids:
-            return []
-        statement = select(ObservationEvidence).where(
-            ObservationEvidence.observation_id.in_(observation_ids)
-        )
-        return [
-            self._provenance_item("observation", row.observation_id, row)
-            for row in self.session.execute(statement).scalars().all()
-        ]
+        entity_ids = {match.entity_id for match in matches}
+        facts = self.session.scalars(select(EntityFact).where(
+            EntityFact.entity_id.in_(entity_ids),
+            EntityFact.status.in_({"active", "disputed"}),
+        )).all() if entity_ids else []
+        observations = self.session.scalars(select(Observation).where(
+            Observation.id.in_(observation_ids)
+        )).all() if observation_ids else []
+        return self._provenance_for_records(facts, [], observations)
 
     def _provenance_for_records(
         self,
@@ -341,30 +352,49 @@ class ContextService:
         observation_ids = [item.id for item in observations]
         if fact_ids:
             rows = self.session.execute(
-                select(EntityFactEvidence).where(EntityFactEvidence.entity_fact_id.in_(fact_ids))
-            ).scalars().all()
-            evidence.extend(self._provenance_item("fact", row.entity_fact_id, row) for row in rows)
+                select(EntityFactEvidence, Episode)
+                .outerjoin(Episode, Episode.id == EntityFactEvidence.episode_id)
+                .where(EntityFactEvidence.entity_fact_id.in_(fact_ids))
+            ).all()
+            evidence.extend(
+                self._provenance_item("fact", row.entity_fact_id, row, episode)
+                for row, episode in rows
+            )
         if edge_ids:
             rows = self.session.execute(
-                select(EdgeEvidence).where(EdgeEvidence.edge_id.in_(edge_ids))
-            ).scalars().all()
-            evidence.extend(self._provenance_item("edge", row.edge_id, row) for row in rows)
+                select(EdgeEvidence, Episode)
+                .outerjoin(Episode, Episode.id == EdgeEvidence.episode_id)
+                .where(EdgeEvidence.edge_id.in_(edge_ids))
+            ).all()
+            evidence.extend(
+                self._provenance_item("edge", row.edge_id, row, episode)
+                for row, episode in rows
+            )
         if observation_ids:
             rows = self.session.execute(
-                select(ObservationEvidence).where(
+                select(ObservationEvidence, Episode)
+                .outerjoin(Episode, Episode.id == ObservationEvidence.episode_id)
+                .where(
                     ObservationEvidence.observation_id.in_(observation_ids)
                 )
-            ).scalars().all()
+            ).all()
             evidence.extend(
-                self._provenance_item("observation", row.observation_id, row) for row in rows
+                self._provenance_item("observation", row.observation_id, row, episode)
+                for row, episode in rows
             )
         return evidence
 
-    def _provenance_item(self, record_type: str, record_id: str, row: Any) -> dict[str, Any]:
+    def _provenance_item(
+        self, record_type: str, record_id: str, row: Any, episode: Episode | None
+    ) -> dict[str, Any]:
         return {
             "record_type": record_type,
             "record_id": record_id,
             "episode_id": row.episode_id,
+            "actor": episode.actor if episode else None,
+            "source_type": episode.source_type if episode else None,
+            "source_ref": episode.source_ref if episode else None,
+            "source_occurred_at": episode.occurred_at if episode else None,
             "excerpt": row.excerpt,
             "confidence": float(row.confidence) if row.confidence is not None else None,
             "created_at": row.created_at,

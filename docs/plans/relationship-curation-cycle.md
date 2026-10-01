@@ -1,5 +1,12 @@
 # Periodic Relationship Curation Cycle — Implementation Plan
 
+> **2026-10-01 supersession:** Ordinary memory now uses immediate canonical writes through
+> `POST /api/memories`; no candidate approval or AI-use policy is required. The existing
+> candidate/curation/reconciliation material below describes retained compatibility and history,
+> not the default ingestion loop. Source authorization, bounded evidence, provenance, idempotency,
+> and identity safeguards remain. See [save-first schema](save-first-memory-schema.md).
+
+
 > Sensitivity is retired. See [retirement and compatibility contract](../specs/sensitivity-retirement.md).
 
 **Status:** Repository Phases 1-4 implemented; Phase 5 adapter handoff ready

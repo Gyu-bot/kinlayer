@@ -123,3 +123,32 @@ def test_app_startup_seeds_protected_self_when_tables_exist(database_url: str) -
     assert body["total"] == 1
     assert body["items"][0]["display_name"] == "Me"
     assert body["items"][0]["system_role"] == "self"
+
+
+def test_config_discovers_save_first_memory_contract(client) -> None:
+    response = client.get("/api/system/config")
+    assert response.status_code == 200
+    assert response.json()["memory_write"] == {
+        "endpoint": "/api/memories", "review_required": False, "contract_version": "2",
+    }
+
+
+def test_health_embedding_matches_effective_config_without_provider_call(client) -> None:
+    settings = client.app.state.settings
+    settings.embedding_api_key = "must-not-appear"
+    for provider, url, model, expected in (
+        ("disabled", None, None, "disabled"),
+        ("openai_compatible", "https://synthetic.invalid/embeddings", "test-model", "ready"),
+        ("openai_compatible", None, "test-model", "misconfigured"),
+        ("local_sentence_transformers", None, None, "configured"),
+        ("unsupported-test-provider", None, None, "unsupported"),
+    ):
+        settings.embedding_provider = provider
+        settings.embedding_api_url = url
+        settings.embedding_model = model
+        health = client.get("/api/system/health")
+        config = client.get("/api/system/config")
+        assert health.status_code == config.status_code == 200
+        assert health.json()["embedding"] == config.json()["embedding"]["status"] == expected
+        assert "must-not-appear" not in health.text
+        assert "synthetic.invalid" not in health.text

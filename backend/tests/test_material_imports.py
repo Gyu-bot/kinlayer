@@ -7,6 +7,7 @@ import importlib
 import os
 import sys
 import types
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -15,7 +16,12 @@ from typer.testing import CliRunner
 from sqlalchemy import select, func
 
 from kinlayer_backend import cli
-from kinlayer_backend.models import Candidate, Episode, MaterialImport, Observation
+from kinlayer_backend.models import (
+    Candidate, CandidateEvidence, Entity, Episode, MaterialImport, MemoryChange,
+    Observation, ObservationEvidence,
+)
+from kinlayer_backend.schemas.material_imports import MaterialImportRequest
+from kinlayer_backend.services.material_imports import request_fingerprint
 
 
 def digest(value):
@@ -86,16 +92,26 @@ def test_validate_is_read_only_and_submit_is_idempotent(client):
     assert response.status_code == 200, response.text
     receipt = response.json()
     assert receipt["status"] == "submitted"
+    assert receipt["validation_scope"] == "immediate_memories"
+    assert len(receipt["canonical_record_refs"]) == 1
     replay = client.post("/api/material-imports/submit", json=body, headers=headers)
     assert replay.status_code == 200, replay.text
     assert replay.json()["candidate_ids"] == receipt["candidate_ids"]
+    assert replay.json()["canonical_record_refs"] == receipt["canonical_record_refs"]
     assert client.get("/api/candidates").json()["total"] == 1
     candidate = client.get("/api/candidates/" + receipt["candidate_ids"][0]).json()
-    assert candidate["status"] == "pending"
+    assert candidate["status"] == "accepted"
     assert candidate["evidence"][0]["actor"] == "Synthetic Alice"
     assert candidate["evidence"][0]["material_import_id"] == receipt["import_id"]
     assert candidate["payload"]["claim_type"] == "fact"
-    assert "Source report" in candidate["payload"]["content"]
+    assert candidate["payload"]["claim_basis"] == "reported"
+    assert candidate["payload"]["content"] == body["claims"][0]["summary"]
+    assert client.get("/api/candidates", params={"status": "pending"}).json()["total"] == 0
+    with client.app.state.session_factory() as session:
+        change = session.scalar(select(MemoryChange))
+        assert change.new_record_ref == receipt["canonical_record_refs"][0]
+        assert change.source_episode_id == receipt["episode_ids"][0]
+        assert change.change_kind == "create"
     body["claims"][0]["summary"] = "Changed content"
     assert (
         client.post("/api/material-imports/submit", json=body, headers=headers).status_code == 409
@@ -118,7 +134,7 @@ def counts(client):
     with client.app.state.session_factory() as session:
         return {
             m.__tablename__: session.scalar(select(func.count()).select_from(m))
-            for m in (MaterialImport, Episode, Candidate, Observation)
+            for m in (MaterialImport, Episode, Candidate, Observation, ObservationEvidence, MemoryChange)
         }
 
 
@@ -126,6 +142,52 @@ def rebind(body):
     body["authorization"]["manifest_sha256"] = digest(
         {"target_entity_id": body["target_entity_id"], "sources": body["sources"]}
     )
+
+
+def legacy_import(client, body):
+    """Frozen pre-save-first import, kept to exercise historical receipt/provenance paths."""
+    request = MaterialImportRequest.model_validate(body)
+    source = body["sources"][0]
+    with client.app.state.session_factory() as session:
+        row = MaterialImport(
+            id=request.idempotency_key,
+            request_sha256=request_fingerprint(request),
+            manifest=request.model_dump(mode="json", exclude={"idempotency_key"}),
+            candidate_links={},
+        )
+        session.add(row)
+        session.flush()
+        episode = Episode(
+            material_import_id=row.id, source_type="import", source_ref=source["source_ref"],
+            actor=source["author"], body_excerpt=source["excerpt"], body_hash=source["original_sha256"],
+            occurred_at=datetime.fromisoformat(source["occurred_at"]) if source["occurred_at"] else None,
+            retention_policy="excerpt_only",
+        )
+        candidate = Candidate(
+            candidate_type="observation", target_entity_id=request.target_entity_id,
+            payload={
+                "subject_entity_id": request.target_entity_id,
+                "related_entity_ids": [],
+                "observation_type": "communication_preference",
+                "content": "Source report [Synthetic Alice, 2026-09-01, paragraph-2]: " + body["claims"][0]["summary"],
+                "claim_type": "fact", "ai_use_policy": "cautious_use",
+                "occurred_at": source["occurred_at"],
+            },
+            confidence=0.9, created_by="ai_agent", suggested_action="review",
+        )
+        session.add_all([episode, candidate])
+        session.flush()
+        session.add(CandidateEvidence(
+            candidate_id=candidate.id, episode_id=episode.id,
+            excerpt=source["excerpt"], confidence=0.9,
+        ))
+        row.candidate_links = {candidate.id: {
+            "payload_sha256": digest(candidate.payload), "kind": "sourced_report",
+            "target_entity_id": request.target_entity_id,
+            "episodes": {episode.id: source["source_id"]},
+        }}
+        session.commit()
+        return {"import_id": row.id, "candidate_ids": [candidate.id], "episode_ids": [episode.id]}
 
 
 @pytest.mark.parametrize(
@@ -215,6 +277,8 @@ def test_authentication_and_disabled_routes(staged):
         "episodes": 0,
         "candidates": 0,
         "observations": 0,
+        "observation_evidence": 0,
+        "memory_changes": 0,
     }
 
 
@@ -235,8 +299,94 @@ def test_preview_rollback_and_cross_key_dedup(staged):
         "material_imports": 1,
         "episodes": 1,
         "candidates": 1,
-        "observations": 0,
+        "observations": 1,
+        "observation_evidence": 1,
+        "memory_changes": 1,
     }
+
+
+def test_legacy_receipt_replays_without_rewriting_history(staged):
+    client, headers, body = staged
+    old = legacy_import(client, body)
+    with client.app.state.session_factory() as session:
+        row = session.get(MaterialImport, old["import_id"])
+        before = (copy.deepcopy(row.manifest), row.request_sha256, copy.deepcopy(row.candidate_links))
+    before_counts = counts(client)
+    for method, path in (("get", "/api/material-imports/" + old["import_id"]),
+                         ("post", "/api/material-imports/submit")):
+        response = client.request(method, path, headers=headers, **({"json": body} if method == "post" else {}))
+        assert response.status_code == 200, response.text
+        assert response.json()["validation_scope"] == "pending_candidates_only"
+        assert response.json()["canonical_record_refs"] == []
+        assert response.json()["candidate_ids"] == old["candidate_ids"]
+    assert counts(client) == before_counts
+    with client.app.state.session_factory() as session:
+        row = session.get(MaterialImport, old["import_id"])
+        assert (row.manifest, row.request_sha256, row.candidate_links) == before
+
+
+@pytest.mark.parametrize("kind,basis", [("sourced_report", "reported"), ("inference", "inferred")])
+@pytest.mark.parametrize("source_date", ["2026-09-01T08:00:00Z", None])
+def test_import_keeps_source_date_separate_and_ignores_confirmation(staged, kind, basis, source_date):
+    client, headers, body = staged
+    body["claims"][0]["kind"] = kind
+    body["sources"][0]["occurred_at"] = source_date
+    body["idempotency_key"] = "x" * 120
+    rebind(body)
+    with client.app.state.session_factory() as session:
+        target = session.get(Entity, body["target_entity_id"])
+        target.confirmation_status = "provisional"
+        target.ai_use_policy = "never_surface"
+        session.commit()
+    receipt = client.post("/api/material-imports/submit", json=body, headers=headers)
+    assert receipt.status_code == 200, receipt.text
+    ref = receipt.json()["canonical_record_refs"][0]
+    with client.app.state.session_factory() as session:
+        observation = session.get(Observation, ref.split(":")[1])
+        episode = session.get(Episode, receipt.json()["episode_ids"][0])
+        change = session.scalar(select(MemoryChange))
+        assert observation.claim_basis == basis
+        assert observation.occurred_at is None
+        assert (episode.occurred_at is None) == (source_date is None)
+        assert len(change.request_id) <= 160
+        assert change.new_record_ref == ref
+
+
+@pytest.mark.parametrize("route", ["validate", "submit"])
+def test_canonical_failure_rolls_back_entire_import(staged, monkeypatch, route):
+    from kinlayer_backend.api.errors import api_error
+    from kinlayer_backend.services.candidates import CandidateService
+
+    client, headers, body = staged
+    body["claims"].append({**body["claims"][0], "summary": "Also prefers an advance notice."})
+    original = CandidateService.accept_candidate
+    calls = []
+
+    def fail_second(service, candidate, **kwargs):
+        calls.append(candidate.id)
+        if len(calls) == 2:
+            assert service.session.scalar(select(func.count()).select_from(Observation)) == 1
+            raise api_error(422, "synthetic_failure", "Synthetic second canonical write failure.")
+        return original(service, candidate, **kwargs)
+
+    monkeypatch.setattr(CandidateService, "accept_candidate", fail_second)
+    before = counts(client)
+    response = client.post("/api/material-imports/" + route, json=body, headers=headers)
+    assert response.status_code == 422, response.text
+    assert len(calls) == 2
+    assert counts(client) == before
+
+
+def test_preview_validates_canonical_records_without_persisting_them(staged):
+    client, headers, body = staged
+    before = counts(client)
+    preview = client.post("/api/material-imports/validate", json=body, headers=headers)
+    assert preview.status_code == 200, preview.text
+    result = preview.json()
+    assert result["validation_scope"] == "immediate_memories"
+    assert result["candidate_ids"] == result["episode_ids"] == result["canonical_record_refs"] == []
+    assert result["candidates"][0]["claim_basis"] == "reported"
+    assert counts(client) == before
 
 
 @pytest.fixture
@@ -256,48 +406,8 @@ def pcr():
     return cur, config
 
 
-class SyntheticPlanner:
-    """Deterministic fixture at the planner boundary, not a live LLM."""
-
-    def complete_structured(self, **kwargs):
-        pack = json.loads(kwargs["input"][0]["text"])
-        self.pack = pack
-        decisions = []
-        for group in pack["groups"]:
-            for c in group["candidates"]:
-                decisions.append(
-                    {
-                        "action": "accept_existing",
-                        "risk_level": "low",
-                        "candidate_ids": [c["id"]],
-                        "target_entity_id": c["target_entity_id"],
-                        "proposed_payload": c["payload"],
-                        "evidence_episode_ids": [e["episode_id"] for e in c["evidence"]],
-                        "reason_codes": ["synthetic_source_report"],
-                    }
-                )
-        return types.SimpleNamespace(
-            parsed={"decisions": decisions},
-            text="",
-            provider="synthetic",
-            model="deterministic-fixture",
-        )
-
-
-def pcr_transport(client):
-    def transport(method, url, payload, timeout, max_bytes):
-        parsed = urlsplit(url)
-        path = parsed.path + ("?" + parsed.query if parsed.query else "")
-        response = client.request(method, path, json=payload)
-        assert response.status_code < 400, response.text
-        return response.json()
-
-    return transport
-
-
-def test_cli_http_pcr_curation_canonical_retrieval(staged, pcr, tmp_path, monkeypatch):
+def test_cli_http_immediate_canonical_retrieval(staged, tmp_path, monkeypatch):
     client, headers, body = staged
-    cur, config = pcr
     manifest = tmp_path / "synthetic-manifest.json"
     manifest.write_text(json.dumps(body))
     monkeypatch.setenv("KINLAYER_API_URL", "http://synthetic.test")
@@ -326,23 +436,14 @@ def test_cli_http_pcr_curation_canonical_retrieval(staged, pcr, tmp_path, monkey
     assert submitted.exit_code == 0, submitted.output
     receipt = json.loads(submitted.output)
     candidate_id = receipt["candidate_ids"][0]
-    pending = client.get("/api/candidates/" + candidate_id).json()
-    assert pending["status"] == "pending"
-    assert counts(client)["observations"] == 0
-    pack = client.post("/api/curation/source-packs", json={}).json()
-    assert pack["diagnostics"]["evidence_policy"] == "user_authored_or_authorized_material_v1"
-    assert cur._validate_source_pack(pack, config, None)
-    planner = SyntheticPlanner()
-    result = cur.run_curation(config, planner, transport=pcr_transport(client))
-    assert result["ok"], result
     candidate = client.get("/api/candidates/" + candidate_id).json()
-    assert candidate["status"] == "accepted", result
-    assert candidate["payload"] == pending["payload"]
-    evidence = planner.pack["groups"][0]["candidates"][0]["evidence"][0]
+    assert candidate["status"] == "accepted"
+    assert counts(client)["observations"] == 1
+    assert receipt["canonical_record_refs"] == [candidate["canonical_record_ref"]]
+    pack = client.post("/api/curation/source-packs", json={}).json()
+    assert all(not group["candidates"] for group in pack["groups"])
+    evidence = candidate["evidence"][0]
     assert evidence["actor"] == "Synthetic Alice"
-    assert (
-        evidence["material_provenance"]["authorization_ref"] == body["authorization"]["source_ref"]
-    )
     canonical_id = candidate["canonical_record_ref"].split(":")[1]
     observation = client.get("/api/observations/" + canonical_id).json()
     assert observation["content"] == candidate["payload"]["content"]
@@ -356,27 +457,18 @@ def test_cli_http_pcr_curation_canonical_retrieval(staged, pcr, tmp_path, monkey
     ).json()
     assert canonical_id in json.dumps(retrieved), retrieved
     before = counts(client)
-    assert cur.run_curation(config, planner, transport=pcr_transport(client))["ok"]
-    assert counts(client) == before
+    replay = runner.invoke(
+        cli.app, ["material-import", "--file", str(manifest), "--submit", "--json"]
+    )
+    assert replay.exit_code == 0, replay.output
+    assert json.loads(replay.output)["canonical_record_refs"] == receipt["canonical_record_refs"]
     client.get("/api/entities/" + body["target_entity_id"] + "/context-card")
     assert counts(client) == before
-    print(
-        json.dumps(
-            {
-                "vertical_slice": "cli->http->source_pack->pcr->curation->canonical->retrieve",
-                "candidate_status": candidate["status"],
-                "canonical_count": before["observations"],
-                "result": result,
-            },
-            sort_keys=True,
-        )
-    )
 
 
 @pytest.mark.parametrize("case", ["high_impact", "source_high_impact", "restricted_policy"])
-def test_import_does_not_bypass_review(staged, pcr, case):
+def test_authorized_import_saves_without_review_or_policy_gate(staged, case):
     client, headers, body = staged
-    cur, config = pcr
     if case == "high_impact":
         body["claims"][0]["summary"] = "Reports a cancer diagnosis."
     elif case == "source_high_impact":
@@ -390,25 +482,20 @@ def test_import_does_not_bypass_review(staged, pcr, case):
         body["claims"][0]["ai_use_policy"] = "ask_before_use"
     receipt = client.post("/api/material-imports/submit", json=body, headers=headers)
     assert receipt.status_code == 200, receipt.text
-    result = cur.run_curation(config, SyntheticPlanner(), transport=pcr_transport(client))
-    assert result["ok"], result
-    assert counts(client)["observations"] == 0
-    assert (
-        client.get("/api/candidates/" + receipt.json()["candidate_ids"][0]).json()["status"]
-        == "pending"
-    )
-    run = client.get("/api/curation/runs").json()["items"][0]
-    decision = client.get("/api/curation/runs/" + run["id"]).json()["decisions"][0]
-    assert decision["status"] == "blocked"
-    assert (
-        "restricted_ai_use_policy" if case == "restricted_policy" else "high_impact_content"
-    ) in decision["reason_codes"]
+    assert counts(client)["observations"] == 1
+    candidate = client.get("/api/candidates/" + receipt.json()["candidate_ids"][0]).json()
+    assert candidate["status"] == "accepted"
+    canonical_id = receipt.json()["canonical_record_refs"][0].split(":")[1]
+    observation = client.get("/api/observations/" + canonical_id).json()
+    assert observation["content"] == body["claims"][0]["summary"]
+    assert observation["claim_basis"] == "reported"
+    assert client.get("/api/candidates", params={"status": "pending"}).json()["total"] == 0
 
 
 @pytest.mark.parametrize("changed", ["actor", "excerpt", "date", "payload", "manifest"])
 def test_persisted_tampering_is_excluded_and_accept_blocked(staged, changed):
     client, headers, body = staged
-    receipt = client.post("/api/material-imports/submit", json=body, headers=headers).json()
+    receipt = legacy_import(client, body)
     with client.app.state.session_factory() as session:
         e = session.get(Episode, receipt["episode_ids"][0])
         if changed == "actor":
@@ -450,7 +537,7 @@ def test_import_evidence_cannot_be_reused_as_ordinary_candidate(staged):
 def test_pcr_rejects_unbound_or_wrong_scope_material(staged, pcr):
     client, headers, body = staged
     cur, config = pcr
-    client.post("/api/material-imports/submit", json=body, headers=headers)
+    legacy_import(client, body)
     pack = client.post("/api/curation/source-packs", json={}).json()
     for case in ("absent", "target", "candidate", "policy", "extra", "assistant"):
         changed = copy.deepcopy(pack)
@@ -484,9 +571,10 @@ def test_atomic_batch_failure_and_inference_temporal_metadata(staged):
     receipt = client.post("/api/material-imports/submit", json=body, headers=headers).json()
     c = client.get("/api/candidates/" + receipt["candidate_ids"][0]).json()
     assert c["payload"]["claim_type"] == "inference"
-    assert "Source-based inference" in c["payload"]["content"]
+    assert c["payload"]["content"] == body["claims"][0]["summary"]
+    assert c["payload"]["claim_basis"] == "inferred"
     assert not c["payload"].get("occurred_at")
-    assert "2026-09-01" in c["payload"]["content"]
+    assert "2026-09-01" not in c["payload"]["content"]
     assert not c["payload"].get("valid_to")
     readback = client.get("/api/material-imports/" + receipt["import_id"], headers=headers).json()
     assert readback["manifest"]["authorization"] == body["authorization"]
@@ -510,13 +598,15 @@ def test_concurrent_same_key_import_is_atomic(staged):
         "material_imports": 1,
         "episodes": 1,
         "candidates": 1,
-        "observations": 0,
+        "observations": 1,
+        "observation_evidence": 1,
+        "memory_changes": 1,
     }
 
 
 def test_unreceipted_import_cannot_masquerade_as_user_evidence(staged):
     client, headers, body = staged
-    receipt = client.post("/api/material-imports/submit", json=body, headers=headers).json()
+    receipt = legacy_import(client, body)
     with client.app.state.session_factory() as session:
         e = session.get(Episode, receipt["episode_ids"][0])
         e.material_import_id = None
@@ -529,10 +619,19 @@ def test_unreceipted_import_cannot_masquerade_as_user_evidence(staged):
 def test_import_does_not_allow_planner_or_manual_attribution_rewrite(staged, pcr):
     client, headers, body = staged
     cur, config = pcr
-    receipt = client.post("/api/material-imports/submit", json=body, headers=headers).json()
+    receipt = legacy_import(client, body)
     pack = client.post("/api/curation/source-packs", json={}).json()
     candidates = cur._validate_source_pack(pack, config, None)
     c = pack["groups"][0]["candidates"][0]
+    with client.app.state.session_factory() as session:
+        stored = session.get(Candidate, receipt["candidate_ids"][0])
+        assert "claim_basis" not in stored.payload
+        assert c["payload"] == stored.payload
+        assert c["payload_digest"] == digest(stored.payload)
+        episode = session.get(Episode, receipt["episode_ids"][0])
+        assert c["evidence"][0]["excerpt"] == episode.body_excerpt
+        assert c["evidence"][0]["body_hash"] == episode.body_hash
+        assert c["evidence"][0]["material_provenance"]["import_id"] == receipt["import_id"]
     proposal = {
         "action": "edit_accept_existing",
         "risk_level": "low",

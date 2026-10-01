@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
@@ -38,6 +38,7 @@ class ProfileFieldPayload(APIModel):
     fact_type: str | None = None
     content: str | None = None
     claim_type: str
+    claim_basis: Literal["reported", "inferred", "unknown"] | None = None
     ai_use_policy: str | None = None
 
 
@@ -48,6 +49,7 @@ class RelationshipEdgePayload(APIModel):
     directed: bool | None = None
     claim_text: str
     claim_type: str
+    claim_basis: Literal["reported", "inferred", "unknown"] | None = None
     properties: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -57,6 +59,7 @@ class ObservationPayload(APIModel):
     observation_type: str
     content: str
     claim_type: str
+    claim_basis: Literal["reported", "inferred", "unknown"] | None = None
     ai_use_policy: str = "cautious_use"
     valid_from: datetime | None = None
     valid_to: datetime | None = None

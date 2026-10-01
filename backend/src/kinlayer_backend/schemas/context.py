@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import ConfigDict, Field
 
@@ -12,6 +12,26 @@ class ContextRequestModel(APIModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
+class ContextEntityRead(EntityRead):
+    ai_use_policy: str = Field(default="cautious_use", exclude=True)
+    confirmation_status: str = Field(default="confirmed", exclude=True)
+
+
+class ContextEntityFactRead(EntityFactRead):
+    ai_use_policy: str = Field(default="cautious_use", exclude=True)
+    claim_type: str = Field(default="fact", exclude=True)
+
+
+class ContextEdgeRead(EdgeRead):
+    ai_use_policy: str = Field(default="cautious_use", exclude=True)
+    claim_type: str = Field(default="fact", exclude=True)
+
+
+class ContextObservationRead(ObservationRead):
+    ai_use_policy: str = Field(default="cautious_use", exclude=True)
+    claim_type: str = Field(default="fact", exclude=True)
+
+
 class ContextRetrieveRequest(ContextRequestModel):
     query: str
     entity_hints: list[str] = Field(default_factory=list)
@@ -21,13 +41,23 @@ class ContextRetrieveRequest(ContextRequestModel):
     limit: int = Field(default=10, ge=1, le=50)
 
 
+class RetrievedParticipantRead(APIModel):
+    entity_id: str
+    role: str
+    confidence: float | None = None
+
+
 class RetrievedObservationRead(APIModel):
     observation_id: str
+    subject_entity_id: str
+    observation_type: str
+    claim_basis: Literal["reported", "inferred", "unknown"]
+    confidence: float
     content: str
     score: float
     match_reasons: list[str]
-    ai_use_policy: str
     status: str
+    related_entities: list[RetrievedParticipantRead] = Field(default_factory=list)
     valid_from: datetime | None = None
     valid_to: datetime | None = None
     occurred_at: datetime | None = None
@@ -44,15 +74,14 @@ class MatchedEntityRead(APIModel):
     score_breakdown: dict[str, float]
     penalties: dict[str, float]
     surface_bucket: str
-    ai_use_policy: str
-    confirmation_status: str
-    profile_facts: list[EntityFactRead] = Field(default_factory=list)
+    profile_facts: list[ContextEntityFactRead] = Field(default_factory=list)
     observations: list[RetrievedObservationRead] = Field(default_factory=list)
 
 
 class ContextRetrieveResponse(APIModel):
     matched_entities: list[MatchedEntityRead]
     observations: list[RetrievedObservationRead]
+    provenance: list["ProvenanceItem"] = Field(default_factory=list)
     scores: dict[str, float]
     match_reasons: dict[str, list[str]]
     score_breakdown: dict[str, dict[str, float]]
@@ -82,6 +111,10 @@ class ProvenanceItem(APIModel):
     record_type: str
     record_id: str
     episode_id: str | None = None
+    actor: str | None = None
+    source_type: str | None = None
+    source_ref: str | None = None
+    source_occurred_at: datetime | None = None
     excerpt: str | None = None
     confidence: float | None = None
     created_at: datetime | None = None
@@ -121,14 +154,14 @@ class RetrievalHints(APIModel):
 
 
 class ContextCardResponse(APIModel):
-    entity: EntityRead
+    entity: ContextEntityRead
     aliases: list[AliasRead]
-    profile_facts: list[EntityFactRead]
-    relationship_edges: list[EdgeRead]
-    stable_context: list[ObservationRead]
-    recent_context: list[ObservationRead]
-    communication_context: list[ObservationRead]
-    cautions: list[ObservationRead]
+    profile_facts: list[ContextEntityFactRead]
+    relationship_edges: list[ContextEdgeRead]
+    stable_context: list[ContextObservationRead]
+    recent_context: list[ContextObservationRead]
+    communication_context: list[ContextObservationRead]
+    cautions: list[ContextObservationRead]
     provenance_summary: ProvenanceSummary
     retrieval_hints: RetrievalHints
     provisional_context: list[ProvisionalContextRead] = Field(default_factory=list)

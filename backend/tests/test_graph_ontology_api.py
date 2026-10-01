@@ -152,7 +152,18 @@ def test_ontology_read_endpoints_return_seed_registries(client) -> None:
     assert "observation_types" in body
     assert "fact_types" in body
     assert "policies" in body
+    assert {item["value"] for item in body["claim_bases"]} == {"reported", "inferred", "unknown"}
+    roles = {item["value"]: item for item in body["participant_roles"]}
+    assert set(roles) == {"about", "speaker", "experiencer", "subject", "related", "mentioned", "target"}
+    assert roles["experiencer"]["support_level"] == "supported"
+    assert roles["mentioned"]["support_level"] == "legacy"
+    facts = {item["value"]: item for item in body["fact_types"]}
+    for fact_type in ("memo", "contact_note", "relationship_note", "important_context"):
+        assert facts[fact_type]["support_level"] == "legacy"
+        assert "compatibility" in facts[fact_type]["description"]
+    assert all(item["support_level"] == "legacy" for item in body["policies"]["ai_use_policies"])
     assert any(item["value"] == "person" for item in body["entity_types"])
+    assert any(item["observation_type"] == "preference" for item in body["observation_types"])
     assert any(item["relation_type"] == "client_contact" for item in body["edge_types"])
     assert any(
         item["observation_type"] == "recent_interaction"

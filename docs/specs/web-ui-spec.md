@@ -1,5 +1,12 @@
 # Kinlayer Web UI Specification
 
+> **2026-10-01 boundary:** The default product flow is now
+> [save first, correct during conversation](../plans/save-first-memory-schema.md).
+> Candidate/curation examples below remain compatibility scenarios. The current frontend is
+> intentionally retained; its replacement is [planned separately](../plans/frontend-rebuild.md).
+> Existing approval/policy surfaces are not requirements for new memory writes.
+
+
 - Status: Draft v0.1
 - Parent PRD: `prd.md`
 - Related docs: `data-model.md`, `context-output-contract.md`, `candidate-lifecycle-and-payload.md`, `cli-spec.md`

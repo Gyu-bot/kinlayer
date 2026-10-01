@@ -1,6 +1,12 @@
 # PRD v0.3 — Kinlayer
 
-- Status: Draft v0.3
+> Current decisions: [save-first memory schema](../plans/save-first-memory-schema.md).
+> Immediate canonical storage replaces candidate-first approval and AI-use-policy gating.
+> Embeddings remain in scope. Existing CLI/Web/candidate descriptions below also document deployed
+> compatibility surfaces; frontend replacement is [planning only](../plans/frontend-rebuild.md).
+
+
+- Status: save-first revision, 2026-10-01
 - Product name: Kinlayer
 - Audience: Codex, Claude Code, and future implementation agents
 - Last major rewrite: aligned with decision ledger through MVP API/Web/CLI/retrieval/embedding decisions
@@ -11,23 +17,23 @@
 
 Kinlayer is a local-first relationship context layer for AI agents.
 
-It helps AI agents accumulate, retrieve, and safely use person/relationship context while giving the user a control plane to inspect, correct, review, and constrain that context.
+It helps AI agents accumulate, retrieve, and safely use person/relationship context while giving the user a control plane to inspect and correct that context.
 
 Kinlayer is not a generic CRM, not a social network analyzer, and not a relationship counseling app. It is agent memory infrastructure for relationship-aware workflows.
 
 Core definition:
 
-> Kinlayer is a correctable, policy-aware relationship memory layer for AI agents, with a lightweight human control plane.
+> Kinlayer is a correctable, source-attributed relationship memory layer for AI agents, with a lightweight human control plane.
 
 Core product loop:
 
 ```text
 User talks with an AI agent
 → agent retrieves relationship context from Kinlayer
-→ agent answers using policy-labeled context
+→ agent answers using source-attributed context with explicit claim basis
 → conversation reveals new people/relationships/observations/corrections
-→ agent submits candidates or trusted explicit corrections
-→ user reviews ambiguous candidates and can inspect/correct anything
+→ agent immediately saves atomic claims with human sources through /api/memories
+→ user points out errors in conversation; exact records are corrected, retracted or reattributed
 ```
 
 The primary usage path is AI-agent conversation. Web UI and CLI are supporting control/debug/bootstrap channels.
@@ -52,7 +58,7 @@ Kinlayer sits between three categories:
 
 Kinlayer's position:
 
-> A local-first relationship context store and control plane for AI agents, using candidates, provenance, correction flows, policy-aware surface rules, and hybrid retrieval.
+> A local-first relationship context store and control plane for AI agents, using immediate writes, provenance, correction history, and hybrid retrieval.
 
 ---
 
@@ -73,10 +79,10 @@ Examples:
 An AI runtime that can:
 
 - retrieve relationship context during interaction;
-- submit detected people, aliases, relationships, observations, and conflicts as candidates;
-- submit explicit user corrections through a trusted correction API;
+- resolve/create people and immediately store atomic profile facts, relationships, and observations;
+- apply human-source corrections, retractions and reattributions with exact old record refs;
 - provide evidence/provenance for submitted context;
-- obey surface policies returned by Kinlayer.
+- preserve reported/inferred basis, uncertainty, participant roles and source timing.
 
 ### Connector / importer
 
@@ -102,7 +108,7 @@ Manual Web/CLI entry exists, but mainly for:
 - initial bootstrap seed;
 - inspection;
 - manual cleanup;
-- candidate review;
+- correction and change-history inspection;
 - retrieval debugging.
 
 ### P2. API is canonical
@@ -132,25 +138,15 @@ MVP episodes store:
 
 Full raw body retention is out of MVP. Reliability should come from correction, supersede, deprecate, evidence links, and retrieval updates.
 
-### P4. AI use and AI surface are different
+### P4. Save now; correct during conversation
 
-AI agents may use context internally without directly surfacing it.
+Registration means the memory is available to the agent. No AI-use policy or pre-save approval is
+required. Source admission and schema validation still apply. `claim_basis` distinguishes reported,
+inferred and unknown claims; a saved report is not an externally verified fact.
 
-Kinlayer separates:
-
-```text
-ai_use_policy = stored default usage policy
-surface_visibility = retrieval-time computed bucket
-```
-
-Surface buckets:
-
-```text
-direct_surface
-conditional_surface
-internal_only
-blocked
-```
+Each independently correctable claim has its own record. A common change ledger preserves
+creation, correction, retraction and reattribution. Existing policy/confirmation fields are retained
+only for old-client compatibility and must not gate current storage or retrieval.
 
 ### P5. Kinlayer packages context; agents reason
 
@@ -242,7 +238,7 @@ Postgres remains the canonical source for:
 
 - relationship context;
 - correction/provenance;
-- candidate review;
+- correction and change-history inspection;
 - policy control;
 - fuzzy name/alias search;
 - observation vector search.
@@ -436,6 +432,7 @@ Single observations table covers:
 
 ```text
 stable_fact
+preference
 communication_preference
 relationship_pattern
 care_point
@@ -462,53 +459,23 @@ No polymorphic evidence_links table in MVP.
 
 ---
 
-## 10. Candidate and Correction Model
+## 10. Immediate Memory and Correction Model
 
-Full candidate lifecycle is specified in `candidate-lifecycle-and-payload.md`.
-
-Candidate statuses:
-
-```text
-pending
-accepted
-edited_accepted
-rejected
-archived
-needs_clarification
-superseded
-```
-
-Candidate accept behavior:
+[Agent Write Contract](../agents/agent-write-instruction-pack.md) specifies the exact envelope.
+`POST /api/memories` handles one atomic `create|correct|retract|reattribute` operation, with a stable
+request ID, human source and typed record payload. Canonical records, Episode evidence and change
+history commit together. A same-body retry is idempotent; conflicting key reuse fails.
 
 ```text
-accept/edit-accept immediately writes canonical record
-candidate stores canonical_record_ref as <record_type>:<uuid>
+conversation reveals a useful claim → agent saves it → current retrieval includes it
+user points out an error → agent identifies the old record → atomic correct/retract/reattribute
+→ old row stays in history → current retrieval reflects the result
 ```
 
-Canonical record refs allowed:
-
-```text
-entities:<uuid>
-entity_aliases:<uuid>
-entity_facts:<uuid>
-entity_edges:<uuid>
-observations:<uuid>
-```
-
-Explicit user correction flow:
-
-```text
-user explicitly corrects agent in conversation
-→ agent calls /api/corrections/apply
-→ old canonical record superseded/deprecated
-→ new canonical record active
-→ correction episode/evidence stored
-→ retrieval updates immediately
-```
-
-Agent-inferred corrections/conflicts must go through candidate review.
-
----
+No replacement is required for retraction. Reattribution can move a claim to the intended person.
+Keep old candidates, curation runs and reconciliation history inspectable as compatibility data;
+those interfaces are not a prerequisite for new writes. The legacy candidate lifecycle remains in
+`candidate-lifecycle-and-payload.md`.
 
 ## 11. Retrieval and Context Packaging
 
@@ -544,65 +511,26 @@ include_provisional, context-pack only
 `candidate_entities`, `time_window`, `include_pending_recent`, `max_results`, and `debug` are
 rejected with HTTP 422 rather than silently ignored.
 
-Raw retrieval returns `matched_entities`, `observations`, `scores`, `match_reasons`,
+Raw retrieval returns `matched_entities`, `observations`, `provenance`, `scores`, `match_reasons`,
 `score_breakdown`, `ambiguity_detected`, and wrapper-level `debug`. Context pack returns
 `{context_pack, debug}`; the inner pack contains `confidence`, `suggested_response_policy`,
 `ambiguity_detected`, `matched_entities`, `buckets`, `recent_context`, `stable_context`, `cautions`,
 `provenance`, and the separate opt-in `provisional_context`. Person context cards use the exact keys
 listed in `context-output-contract.md`.
 
-### Hybrid retrieval signals
+### Hybrid retrieval signals and response guidance
 
-Initial score weights are MVP constants:
+Retrieval combines explicit entity hints, aliases/names, semantic observation similarity, recency,
+and graph proximity. Inspect current service/debug output for effective weights. Retired
+AI-use-policy or confirmation flags must not suppress a current claim or reduce its score.
 
-```text
-entity_hint_score: 0.25
-alias_name_score: 0.20
-semantic_observation_score: 0.20
-recency_score: 0.15
-graph_proximity_score: 0.10
-confirmation_policy_score: 0.10
-```
+Returned records expose topic, basis, confidence, people/roles, known event and validity times, and
+structured source provenance. Ambiguous identities still require clarification. Inactive,
+superseded and retracted records belong in history rather than current context. Disputed records
+remain labeled; known validity bounds are returned for interpretation.
 
-Penalties include:
-
-```text
-ambiguity
-surface constraints
-stale/deprecated status
-policy blocks
-```
-
-These weights are not assumed optimal. They should be tuned after dogfood/evaluation. Debug output must expose score breakdown.
-
-### Confidence and response policy
-
-Base thresholds:
-
-```text
-high >= 0.75
-medium >= 0.45
-low < 0.45
-```
-
-Ambiguity guard prevents/downgrades high confidence when:
-
-- top1-top2 score gap is small;
-- reference resolution confidence is low;
-- focal_entity_id is absent with pronoun/implicit reference;
-- policy conflicts exist.
-
-Suggested response policy is based on confidence + surface buckets:
-
-```text
-no_relevant_context
-blocked_by_policy
-natural_use
-conditional_use
-ask_clarifying_question
-```
-
-Kinlayer gives policy labels; the AI agent writes the final answer.
+Legacy surface bucket keys may remain in response shapes for compatibility. They do not authorize
+or prohibit memory use. Kinlayer packages records; the agent writes the final answer.
 
 ---
 
@@ -613,6 +541,7 @@ API is domain-grouped REST.
 Groups:
 
 ```text
+/api/memories
 /api/system
 /api/entities
 /api/aliases
@@ -628,7 +557,7 @@ Groups:
 /api/embeddings
 ```
 
-Use explicit workflow action endpoints where side effects matter:
+The default write endpoint is `POST /api/memories`. Retained legacy action endpoints include:
 
 ```http
 POST /api/candidates/{id}/accept
@@ -652,7 +581,8 @@ physical purge -> out of MVP / later admin-only
 
 ## 13. Minimal Web UI Scope
 
-Detailed screen behavior is specified in `web-ui-spec.md`.
+Existing screen behavior is specified in `web-ui-spec.md`. This is the compatibility UI; the
+replacement is planned in `../plans/frontend-rebuild.md` and is not implemented in this change.
 
 MVP UI optimizes for:
 
@@ -686,9 +616,10 @@ MVP CLI covers:
 ops/status
 raw API escape hatch
 people bootstrap
-candidate workflows
+memory apply (create/correct/retract/reattribute)
+legacy candidate workflows
 context/retrieval
-correction apply
+legacy correction apply
 graph/debug
 embedding status/backfill
 ```
@@ -712,9 +643,8 @@ entity types
 edge types
 observation types
 entity_fact types
-claim types
-ai_use_policy values
-candidate types
+claim basis and participant roles
+legacy claim types, ai_use_policy values and candidate types
 retrieval/UI filters
 ```
 
@@ -724,7 +654,8 @@ MVP seed values include:
 
 - social/professional/dating structural edge types;
 - observation types for stable/recent/pattern/caution context;
-- entity_fact types such as role, job, organization, birthday, contact_note, relationship_note, important_context, external_handle, location_hint.
+- profile fact types such as role, job, organization, birthday, external_handle and location_hint;
+- legacy generic note types remain discoverable for compatibility but are rejected by new memory writes.
 
 ---
 
@@ -745,7 +676,7 @@ MVP does not include:
 - built-in login/session auth;
 - full raw transcript archive;
 - full ontology editor;
-- event-sourced audit trail;
+- full event-sourced database reconstruction (the bounded memory change ledger is in scope);
 - separate embedding worker unless lazy-load proves unusable;
 - Hermes plugin/tool/MCP adapter implementation.
 
@@ -759,10 +690,10 @@ MVP is not done until these pass in a local Docker Compose environment:
 
 ```text
 A. Bootstrap seed
-B. Agent conversation creates candidate
-C. Explicit correction direct apply
+B. Agent conversation immediately creates canonical memory (replaces candidate-first criterion, 2026-10-01)
+C. Conversation correction, retraction and reattribution with source/history
 D. Ambiguous implicit person retrieval
-E. Policy-aware surface
+E. Basis/source-aware retrieval (replaces AI-use-policy gating, 2026-10-01)
 F. Ego graph view
 G. Embedding-backed Korean semantic retrieval
 H. Optional API token protection
@@ -783,7 +714,8 @@ Minimum verification artifacts:
 ## 18. Implementation Plan
 
 The current implementation plan lives in
-`../plans/relationship-curation-cycle.md`. The archived vertical-slice baseline is preserved at
+`../plans/save-first-memory-schema.md`, with frontend implementation deferred to
+`../plans/frontend-rebuild.md`. The archived vertical-slice baseline is preserved at
 `../archive/planning/implementation-plan-2026-06-27.md` for historical context
 only.
 
@@ -807,14 +739,16 @@ Each slice must leave the product runnable and verify at least one real workflow
 
 - `../archive/planning/interview-ledger.md` — historical decision ledger.
 - `ontology-design.md` — ontology registry, edge-vs-observation boundary, and seed registry values.
-- `context-output-contract.md` — retrieval output layers, Context Pack, Person Context Card, recent context, and surface policy contract.
+- `context-output-contract.md` — retrieval output layers, Context Pack, Person Context Card, recent context, basis and source contract.
 - `candidate-lifecycle-and-payload.md` — candidate statuses, accept behavior, common envelope, typed payload schemas, and candidate actions.
 - `data-model.md` — canonical MVP tables, status fields, evidence tables, correction implications, and retrieval implications.
 - `api-spec.md` — OpenAPI-like Markdown endpoint contract.
 - `cli-spec.md` — MVP CLI command set and raw API escape hatch.
 - `web-ui-spec.md` — minimal Web UI screens and behavior.
 - `acceptance-scenarios.md` — journey-level MVP acceptance scenarios and exit bar.
-- `../plans/relationship-curation-cycle.md` — current approved periodic curation implementation plan.
+- `../plans/save-first-memory-schema.md` — current schema, agent-write and live-conversion contract.
+- `../plans/frontend-rebuild.md` — frontend plan only.
+- `../plans/relationship-curation-cycle.md` — superseded curation requirements and compatibility history.
 - `../archive/planning/implementation-plan-2026-06-27.md` — historical vertical implementation baseline.
 - `../agents/agent-integration-notes.md` — future skill/plugin/tool/MCP/runtime-hook integration notes; non-blocking for MVP.
 
@@ -827,7 +761,7 @@ For implementation work, use this PRD together with:
 ```text
 api-spec.md
 data-model.md
-../plans/relationship-curation-cycle.md
+../plans/save-first-memory-schema.md
 acceptance-scenarios.md
 ```
 

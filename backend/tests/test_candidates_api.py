@@ -768,7 +768,7 @@ def test_profile_field_candidate_accept_writes_structured_fact_and_context_card(
     assert fact["claim_type"] == "fact"
     assert fact["confidence"] == 0.8
     assert "sensitivity" not in fact
-    assert fact["ai_use_policy"] == "ask_before_use"
+    assert fact["ai_use_policy"] == "cautious_use"  # Legacy writes ignore retired policy.
     assert fact["source_candidate_id"] == candidate.json()["id"]
 
     context_card = client.get(f"/api/entities/{alex['id']}/context-card").json()
@@ -1755,3 +1755,50 @@ def test_merge_candidate_accept_rolls_back_partial_rewrites(
             == 0
         )
         assert client.get(f"/api/entities/{target['id']}/aliases").json()["items"] == []
+
+
+@pytest.mark.parametrize("candidate_type", ["observation", "relationship_edge"])
+@pytest.mark.parametrize(
+    "claim_type,claim_basis,expected",
+    [
+        ("inference", None, "inferred"),
+        ("fact", None, "unknown"),
+        ("inference", "reported", "reported"),
+        ("inference", "unknown", "unknown"),
+        ("fact", "inferred", "inferred"),
+    ],
+)
+def test_legacy_candidate_accept_maps_only_omitted_basis(
+    client, database_url, candidate_type, claim_type, claim_basis, expected,
+):
+    alex = create_person(client, "Alex")
+    if candidate_type == "observation":
+        payload = {
+            "subject_entity_id": alex["id"], "observation_type": "communication_preference",
+            "content": "Alex prefers short messages.", "claim_type": claim_type,
+        }
+        model = Observation
+    else:
+        user = create_person(client, "User")
+        payload = {
+            "from_entity_id": user["id"], "to_entity_id": alex["id"],
+            "relation_type": "coworker", "claim_text": "Alex is a coworker.",
+            "claim_type": claim_type,
+        }
+        model = EntityEdge
+    if claim_basis is not None:
+        payload["claim_basis"] = claim_basis
+    created = client.post("/api/candidates", json={
+        "candidate_type": candidate_type, "target_entity_id": alex["id"],
+        "payload": payload, "confidence": 0.8, "created_by": "user",
+    })
+    assert created.status_code == 201, created.text
+    original_payload = created.json()["payload"]
+    if claim_basis is None:
+        assert "claim_basis" not in original_payload
+    accepted = client.post(f"/api/candidates/{created.json()['id']}/accept", json={})
+    assert accepted.status_code == 200, accepted.text
+    record_id = accepted.json()["canonical_record_ref"].split(":", 1)[1]
+    with create_session_maker(Settings(database_url=database_url))() as session:
+        assert session.get(model, record_id).claim_basis == expected
+        assert session.get(Candidate, created.json()["id"]).payload == original_payload

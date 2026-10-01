@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_session_maker
-from kinlayer_backend.models import Observation
+from kinlayer_backend.models import Entity, Observation
 from kinlayer_backend.services.retrieval import (
     CONFIDENCE_HIGH_THRESHOLD,
     CONFIDENCE_MEDIUM_THRESHOLD,
@@ -77,7 +77,6 @@ def test_retrieval_score_constants_match_prd_values() -> None:
         "semantic_observation": 0.20,
         "recency": 0.15,
         "graph_proximity": 0.10,
-        "confirmation_policy": 0.10,
     }
     assert CONFIDENCE_HIGH_THRESHOLD == 0.75
     assert CONFIDENCE_MEDIUM_THRESHOLD == 0.45
@@ -130,8 +129,8 @@ def test_exact_normalized_alias_fuzzy_semantic_recency_and_graph_scoring(
     assert match.score_breakdown["semantic_observation"] == 0.20
     assert match.score_breakdown["recency"] == 0.15
     assert match.score_breakdown["graph_proximity"] == 0.10
-    assert match.score_breakdown["confirmation_policy"] == 0.10
-    assert match.score == 1.0
+    assert "confirmation_policy" not in match.score_breakdown
+    assert match.score == 0.9
     assert match.confidence_band == "high"
     assert "exact_alias" in match.match_reasons
     assert "normalized_alias" in match.match_reasons
@@ -141,48 +140,60 @@ def test_exact_normalized_alias_fuzzy_semantic_recency_and_graph_scoring(
     assert result.debug["score_weights"] == SCORE_WEIGHTS
 
 
-def test_policy_penalties_confidence_bands_and_surface_buckets(client, database_url) -> None:
-    direct = create_person(client, "Direct Person")
-    sensitive = create_person(client, "Sensitive Person", sensitivity="high")
-    blocked = create_person(client, "Blocked Person", ai_use_policy="never_surface")
-    stale = create_person(client, "Stale Person", confirmation_status="deprecated")
-    create_observation(client, direct["id"], "Direct Person likes short updates.")
-    create_observation(
-        client,
-        sensitive["id"],
-        "Sensitive Person shared a private concern.",
-        sensitivity="high",
-        ai_use_policy="ask_before_use",
-    )
-    create_observation(
-        client,
-        blocked["id"],
-        "Blocked Person said this should never surface.",
-        ai_use_policy="never_surface",
-    )
-    create_observation(
-        client,
-        stale["id"],
-        "Stale Person has old context.",
-        status="deprecated",
-    )
-
+def test_retired_policy_and_confirmation_do_not_change_retrieval(client, database_url) -> None:
+    person = create_person(client, "Policy Fixture")
+    record = create_observation(client, person["id"], "policy fixture context", recency_weight=1.0)
+    create_person(client, "Unrelated Name")
     with create_session_maker(Settings(database_url=database_url))() as session:
-        result = RetrievalService(session).retrieve(
-            query="Person short private concern never surface old context",
+        entity = session.get(Entity, person["id"])
+        observation = session.get(Observation, record["id"])
+        service = RetrievalService(session)
+        baseline = service.retrieve(query="policy fixture context", entity_hints=[person["id"]])
+        baseline_match = baseline.matches[0]
+        for policy in ("freely_use", "cautious_use", "ask_before_use", "never_surface"):
+            for confirmation in ("confirmed", "candidate", "rejected", "deprecated", "disputed"):
+                entity.ai_use_policy = policy
+                entity.confirmation_status = confirmation
+                observation.ai_use_policy = policy
+                session.commit()
+                current = service.retrieve(query="policy fixture context", entity_hints=[person["id"]])
+                assert current.matches == baseline.matches
+                assert current.surface_buckets["blocked"] == []
+                assert current.surface_buckets["internal_only"] == []
+        assert baseline_match.score == 0.8
+        assert baseline_match.confidence_band == "high"
+        assert baseline_match.penalties == {}
+        assert [match.entity_id for match in baseline.matches] == [person["id"]]
+        assert service.retrieve(query="unmatched zzqx tokens").matches == []
+
+
+def test_inactive_observations_do_not_poison_current_person_and_disputed_is_labeled(
+    client, database_url,
+) -> None:
+    person = create_person(client, "State Fixture")
+    active = create_observation(client, person["id"], "current context", recency_weight=1.0)
+    old_records = [
+        create_observation(client, person["id"], "old context", status=status)
+        for status in ("superseded", "deleted", "deprecated")
+    ]
+    disputed = create_observation(client, person["id"], "disputed context", status="disputed")
+    with create_session_maker(Settings(database_url=database_url))() as session:
+        for record in old_records:
+            row = session.get(Observation, record["id"])
+            row.ai_use_policy = "never_surface"
+        session.commit()
+        current = RetrievalService(session).retrieve(query="current context", entity_hints=[person["id"]])
+        ids = {item.observation_id for item in current.matches[0].observations}
+        assert active["id"] in ids
+        assert not ids.intersection(record["id"] for record in old_records)
+        assert "policy_block" not in current.matches[0].penalties
+        disputed_result = RetrievalService(session).retrieve(query="disputed context")
+        disputed_item = next(
+            item for item in disputed_result.matches[0].observations
+            if item.observation_id == disputed["id"]
         )
-
-    buckets = result.surface_buckets
-    assert any(item.entity_id == direct["id"] for item in buckets["direct_surface"])
-    assert any(item.entity_id == sensitive["id"] for item in buckets["conditional_surface"])
-    assert any(item.entity_id == stale["id"] for item in buckets["internal_only"])
-    assert any(item.entity_id == blocked["id"] for item in buckets["blocked"])
-
-    blocked_match = next(item for item in result.matches if item.entity_id == blocked["id"])
-    stale_match = next(item for item in result.matches if item.entity_id == stale["id"])
-    assert blocked_match.penalties["policy_block"] > 0
-    assert stale_match.penalties["stale_status"] > 0
-    assert blocked_match.confidence_band in {"medium", "low"}
+        assert disputed_item.status == "disputed"
+        assert disputed_result.matches[0].surface_bucket == "conditional_surface"
 
 
 def test_ambiguity_guard_downgrades_implicit_high_confidence(client, database_url) -> None:

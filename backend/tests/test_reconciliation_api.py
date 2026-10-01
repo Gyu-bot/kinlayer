@@ -783,7 +783,7 @@ def test_prepared_candidate_evidence_writes_exact_span(database_url) -> None:
             ).one()
             assert edge.claim_text == prior
             assert edge.sensitivity == "medium"  # Inert storage default, not propagated.
-            assert edge.ai_use_policy == "never_surface"
+            assert edge.ai_use_policy == "cautious_use"  # Obsolete permission is not propagated.
             derived = session.get(Candidate, edge.source_candidate_id)
             assert derived.sensitivity == "medium"
             assert derived.payload["ai_use_policy"] == "never_surface"
@@ -792,6 +792,16 @@ def test_prepared_candidate_evidence_writes_exact_span(database_url) -> None:
             assert action.readback_summary["context_manifest"][0]["ai_use_policy"] == "never_surface"
             action.status = "committed_unverified"
             edge.ai_use_policy = "cautious_use"
+            session.commit()
+        readback = client.get(
+            f"/api/reconciliation/actions/{response.json()['id']}", headers=headers
+        )
+        assert readback.status_code == 200
+        with factory() as session:
+            action = session.get(ReconciliationAction, response.json()["id"])
+            action.status = "committed_unverified"
+            stored_edge = session.get(EntityEdge, edge.id)
+            stored_edge.claim_text = "Changed canonical claim"
             session.commit()
         readback = client.get(
             f"/api/reconciliation/actions/{response.json()['id']}", headers=headers

@@ -6,7 +6,9 @@ from fastapi.testclient import TestClient
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_db_engine
 from kinlayer_backend.main import create_app
-from kinlayer_backend.models import Base, EntityEdge
+from kinlayer_backend.models import (
+    Base, Entity, EntityEdge, EntityFactEvidence, Episode, Observation, ObservationEvidence,
+)
 
 
 def create_person(client, name: str, **overrides) -> dict:
@@ -132,7 +134,7 @@ def test_context_retrieve_returns_matches_scores_observations_and_debug(client) 
     assert "score_weights" in body["debug"]
 
 
-def test_context_pack_policy_buckets_and_no_final_advice_or_drafts(client) -> None:
+def test_context_pack_retired_policy_does_not_block_context_or_generate_final_advice(client) -> None:
     alex = create_person(client, "Alex Kim")
     blocked = create_person(client, "Blocked Kim", ai_use_policy="never_surface")
     create_observation(client, alex["id"], "Alex likes concise status updates.")
@@ -159,11 +161,113 @@ def test_context_pack_policy_buckets_and_no_final_advice_or_drafts(client) -> No
     }
     direct_ids = {item["entity_id"] for item in pack["buckets"]["direct_surface"]}
     blocked_ids = {item["entity_id"] for item in pack["buckets"]["blocked"]}
-    assert blocked["id"] not in direct_ids
-    assert blocked["id"] in blocked_ids
+    assert blocked["id"] in direct_ids
+    assert blocked_ids == set()
+    assert "never_surface" not in response.text
+    assert "confirmation_status" not in response.text
     assert "final_relationship_advice" not in pack
     assert "message_draft" not in pack
     assert response.json()["debug"]["score_weights"]
+
+
+def test_context_preserves_claim_basis_participants_and_source_attribution(client) -> None:
+    subject = create_person(client, "Subject Fixture")
+    speaker = create_person(client, "Speaker Fixture")
+    observed = create_observation(
+        client, subject["id"], "fixture context statement",
+        observation_type="caution",
+        related_entities=[{"entity_id": speaker["id"], "role": "speaker"}],
+        confidence=0.72,
+        recency_weight=1.0,
+    )
+    fact = create_fact(client, subject["id"], "email", "fixture@example.test")
+    with client.app.state.session_factory() as session:
+        entity = session.get(Entity, subject["id"])
+        entity.ai_use_policy = "never_surface"
+        entity.confirmation_status = "rejected"
+        row = session.get(Observation, observed["id"])
+        row.claim_basis = "inferred"
+        row.ai_use_policy = "never_surface"
+        episode = Episode(
+            source_type="manual_entry", source_ref="synthetic://source-message",
+            actor="Speaker Fixture", body_excerpt="synthetic supporting statement",
+            body_hash="synthetic-hash", occurred_at=row.created_at,
+        )
+        session.add(episode)
+        session.flush()
+        session.add_all([
+            ObservationEvidence(
+                observation_id=row.id, episode_id=episode.id,
+                excerpt="synthetic supporting statement", confidence=0.72,
+            ),
+            EntityFactEvidence(
+                entity_fact_id=fact["id"], episode_id=episode.id,
+                excerpt="synthetic fact source", confidence=1.0,
+            ),
+        ])
+        session.commit()
+
+    request = {"query": "fixture context statement", "entity_hints": [subject["id"]]}
+    retrieve = client.post("/api/context/retrieve", json=request)
+    pack_response = client.post("/api/context/pack", json=request)
+    card_response = client.get(f"/api/entities/{subject['id']}/context-card")
+    assert retrieve.status_code == pack_response.status_code == card_response.status_code == 200
+    item = retrieve.json()["observations"][0]
+    assert item["subject_entity_id"] == subject["id"]
+    assert item["observation_type"] == "caution"
+    assert item["claim_basis"] == "inferred"
+    assert item["confidence"] == 0.72
+    assert item["related_entities"] == [{
+        "entity_id": speaker["id"], "role": "speaker", "confidence": None,
+    }]
+    pack = pack_response.json()["context_pack"]
+    assert retrieve.json()["provenance"] == pack["provenance"]
+    assert pack["cautions"][0] == item
+    assert {row["record_type"] for row in pack["provenance"]} == {"fact", "observation"}
+    for provenance in pack["provenance"]:
+        assert provenance["actor"] == "Speaker Fixture"
+        assert provenance["source_type"] == "manual_entry"
+        assert provenance["source_ref"] == "synthetic://source-message"
+        assert provenance["source_occurred_at"] is not None
+    card_item = card_response.json()["cautions"][0]
+    assert card_item["claim_basis"] == "inferred"
+    assert card_item["related_entities"][0]["role"] == "speaker"
+    assert card_item["related_entities"][0]["entity_id"] == speaker["id"]
+    assert "embedding_status" in card_item
+    for response in (retrieve, pack_response, card_response):
+        assert "ai_use_policy" not in response.text
+        assert "confirmation_status" not in response.text
+
+
+def test_context_returns_disputed_as_caution_and_excludes_inactive_records(client) -> None:
+    subject = create_person(client, "State Fixture")
+    disputed = create_observation(
+        client, subject["id"], "fixture disputed context", status="disputed",
+        observation_type="stable_fact",
+    )
+    inactive = [
+        create_observation(client, subject["id"], f"fixture inactive {status}", status=status)
+        for status in ("deleted", "superseded", "deprecated")
+    ]
+    response = client.post("/api/context/pack", json={"query": "fixture disputed context"})
+    assert response.status_code == 200
+    pack = response.json()["context_pack"]
+    assert pack["cautions"][0]["observation_id"] == disputed["id"]
+    assert pack["cautions"][0]["status"] == "disputed"
+    assert all(item["id"] not in response.text for item in inactive)
+    assert pack["buckets"]["conditional_surface"]
+    card = client.get(f"/api/entities/{subject['id']}/context-card")
+    assert card.status_code == 200
+    assert card.json()["cautions"][0]["id"] == disputed["id"]
+    assert all(item["id"] not in card.text for item in inactive)
+
+
+def test_unrelated_entity_is_not_returned_just_because_it_was_confirmed(client) -> None:
+    create_person(client, "Unrelated Fixture")
+    response = client.post("/api/context/pack", json={"query": "zzqx no-match tokens"})
+    assert response.status_code == 200
+    assert response.json()["context_pack"]["matched_entities"] == []
+    assert response.json()["context_pack"]["suggested_response_policy"] == "no_relevant_context"
 
 
 def test_context_requests_reject_unknown_legacy_fields(client) -> None:
@@ -199,7 +303,7 @@ def test_context_pack_medium_direct_surface_uses_conditional_policy(client) -> N
     alex = create_person(client, "Alex Kim")
     create_observation(client, alex["id"], "Alex likes concise status updates.")
 
-    response = client.post("/api/context/pack", json={"query": "Alex concise"})
+    response = client.post("/api/context/pack", json={"query": "Alex concise", "entity_hints": [alex["id"]]})
 
     assert response.status_code == 200
     pack = response.json()["context_pack"]
@@ -288,7 +392,7 @@ def test_context_retrieve_and_pack_include_active_structured_profile_facts(clien
     facts = retrieve.json()["matched_entities"][0]["profile_facts"]
     assert [fact["content"] for fact in facts] == ["alex.new@example.com"]
     assert facts[0]["fact_type"] == "email"
-    assert facts[0]["ai_use_policy"] == "ask_before_use"
+    assert "ai_use_policy" not in facts[0]
     assert "old@example.com" not in retrieve.text
     assert "alex.new@example.com" in pack.text
     assert "old@example.com" not in pack.text

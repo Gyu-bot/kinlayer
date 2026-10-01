@@ -654,3 +654,46 @@ def test_source_pack_redacts_unsafe_and_bounds_legacy_candidate_payload(session:
     assert items[unsafe.id]["payload"] == {}
     assert items[unsafe.id]["validation_errors"][0]["code"] == "unsafe_candidate_payload"
     assert len(items[long.id]["payload"]["content"]) <= 500
+
+
+def test_legacy_source_pack_does_not_invent_claim_basis_or_rehash_sources(session):
+    from copy import deepcopy
+
+    from kinlayer_backend.schemas.candidates import CandidateCreate
+    from kinlayer_backend.services.candidate_snapshots import candidate_payload_digest
+
+    entity = add_person(session)
+    episode = add_episode(session)
+    candidate = add_observation_candidate(session, entity, [episode])
+    original = deepcopy(candidate.payload)
+    original_digest = candidate_payload_digest(candidate)
+    parsed = CandidateCreate.model_validate({
+        "candidate_type": "observation", "target_entity_id": entity.id,
+        "payload": original, "confidence": 0.8, "created_by": "user",
+    })
+    assert "claim_basis" not in parsed.payload
+    assert "claim_basis" not in CandidateCreate.model_validate({
+        "candidate_type": "observation", "target_entity_id": entity.id,
+        "payload": parsed.payload, "confidence": 0.8, "created_by": "user",
+    }).payload
+    pack = CurationService(session).build_source_pack(CurationSourcePackRequest(as_of=AS_OF))
+    packed = pack["groups"][0]["candidates"][0]
+    assert "claim_basis" not in packed["payload"]
+    assert packed["payload_digest"] == original_digest
+    assert candidate.payload == original
+    assert packed["evidence"][0]["body_hash"] == episode.body_hash
+
+
+def test_source_pack_preserves_explicit_claim_basis_and_its_digest(session):
+    from kinlayer_backend.services.candidate_snapshots import candidate_payload_digest
+
+    entity = add_person(session)
+    episode = add_episode(session)
+    candidate = add_observation_candidate(session, entity, [episode])
+    candidate.payload = {**candidate.payload, "claim_basis": "inferred"}
+    session.commit()
+    pack = CurationService(session).build_source_pack(CurationSourcePackRequest(as_of=AS_OF))
+    packed = pack["groups"][0]["candidates"][0]
+    assert packed["payload"]["claim_basis"] == "inferred"
+    assert packed["payload_digest"] == candidate_payload_digest(candidate)
+    assert candidate.payload["claim_basis"] == "inferred"

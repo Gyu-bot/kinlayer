@@ -23,7 +23,8 @@ docs/
 | Product/API/model contract | `specs/` | More specific specs win over PRD prose |
 | Agent write behavior | `agents/agent-write-instruction-pack.md` | Operational instruction pack |
 | Integration ideas | `agents/agent-integration-notes.md` | Adapter/runtime planning, not core extraction |
-| Active implementation | `plans/relationship-curation-cycle.md` | Current approved curation-cycle implementation contract |
+| Active implementation | `plans/save-first-memory-schema.md` | Immediate writes, schema and live data conversion |
+| Frontend plan | `plans/frontend-rebuild.md` | Planning only; implementation deferred |
 | User-facing roadmap | `kinlayer-roadmap.md` | Korean guide for directing future implementation |
 | Documentation map | `README.md` | Active/archive boundaries |
 | Historical context | `archive/` | Reference only; never active SSOT |

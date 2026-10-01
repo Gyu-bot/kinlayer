@@ -1,7 +1,9 @@
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, aliased
 
-from kinlayer_backend.models import AllowedEdgeType, Entity, EntityAlias, EntityEdge, Observation
+from kinlayer_backend.models import (
+    AllowedEdgeType, Entity, EntityAlias, EntityEdge, Observation, ObservationEntity,
+)
 
 
 class RetrievalRepository:
@@ -17,7 +19,15 @@ class RetrievalRepository:
         return self.session.execute(statement).scalars().all()
 
     def observations(self) -> list[Observation]:
-        statement = select(Observation).where(Observation.status != "deleted")
+        statement = select(Observation).where(Observation.status.in_({"active", "disputed"}))
+        return self.session.execute(statement).scalars().all()
+
+    def observation_entities(self, observation_ids: set[str]) -> list[ObservationEntity]:
+        if not observation_ids:
+            return []
+        statement = select(ObservationEntity).where(
+            ObservationEntity.observation_id.in_(observation_ids)
+        ).order_by(ObservationEntity.created_at, ObservationEntity.id)
         return self.session.execute(statement).scalars().all()
 
     def active_edges_for(self, entity_ids: set[str]) -> list[EntityEdge]:
@@ -32,6 +42,8 @@ class RetrievalRepository:
             .join(to_entity, to_entity.id == EntityEdge.to_entity_id)
             .where(
                 EntityEdge.status == "active",
+                from_entity.status == "active",
+                to_entity.status == "active",
                 AllowedEdgeType.active.is_(True),
                 from_entity.entity_type == AllowedEdgeType.from_entity_type,
                 to_entity.entity_type == AllowedEdgeType.to_entity_type,
