@@ -198,6 +198,15 @@ class EntityFact(Base, TimestampMixin):
     entity: Mapped[Entity] = relationship(back_populates="facts")
 
 
+class MaterialImport(Base, TimestampMixin):
+    __tablename__ = "material_imports"
+
+    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    request_sha256: Mapped[str] = mapped_column(String(71), unique=True, nullable=False)
+    manifest: Mapped[dict] = mapped_column(JSON_TYPE, nullable=False)
+    candidate_links: Mapped[dict] = mapped_column(JSON_TYPE, default=dict, nullable=False)
+
+
 class Episode(Base, TimestampMixin):
     __tablename__ = "episodes"
     __table_args__ = (
@@ -209,6 +218,7 @@ class Episode(Base, TimestampMixin):
     source_type: Mapped[str] = mapped_column(String(80), nullable=False)
     source_ref: Mapped[str | None] = mapped_column(String(500))
     source_description: Mapped[str | None] = mapped_column(Text)
+    material_import_id: Mapped[str | None] = mapped_column(ForeignKey("material_imports.id"))
     body_excerpt: Mapped[str] = mapped_column(Text, nullable=False)
     body_hash: Mapped[str] = mapped_column(String(120), nullable=False)
     actor: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -424,6 +434,10 @@ class CandidateEvidence(Base):
     @property
     def actor(self) -> str | None:
         return self.episode.actor if self.episode else None
+
+    @property
+    def material_import_id(self) -> str | None:
+        return self.episode.material_import_id if self.episode else None
 
 
 class ReconciliationAction(Base, TimestampMixin):

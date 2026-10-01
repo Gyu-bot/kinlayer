@@ -112,6 +112,7 @@ class CandidateEvidenceRead(CandidateEvidenceCreate):
     source_description: str | None = None
     body_hash: str | None = None
     actor: str | None = None
+    material_import_id: str | None = None
     created_at: datetime
 
 

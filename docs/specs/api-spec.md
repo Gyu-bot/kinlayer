@@ -17,6 +17,12 @@ candidate-bound original user evidence. Identity and context commit in one trans
 
 Kinlayer's HTTP API is the canonical capability layer.
 
+Explicit user-authorized source imports use `POST /api/material-imports/validate`,
+`POST /api/material-imports/submit`, and `GET /api/material-imports/{import_id}`.
+They require a separate token and bounded manifest; see the
+[authorized material import contract](authorized-material-imports.md).
+Ordinary post-turn evidence and correction/reconciliation identity guards are unchanged.
+
 Product boundary: AI agents interpret current-turn user-authored text and propose candidates or
 explicit corrections; Kinlayer validates, stores, retrieves, reviews, and canonicalizes relationship
 context.

@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
+from kinlayer_backend.services.material_provenance import material_provenance
 from kinlayer_backend.schemas.common import without_legacy_sensitivity
 from kinlayer_backend.models import (
     Candidate,
@@ -267,7 +268,11 @@ class CurationService:
             },
             "diagnostics": {
                 "selection": "pending_candidates_keyset",
-                "evidence_policy": "user_authored_only",
+                "evidence_policy": (
+                    "user_authored_or_authorized_material_v1"
+                    if any(e.episode and e.episode.material_import_id for c in candidates for e in c.evidence)
+                    else "user_authored_only"
+                ),
             },
         }
 
@@ -1093,6 +1098,13 @@ class CurationService:
         if policies & RESTRICTED_AI_USE_POLICIES:
             reasons.append("restricted_ai_use_policy")
 
+        imported = [e for c in ordered for e in c.evidence if e.episode and e.episode.material_import_id]
+        if imported and decision.action not in {"accept_existing", "archive_exact_duplicate"}:
+            reasons.append("material_import_requires_unchanged_accept")
+        if imported and decision.action == "accept_existing" and without_legacy_sensitivity(proposed) != without_legacy_sensitivity(ordered[0].payload):
+            reasons.append("material_import_payload_changed")
+        if imported and any(self._has_high_impact_content(e.excerpt or "") for e in imported):
+            reasons.append("high_impact_content")
         contents = [
             str(proposed.get("content") or "").strip(),
             *(str(candidate.payload.get("content") or "").strip() for candidate in ordered),
@@ -1291,6 +1303,8 @@ class CurationService:
                     "source_ref": episode.source_ref,
                     "body_hash": episode.body_hash,
                     "actor": episode.actor,
+                    **({"material_provenance": material_provenance(self.session, evidence)}
+                       if episode.material_import_id else {}),
                     "occurred_at": episode.occurred_at,
                     "ingested_at": episode.ingested_at,
                     "created_at": evidence.created_at,
@@ -1358,9 +1372,22 @@ class CurationService:
             if schema_failed or (candidate.payload and not original_projection)
             else (result.get("validated_payload") or {}).get("payload", {})
         )
+        warnings = list(result["warnings"])
+        if any(
+            e.episode and e.episode.material_import_id and e.episode.occurred_at is None
+            for e in candidate.evidence
+        ):
+            # Independent of recency wording and of any other dated support.
+            # Policy consumes these warnings for every automatic action; evidence
+            # remains eligible for attribution and explicit manual review.
+            warnings.append({
+                "code": "material_source_date_unknown",
+                "message": "Supporting human material has an unknown date; manual review required.",
+                "field": "evidence.occurred_at",
+            })
         return {
             "errors": errors,
-            "warnings": result["warnings"],
+            "warnings": warnings,
             "normalizations": result["normalizations_applied"],
             "safe_payload": self._safe_source_payload(raw_safe_payload),
         }
@@ -1449,7 +1476,12 @@ class CurationService:
             return ["evidence_episode_not_found"]
         reasons = []
         excerpt = (evidence.excerpt or "").strip()
-        if episode.actor != "user":
+        if episode.material_import_id:
+            if not material_provenance(self.session, evidence):
+                reasons.append("invalid_material_provenance")
+        elif episode.source_type == "import":
+            reasons.append("unauthorized_material_import")
+        elif episode.actor != "user":
             reasons.append("non_user_evidence")
         if not excerpt:
             reasons.append("evidence_excerpt_required")

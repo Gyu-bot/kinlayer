@@ -5,13 +5,22 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator, model_serializer
 
 from kinlayer_backend.schemas.common import APIModel, PublicReadModel, ListResponse
 
 
 class CurationModel(APIModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid", str_strip_whitespace=True)
+
+    @field_validator("*", mode="after")
+    @classmethod
+    def utc_database_datetimes(cls, value):
+        # SQLite drops tzinfo from DateTime(timezone=True); stored times are UTC.
+        # Keep the strict PCR aware-cursor contract on both supported DB engines.
+        if isinstance(value, datetime) and value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value
 
 
 CURATION_DIAGNOSTICS_MAX_BYTES = 8192
@@ -187,11 +196,20 @@ class CurationSourceEvidenceRead(CurationModel):
     source_ref: str | None = None
     body_hash: str
     actor: str
+    material_provenance: dict[str, Any] | None = None
     occurred_at: datetime | None = None
     ingested_at: datetime
     created_at: datetime
 
+    @model_serializer(mode="wrap")
+    def serialize_evidence(self, handler):
+        result = handler(self)
+        if self.material_provenance is None:
+            result.pop("material_provenance", None)
+        return result
 
+
+# Keep ordinary packs wire-compatible with the user-only PCR parser.
 class CurationSourceCandidateRead(CurationModel, PublicReadModel):
     id: str
     candidate_type: str

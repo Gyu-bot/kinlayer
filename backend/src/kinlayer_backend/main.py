@@ -10,6 +10,7 @@ from sqlalchemy import inspect
 
 from kinlayer_backend.api.agent_operations import router as agent_operations_router
 from kinlayer_backend.api.agent_writes import router as agent_writes_router
+from kinlayer_backend.api.material_imports import router as material_imports_router
 from kinlayer_backend.api.candidates import router as candidates_router
 from kinlayer_backend.api.context import router as context_router
 from kinlayer_backend.api.curation import router as curation_router
@@ -79,6 +80,12 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
         request: Request,
         call_next: Callable[[Request], Awaitable[Any]],
     ):
+        if request.url.path.startswith("/api/material-imports/"):
+            if not settings.material_import_token:
+                return error_response(404, "not_found", "Material imports are disabled.")
+            if not hmac.compare_digest(request.headers.get("authorization", ""), f"Bearer {settings.material_import_token}"):
+                return error_response(401, "unauthorized", "Material import token is required.")
+            return await call_next(request)
         enrichment_answer_path = RECONCILIATION_PATH_PREFIX + "enrichment-answers"
         is_enrichment_answer = request.url.path == enrichment_answer_path or request.url.path.startswith(
             enrichment_answer_path + "/"
@@ -111,6 +118,7 @@ def create_app(overrides: dict[str, Any] | None = None) -> FastAPI:
     app.include_router(relationships_router)
     app.include_router(embeddings_router)
     app.include_router(candidates_router)
+    app.include_router(material_imports_router)
     app.include_router(corrections_router)
     app.include_router(context_router)
     app.include_router(curation_router)

@@ -9,6 +9,7 @@ export type CandidateEvidence = {
   source_description: string | null;
   body_hash: string | null;
   actor: string | null;
+  material_import_id?: string | null;
   created_at: string;
 };
 

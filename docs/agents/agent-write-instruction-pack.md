@@ -30,8 +30,8 @@ Ambiguous or unsupported memory -> no write, or ask for clarification
 2. Never invent controlled values.
 3. Use candidates for inferred agent writes.
 4. Use direct correction apply only for explicit user corrections.
-5. Use evidence only from user-authored source text.
-6. Do not use assistant text, tool output, retrieved context, or your own inference as evidence.
+5. Ordinary automatic post-turn writes use only current-turn user-authored source text.
+6. Explicit user-authorized material imports use only the separate [bounded import contract](../specs/authorized-material-imports.md). Actual human authorship is preserved, never relabeled as `user`. Assistant analysis may be a source-grounded synthesis, never its own evidence. Generic tool output, retrieved context, and inference alone remain ineligible.
 7. Do not create relationship edges for advice, feelings, reply strategy, caution, communication preference, or recent interaction interpretation.
 8. If the target person or old record is ambiguous, do not write a canonical correction.
 9. If the correct ontology value is missing, stop instead of creating a new value.
@@ -63,7 +63,7 @@ suggested_action
 Before any write-like call, run this flow.
 
 ```text
-1. Identify the user-authored statement that justifies the write.
+1. Identify current-turn user evidence; for explicit material imports, use the separate manifest/authorization validation and submit operation instead of this ordinary flow.
 2. Resolve the target entity or entities.
 3. Fetch ontology and controlled values.
 4. Classify the proposed memory into one Kinlayer write type.
@@ -177,14 +177,15 @@ Use only active `observation_type` values from the ontology.
 
 ## 7. Evidence Rules
 
-Evidence must be small, attributable, and user-authored.
+Evidence must be small and attributable. Ordinary post-turn evidence must be current-turn user-authored. A user-requested source-material import is a separate operation, not an expansion of ordinary evidence admission.
 
 Allowed evidence:
 
 ```text
 - current-turn user message text;
-- a bounded excerpt from a user-authored source;
-- an imported source excerpt with a stable source reference.
+- explicitly authorized supplied chat/document/transcript or designated external human source,
+  ONLY via /api/material-imports/validate then /submit with its bounded manifest and exact
+  user authorization reference; never an ordinary tool result or arbitrary retrieved memory.
 ```
 
 Disallowed evidence:
@@ -952,7 +953,7 @@ Treat UI relationship type, API relation_type, relationship_edge.relation_type, 
 Use candidates for inferred memory. Use /api/corrections/apply only for explicit user corrections with an unambiguous old record.
 Edges are durable structural relationships. Preferences, cautions, feelings, reply strategy, recent interactions, and advice are observations, not edges.
 Observation content must be self-contained. If a useful observation depends on relative time such as "this week", "yesterday", "recently", or "지난번", resolve it against the source timestamp and record an absolute date/range when possible.
-Evidence must be a bounded user-authored excerpt. Never use assistant text, tool output, retrieved context, or guesses as evidence.
+Ordinary post-turn evidence must be a bounded current-turn user-authored excerpt. Explicit user-authorized source material uses only the separate material-import manifest route, preserving the human author and source linkage. Never treat assistant analysis, generic tool output, retrieved context, or guesses as human original evidence.
 If the entity, record, or ontology value is ambiguous or missing, do not write; ask for clarification or return a no-write diagnostic.
 ```
 

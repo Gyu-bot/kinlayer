@@ -62,7 +62,8 @@ class CandidateService:
         self.session = session
         self.repository = CandidateRepository(session)
 
-    def create_candidate(self, payload: dict[str, Any], *, commit: bool = True) -> Candidate:
+    def create_candidate(self, payload: dict[str, Any], *, commit: bool = True,
+                         material_import_id: str | None = None) -> Candidate:
         payload = without_legacy_sensitivity(payload)
         evidence = payload.pop("evidence", [])
         validate_common(payload, self.session)
@@ -83,6 +84,8 @@ class CandidateService:
             episode = self.session.get(Episode, item["episode_id"])
             if not episode:
                 raise api_error(404, "not_found", "Evidence episode not found.")
+            if episode.material_import_id and episode.material_import_id != material_import_id:
+                raise api_error(422, "material_import_link_required", "Use the explicit material import operation.")
             if payload.get("created_by") == "ai_agent":
                 self._validate_agent_evidence(item, episode)
         self._validate_payload(
@@ -172,6 +175,11 @@ class CandidateService:
         commit: bool,
     ) -> Candidate:
         try:
+            from kinlayer_backend.services.material_provenance import material_provenance
+
+            for evidence in candidate.evidence:
+                if (evidence.episode.material_import_id or evidence.episode.source_type == "import") and not material_provenance(self.session, evidence):
+                    raise api_error(409, "material_import_changed", "Imported source linkage or synthesis changed; re-import for review.")
             candidate.resolved_by = resolved_by
             canonical_record_ref = self._write_canonical_record(candidate)
             candidate.canonical_record_ref = canonical_record_ref

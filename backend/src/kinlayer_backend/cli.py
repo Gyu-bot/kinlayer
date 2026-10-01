@@ -50,6 +50,10 @@ def _request(method: str, path: str, *, payload: dict[str, Any] | None = None) -
     settings = Settings()
     url = _api_url(settings, path)
     headers = _headers(settings)
+    if path.startswith("/api/material-imports/"):
+        if not settings.material_import_token:
+            raise typer.BadParameter("KINLAYER_MATERIAL_IMPORT_TOKEN is required.")
+        headers = {"Authorization": f"Bearer {settings.material_import_token}"}
     if method == "GET":
         return httpx.get(url, headers=headers, timeout=5)
     if method == "POST":
@@ -96,6 +100,33 @@ def _read_json_file(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise typer.BadParameter("JSON file must contain an object.")
     return payload
+
+
+@app.command("material-import")
+def material_import(
+    file: Annotated[Path, typer.Option("--file", exists=True, dir_okay=False)],
+    submit: Annotated[bool, typer.Option("--submit", help="Persist pending candidates; default validates with rollback.")] = False,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Validate pending candidates only, not autoaccept eligibility. Never canonicalizes.
+
+    Submit only explicitly; warnings, undated material and planner limits need review.
+    """
+    if file.stat().st_size > 100_000:
+        raise typer.BadParameter("Import manifest exceeds 100000 bytes.")
+    payload = _read_json_file(file)
+    response = _request("POST", "/api/material-imports/" + ("submit" if submit else "validate"), payload=payload)
+    _raise_for_api(response)
+    result = response.json()
+    if submit:
+        from urllib.parse import quote
+
+        readback = _request("GET", "/api/material-imports/" + quote(result["import_id"], safe=""))
+        _raise_for_api(readback)
+        actual = readback.json()
+        if any(actual.get(key) != result.get(key) for key in ("request_sha256", "candidate_ids", "episode_ids")):
+            raise typer.BadParameter("Import committed but receipt readback did not match; do not re-key.")
+    _emit(result, json_output)
 
 
 def _query_path(path: str, params: list[tuple[str, Any]]) -> str:

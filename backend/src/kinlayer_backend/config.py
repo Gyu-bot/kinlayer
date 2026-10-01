@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     api_port: int = 8765
     api_url: str = "http://127.0.0.1:8765"
     api_token: str | None = None
+    material_import_token: str | None = None
     reconciliation_token: str | None = None
     reconciliation_commitment_key: str | None = None
     database_url: str = "postgresql+psycopg://kinlayer:kinlayer@127.0.0.1:15432/kinlayer"
@@ -45,6 +46,7 @@ class Settings(BaseSettings):
     def apply_embedding_defaults(self) -> "Settings":
         for field_name in (
             "api_token",
+            "material_import_token",
             "reconciliation_token",
             "reconciliation_commitment_key",
             "embedding_provider",
@@ -76,6 +78,8 @@ class Settings(BaseSettings):
         ):
             raise ValueError("reconciliation commitment key must be at least 32 UTF-8 bytes")
 
+        if self.material_import_token and self.material_import_token in {self.api_token, self.reconciliation_token}:
+            raise ValueError("material import token must be separate from ordinary API/reconciliation tokens")
         return self
 
     @classmethod

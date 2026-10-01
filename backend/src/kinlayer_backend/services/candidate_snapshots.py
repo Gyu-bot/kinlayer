@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from kinlayer_backend.models import Candidate, CandidateEvidence, Entity, Episode
+from kinlayer_backend.models import Candidate, CandidateEvidence, Entity, Episode, MaterialImport
 
 
 def digest(value: Any) -> str:
@@ -39,11 +39,23 @@ def candidate_evidence_digest(session: Session, candidate_id: str) -> str:
                 "source_ref": episode.source_ref,
                 "body_hash": episode.body_hash,
                 "actor": episode.actor,
+                **({"material_import": _material_import_snapshot(session, episode)}
+                   if episode.material_import_id else {}),
                 "sensitivity": episode.sensitivity,
             }
             for evidence, episode in rows
         ]
     )
+
+
+def _material_import_snapshot(session: Session, episode: Episode) -> dict[str, Any]:
+    row = session.get(MaterialImport, episode.material_import_id)
+    return {
+        "import_id": episode.material_import_id,
+        "receipt_digest": digest({"manifest": row.manifest, "links": row.candidate_links}) if row else None,
+        "excerpt_digest": digest(episode.body_excerpt),
+        "occurred_at": episode.occurred_at.isoformat() if episode.occurred_at else None,
+    }
 
 
 def candidate_snapshot(session: Session, candidate: Candidate) -> dict[str, Any]:
