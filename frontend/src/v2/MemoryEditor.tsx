@@ -1,8 +1,9 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   api,
   basisLabels,
   errorText,
+  factText,
   label,
   relationLabel,
   newRequestId,
@@ -62,6 +63,7 @@ export function MemoryEditor({
   item,
   personId = "",
   action = "create",
+  initialKind = "observations",
   relationshipAxis,
   perspectiveEntityId,
   onClose,
@@ -70,6 +72,7 @@ export function MemoryEditor({
   item?: MemoryItem;
   personId?: string;
   action?: Action;
+  initialKind?: RecordType;
   relationshipAxis?: string;
   perspectiveEntityId?: string;
   onClose: () => void;
@@ -89,13 +92,13 @@ export function MemoryEditor({
     config.data.memory_write.review_required === false;
   const p = item?.payload;
   const [kind, setKind] = useState<RecordType>(
-    item?.record_type || "observations",
+    item?.record_type || initialKind,
   );
   const [type, setType] = useState(
     p?.fact_type ||
       p?.relation_type ||
       p?.observation_type ||
-      (relationshipAxis ? "relationship_assessment" : "recent_interaction"),
+      (relationshipAxis ? "relationship_assessment" : initialKind === "entity_facts" ? "organization" : initialKind === "entity_edges" ? "" : "recent_interaction"),
   );
   const [target, setTarget] = useState(
     p?.entity_id || p?.subject_entity_id || p?.from_entity_id || personId,
@@ -136,8 +139,9 @@ export function MemoryEditor({
     kind === "entity_facts" && ["birthday", "birth_date"].includes(type);
   const retract = action === "retract",
     move = action === "reattribute";
+  const directFact = !retract && !move && (kind === "entity_facts" || kind === "entity_edges");
   const title = {
-    create: "기억 추가",
+    create: kind === "entity_facts" ? "프로필 추가" : kind === "entity_edges" ? "관계 추가" : "기억 추가",
     correct: "기억 정정",
     retract: "기억 철회",
     reattribute: "다른 인물로 옮기기",
@@ -155,6 +159,10 @@ export function MemoryEditor({
             .filter((t) => t.active && (!item || fixedAssessment || t.observation_type !== "relationship_assessment"))
             .map((t) => t.observation_type);
   const edgeDefinition = o.data?.edge_types.find((t) => t.relation_type === type);
+  useEffect(() => {
+    if (kind === "entity_edges" && !type && o.data)
+      setType(o.data.edge_types.find((t) => t.active && t.write_supported === true)?.relation_type || "");
+  }, [kind, type, o.data]);
   const legacyEdge =
     kind === "entity_edges" && edgeDefinition?.write_supported === false;
   const sameEdgeType = kind === "entity_edges" && type === p?.relation_type;
@@ -170,8 +178,22 @@ export function MemoryEditor({
   const unknownProperties = Object.entries(edgeProperties).filter(
     ([key]) => !knownEdgeProperty(key),
   );
+  const relationshipText = effectiveDirection
+    ? `시작 인물은 대상 인물의 ${relationLabel(type, o.data)}`
+    : `두 사람의 관계: ${relationLabel(type, o.data)}`;
+  const directContent = kind === "entity_edges"
+    ? content.trim() || relationshipText
+    : isDate
+      ? year || month || day ? factText({ fact_type: type, ...dateValue(year, month, day) }) : ""
+      : content.trim();
+  const directExcerpt = [
+    directContent,
+    ...(kind === "entity_edges" ? Object.entries(edgeProperties).map(([key, value]) =>
+      `${edgePropertyFields.find(([name]) => name === key)?.[1] || key}: ${typeof value === "string" ? value : JSON.stringify(value)}`) : []),
+  ].filter(Boolean).join("\n").slice(0, 4000);
   function changeKind(next: RecordType) {
     setKind(next);
+    if (!item) setContent("");
     setType(
       next === "entity_facts"
         ? "organization"
@@ -232,7 +254,7 @@ export function MemoryEditor({
               to_entity_id: other,
               relation_type: type,
               directed: effectiveDirection,
-              claim_text: content.trim(),
+              claim_text: directContent,
               properties: legacyEdge ? p?.properties || {} : Object.fromEntries(
                 Object.entries(edgeProperties).map(([key, value]) => [
                   key,
@@ -261,8 +283,8 @@ export function MemoryEditor({
         created_by: "user",
         source: {
           source_type: "manual_entry",
-          actor: actor.trim(),
-          excerpt: excerpt.trim(),
+          actor: actor.trim() || (directFact ? "나" : ""),
+          excerpt: excerpt.trim() || (directFact ? directExcerpt : ""),
           occurred_at: iso(sourceTime),
         },
         ...(reason.trim() ? { reason: reason.trim() } : {}),
@@ -356,7 +378,13 @@ export function MemoryEditor({
                       id="memory-type"
                       disabled={fixedAssessment}
                       value={type}
-                      onChange={(e) => setType(e.target.value)}
+                      onChange={(e) => {
+                        // A saved default description follows the selected relationship.
+                        // Explicit prose remains the user's draft when changing the type.
+                        if (kind === "entity_edges" && content.trim() === relationshipText)
+                          setContent("");
+                        setType(e.target.value);
+                      }}
                     >
                       {(!choices?.includes(type) || legacyEdge) && (
                         <option value={type}>{typeLabel(type)} · 이전 종류</option>
@@ -524,15 +552,23 @@ export function MemoryEditor({
                     </fieldset>
                   ) : (
                     <div className="field">
-                      <label htmlFor="memory-content">기억 내용</label>
-                      <textarea
+                      <label htmlFor="memory-content">{kind === "entity_facts" ? `${typeLabel(type)} 값` : kind === "entity_edges" ? "관계 설명 (선택)" : "기억 내용"}</label>
+                      {kind === "entity_facts" ? <input
                         id="memory-content"
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
                         required
                         maxLength={4000}
+                        placeholder={`${typeLabel(type)}을(를) 입력하세요`}
+                      /> : <textarea
+                        id="memory-content"
+                        value={content}
+                        onChange={(e) => setContent(e.target.value)}
+                        required={kind !== "entity_edges"}
+                        maxLength={4000}
                         rows={3}
-                      />
+                      />}
+                      {kind === "entity_edges" && <p className="small muted">인물과 관계 유형만 선택해도 저장할 수 있어요. 설명을 비우면 선택한 관계를 기록합니다.</p>}
                     </div>
                   )}
                   <div className="field-grid">
@@ -693,16 +729,22 @@ export function MemoryEditor({
               )}
             </>
           )}
-          <section className="stack">
-            <h3>이번 입력의 출처</h3>
+          {directFact && <section className="evidence-card stack" aria-label="직접 입력 출처">
+            <h3>입력한 정보가 출처로 함께 저장돼요</h3>
+            <p className="small muted">기본 출처는 나의 직접 입력입니다. 별도의 기억 문장 없이 저장할 수 있으며, 다른 사람의 발언이나 원문이 있으면 아래에서 출처를 보완하세요.</p>
+            <p className="small">{directExcerpt || "값을 입력하면 저장할 내용이 표시됩니다."}</p>
+          </section>}
+          <details open={directFact ? undefined : true}>
+            <summary>{directFact ? "출처 보완·변경 이유 (선택)" : "이번 입력의 출처"}</summary>
+            <div className="stack">
             <div className="field">
               <label htmlFor="source-actor">말한 사람</label>
               <input
                 id="source-actor"
                 value={actor}
                 onChange={(e) => setActor(e.target.value)}
-                placeholder="예: 나, 김민지"
-                required
+                placeholder={directFact ? "미입력 시 나" : "예: 나, 김민지"}
+                required={!directFact}
                 maxLength={80}
               />
             </div>
@@ -712,10 +754,10 @@ export function MemoryEditor({
                 id="source-excerpt"
                 value={excerpt}
                 onChange={(e) => setExcerpt(e.target.value)}
-                required
+                required={!directFact}
                 maxLength={4000}
                 rows={3}
-                placeholder="기억을 남기거나 바꾸는 근거를 적어 주세요."
+                placeholder={directFact ? "미입력 시 위의 직접 입력 내용을 출처로 저장합니다." : "기억을 남기거나 바꾸는 근거를 적어 주세요."}
               />
             </div>
             <div className="field">
@@ -737,7 +779,8 @@ export function MemoryEditor({
                 maxLength={1000}
               />
             </div>
-          </section>
+            </div>
+          </details>
           {error ? (
             <div role="alert" className="error-state">
               <p>{errorText(error)}</p>

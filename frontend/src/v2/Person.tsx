@@ -15,6 +15,7 @@ import {
   type Page,
   type Person as PersonRecord,
   type Receipt,
+  type RecordType,
 } from "./data";
 import { Empty, ErrorState, Loading, MemoryCard, Modal, Pager } from "./common";
 import { MemoryEditor } from "./MemoryEditor";
@@ -32,8 +33,10 @@ export function Person({
   const ontology = useResource<Ontology>("/api/ontology");
   const [tab, setTab] = useState("overview"),
     [offset, setOffset] = useState(0),
+    [factsOffset, setFactsOffset] = useState(0),
+    [status, setStatus] = useState("active"),
     [version, setVersion] = useState(0),
-    [adding, setAdding] = useState(false),
+    [adding, setAdding] = useState<RecordType | null>(null),
     [editing, setEditing] = useState(false),
     [notice, setNotice] = useState("");
   const entity = useResource<PersonRecord>(
@@ -45,20 +48,27 @@ export function Person({
     version,
   );
   const records = useResource<Page<MemoryItem>>(
-    `/api/memories?${query({ entity_id: id, record_type: tab === "profile" ? "entity_facts" : tab === "relations" ? "entity_edges" : tab === "overview" ? "observations" : "", status: tab === "sources" ? "all" : "active", limit: 20, offset })}`,
+    `/api/memories?${query({ entity_id: id, record_type: tab === "profile" ? "entity_facts" : tab === "relations" ? "entity_edges" : tab === "overview" ? "observations" : "", status: tab === "sources" ? "all" : tab === "all" ? status : "active", limit: 20, offset })}`,
     version,
   );
   const facts = useResource<Page<MemoryItem>>(
     `/api/memories?${query({ entity_id: id, record_type: "entity_facts", status: "active", limit: 20 })}`,
     version,
   );
+  const laterFacts = useResource<Page<MemoryItem>>(
+    factsOffset
+      ? `/api/memories?${query({ entity_id: id, record_type: "entity_facts", status: "active", limit: 20, offset: factsOffset })}`
+      : null,
+    version,
+  );
+  const overviewFacts = factsOffset ? laterFacts : facts;
   const relationship = useResource<Page<MemoryItem>>(
     `/api/memories?${query({ entity_id: id, record_type: "entity_edges", status: "active", limit: 5 })}`,
     version,
   );
   function saved(receipt: Receipt) {
-    setAdding(false);
-    setNotice("기억을 저장했어요.");
+    setAdding(null);
+    setNotice("정보를 저장했어요.");
     setVersion((v) => v + 1);
     onNavigate(memoryUrl(receipt.new_record_ref!));
   }
@@ -100,7 +110,7 @@ export function Person({
           <p className="hero-description">
             {facts.data?.items
               .filter((item) =>
-                ["organization", "role"].includes(item.payload.fact_type || ""),
+                ["organization", "role", "job"].includes(item.payload.fact_type || ""),
               )
               .map(
                 (item) =>
@@ -113,7 +123,7 @@ export function Person({
               "등록된 별칭 없음"}
           </p>
         </div>
-        <div className="hero-actions">
+        <div className="hero-actions wrap">
           <a className="button ghost" href={`/graph?focal=${p.id}`}>
             관계 보기
           </a>
@@ -121,8 +131,22 @@ export function Person({
             이름·별칭 편집
           </button>
           <button
+            className="button"
+            onClick={() => setAdding("entity_facts")}
+            disabled={p.status !== "active"}
+          >
+            프로필 추가
+          </button>
+          <button
+            className="button"
+            onClick={() => setAdding("entity_edges")}
+            disabled={p.status !== "active"}
+          >
+            관계 추가
+          </button>
+          <button
             className="button primary"
-            onClick={() => setAdding(true)}
+            onClick={() => setAdding("observations")}
             disabled={p.status !== "active"}
           >
             기억 추가
@@ -137,6 +161,7 @@ export function Person({
       <div className="filter-tabs" aria-label="인물 상세 보기">
         {[
           ["overview", "개요"],
+          ["all", "전체 정보"],
           ["profile", "프로필"],
           ["relations", "관계"],
           ["sources", "출처"],
@@ -149,6 +174,7 @@ export function Person({
             onClick={() => {
               setTab(value);
               setOffset(0);
+              setFactsOffset(0);
             }}
           >
             {name}
@@ -157,12 +183,8 @@ export function Person({
       </div>
       <div className="detail-layout">
         <div className="stack">
-          {["overview", "relations"].includes(tab) && p.system_role !== "self" && (
-            <RelationshipProfile personId={p.id} ontology={ontology.data} version={version}
-              editable={p.status === "active"} onChanged={() => setVersion((v) => v + 1)} />
-          )}
           {tab === "overview" && (
-            <section className="panel content-panel stack">
+            <section className="panel content-panel stack" aria-label="기본 정보">
               <div className="section-heading">
                 <h2>기본 정보</h2>
                 <button
@@ -175,37 +197,45 @@ export function Person({
                   프로필 전체 보기
                 </button>
               </div>
-              {facts.loading ? (
+              <p className="small muted">현재 프로필 정보를 유형 제한 없이 보여드려요.</p>
+              {overviewFacts.loading ? (
                 <Loading />
-              ) : facts.error ? (
-                <ErrorState error={facts.error} retry={facts.reload} />
+              ) : overviewFacts.error ? (
+                <ErrorState error={overviewFacts.error} retry={overviewFacts.reload} />
               ) : (
-                <div className="fact-grid">
-                  {facts.data?.items.slice(0, 6).map((item) => (
-                    <div className="fact" key={item.record_ref}>
-                      <span className="eyebrow">
-                        {label(item.payload.fact_type || "")}
-                      </span>
-                      <a href={memoryUrl(item.record_ref)}>
-                        <p>
-                          {factText({
-                            fact_type: item.payload.fact_type || "",
-                            value: item.payload.value || null,
-                            content: item.content,
-                          })}
-                        </p>
-                      </a>
-                      <span className="small muted">
-                        {basisLabels[item.claim_basis]}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div className="fact-grid">
+                    {overviewFacts.data?.items.map((item) => (
+                      <div className="fact" key={item.record_ref}>
+                        <span className="eyebrow">
+                          {label(item.payload.fact_type || "")}
+                        </span>
+                        <a href={memoryUrl(item.record_ref)}>
+                          <p>
+                            {factText({
+                              fact_type: item.payload.fact_type || "",
+                              value: item.payload.value || null,
+                              content: item.content,
+                            }) || (item.payload.value ? JSON.stringify(item.payload.value) : "내용 없음")}
+                          </p>
+                        </a>
+                        <span className="small muted">
+                          {basisLabels[item.claim_basis]}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {overviewFacts.data && <Pager page={overviewFacts.data} onPage={setFactsOffset} />}
+                </>
               )}
-              {!facts.loading && !facts.data?.total && !facts.error && (
+              {!overviewFacts.loading && !overviewFacts.data?.total && !overviewFacts.error && (
                 <p className="muted">등록된 프로필 정보가 없어요.</p>
               )}
             </section>
+          )}
+          {["overview", "relations"].includes(tab) && p.system_role !== "self" && (
+            <RelationshipProfile personId={p.id} ontology={ontology.data} version={version}
+              editable={p.status === "active"} onChanged={() => setVersion((v) => v + 1)} />
           )}
           {tab === "changes" ? (
             <section className="panel content-panel">
@@ -222,12 +252,30 @@ export function Person({
                       ? "프로필 정보"
                       : tab === "relations"
                         ? "연결된 관계"
-                        : "기억별 출처"}
+                        : tab === "all"
+                          ? "전체 정보"
+                          : "기억별 출처"}
                 </h2>
                 <a className="text-link" href={`/memories?person=${id}`}>
                   기억 전체 보기
                 </a>
               </div>
+              {tab === "all" && (
+                <>
+                  <p className="small muted">프로필·관계·맥락을 모두 보여드려요. 이전·철회된 정보는 상태를 바꾸어 확인할 수 있어요.</p>
+                  <div className="field-inline">
+                    <label htmlFor="person-record-status">정보 상태</label>
+                    <select id="person-record-status" className="select" value={status} onChange={(event) => {
+                      setStatus(event.target.value);
+                      setOffset(0);
+                    }}>
+                      <option value="active">현재 정보</option>
+                      <option value="history">이전·철회된 정보</option>
+                      <option value="all">모든 상태</option>
+                    </select>
+                  </div>
+                </>
+              )}
               {tab === "sources" && (
                 <p className="small muted">
                   이전·철회된 기억의 출처도 포함해 기억별로 보여드려요.
@@ -247,13 +295,16 @@ export function Person({
                       </div>
                     ))}
                     {!records.data.total && (
-                      <Empty>아직 이곳에 저장된 기억이 없어요.</Empty>
+                      <Empty>해당 조건에 저장된 정보가 없어요.</Empty>
                     )}
                     <Pager page={records.data} onPage={setOffset} />
                   </>
                 )
               )}
             </section>
+          )}
+          {["overview", "profile", "all"].includes(tab) && (
+            <PersonProperties properties={p.properties} />
           )}
         </div>
         <aside className="stack detail-rail">
@@ -309,7 +360,8 @@ export function Person({
       {adding && (
         <MemoryEditor
           personId={id}
-          onClose={() => setAdding(false)}
+          initialKind={adding}
+          onClose={() => setAdding(null)}
           onSaved={saved}
         />
       )}{" "}
@@ -327,6 +379,27 @@ export function Person({
         />
       )}
     </>
+  );
+}
+
+function PersonProperties({ properties }: { properties: PersonRecord["properties"] }) {
+  const entries = Object.entries(properties).filter(([key]) => key !== "merged_entity_ref");
+  if (!entries.length) return null;
+  return (
+    <details className="panel content-panel diagnostic-details">
+      <summary>추가 저장 정보 ({entries.length}개)</summary>
+      <p className="small muted">인물 속성에 보존된 정보예요. 프로필 기록과 별도로 저장된 값을 그대로 보여드려요.</p>
+      <dl className="stack">
+        {entries.map(([key, value]) => (
+          <div className="fact" key={key}>
+            <dt>{label(key)}</dt>
+            <dd>{value === null ? "미설정" : typeof value === "object"
+              ? <pre>{JSON.stringify(value, null, 2)}</pre>
+              : String(value)}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }
 

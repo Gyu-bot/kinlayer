@@ -1,0 +1,87 @@
+{
+  "fixture_only": true,
+  "checks": {
+    "direct_job_value_and_source": true,
+    "birthday_month_only_no_invented_year_or_day": true,
+    "directed_relationship_creation": true,
+    "relationship_correction_updates_description_and_source": true,
+    "original_record_and_source_retained": true
+  },
+  "records": [
+    {
+      "record_ref": "entity_facts:16191a57-1599-4d2c-9d14-debbd7f5ac60",
+      "type": "entity_facts",
+      "payload": {
+        "claim_basis": "reported",
+        "confidence": 1.0,
+        "valid_from": null,
+        "valid_to": null,
+        "entity_id": "9e29274a-2b1d-460a-b167-d8ae9017f32e",
+        "fact_type": "job",
+        "content": "브라우저 검증 디자이너",
+        "value": {
+          "text": "브라우저 검증 디자이너"
+        }
+      },
+      "is_current": true,
+      "source_excerpt": "브라우저 검증 디자이너"
+    },
+    {
+      "record_ref": "entity_facts:0d614e1e-6068-4fe2-b493-bea41206b257",
+      "type": "entity_facts",
+      "payload": {
+        "claim_basis": "reported",
+        "confidence": 1.0,
+        "valid_from": null,
+        "valid_to": null,
+        "entity_id": "9e29274a-2b1d-460a-b167-d8ae9017f32e",
+        "fact_type": "birthday",
+        "content": "--05",
+        "value": {
+          "year": null,
+          "month": 5,
+          "day": null,
+          "precision": "month"
+        }
+      },
+      "is_current": true,
+      "source_excerpt": "5월"
+    },
+    {
+      "record_ref": "entity_edges:3c78acfe-d721-4bff-9b77-e37896fe32c1",
+      "type": "entity_edges",
+      "payload": {
+        "claim_basis": "reported",
+        "confidence": 1.0,
+        "valid_from": null,
+        "valid_to": null,
+        "from_entity_id": "9e29274a-2b1d-460a-b167-d8ae9017f32e",
+        "to_entity_id": "5055fd58-bbd7-4610-8430-79de34021a39",
+        "relation_type": "parent_of",
+        "directed": true,
+        "claim_text": "시작 인물은 대상 인물의 부모",
+        "properties": {}
+      },
+      "is_current": false,
+      "source_excerpt": "시작 인물은 대상 인물의 부모"
+    },
+    {
+      "record_ref": "entity_edges:9d970a72-a326-4d99-b386-72923c6fbc17",
+      "type": "entity_edges",
+      "payload": {
+        "claim_basis": "reported",
+        "confidence": 1.0,
+        "valid_from": null,
+        "valid_to": null,
+        "from_entity_id": "9e29274a-2b1d-460a-b167-d8ae9017f32e",
+        "to_entity_id": "5055fd58-bbd7-4610-8430-79de34021a39",
+        "relation_type": "friend",
+        "directed": false,
+        "claim_text": "두 사람의 관계: 친구",
+        "properties": {}
+      },
+      "is_current": true,
+      "source_excerpt": "두 사람의 관계: 친구"
+    }
+  ]
+}
