@@ -88,7 +88,7 @@ class ContextService:
             "cautions": [
                 self._observation_dict(item)
                 for item in all_observations
-                if item.sensitivity == "high" or item.ai_use_policy == "ask_before_use"
+                if item.ai_use_policy == "ask_before_use"
             ],
             "provenance": self._provenance_for_matches(result.matches),
             "provisional_context": self._provisional_for_pack(payload, result),
@@ -125,7 +125,6 @@ class ContextService:
             item
             for item in observations
             if item.observation_type == "caution"
-            or item.sensitivity == "high"
             or item.ai_use_policy in {"ask_before_use", "never_surface"}
         ]
         evidence = self._provenance_for_records(facts, edges, observations)
@@ -193,7 +192,6 @@ class ContextService:
                 "candidate_id": candidate.id,
                 "content": candidate.payload["content"],
                 "observation_type": candidate.payload["observation_type"],
-                "sensitivity": candidate.sensitivity,
                 "valid_from": candidate.payload.get("valid_from"),
                 "valid_to": candidate.payload.get("valid_to"),
                 "occurred_at": candidate.payload.get("occurred_at"),

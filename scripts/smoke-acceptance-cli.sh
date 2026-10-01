@@ -124,13 +124,11 @@ payload = {
         "content": "CLI smoke accepted observation.",
         "claim_type": "fact",
         "ai_use_policy": "cautious_use",
-        "sensitivity": "medium",
     },
     "evidence": [
         {"episode_id": episode_id, "excerpt": "CLI smoke accepted observation.", "confidence": 0.9}
     ],
     "confidence": 0.9,
-    "sensitivity": "medium",
     "suggested_action": "review",
     "created_by": "ai_agent",
 }
@@ -165,7 +163,6 @@ def create_fact(content: str) -> dict:
         "content": content,
         "claim_type": "fact",
         "confidence": 0.9,
-        "sensitivity": "medium",
         "ai_use_policy": "cautious_use",
         "created_by": "user",
     }
@@ -188,7 +185,6 @@ uv run kinlayer fact promote "$fact_promote_source_id" \
   --fact-type email \
   --content "cli-smoke@example.com" \
   --field-path profile.email \
-  --sensitivity high \
   --ai-use-policy ask_before_use \
   --json > "$fact_promote_json"
 if uv run kinlayer fact promote "$fact_promote_invalid_source_id" \
@@ -219,7 +215,6 @@ payload = {
         "claim_type": "fact",
     },
     "confidence": 0.5,
-    "sensitivity": "medium",
     "suggested_action": "review",
     "created_by": "ai_agent",
 }
@@ -247,13 +242,11 @@ payload = {
         "content": "CLI smoke edit-accept draft.",
         "claim_type": "fact",
         "ai_use_policy": "cautious_use",
-        "sensitivity": "medium",
     },
     "evidence": [
         {"episode_id": episode_id, "excerpt": "CLI smoke edit-accept draft.", "confidence": 0.9}
     ],
     "confidence": 0.9,
-    "sensitivity": "medium",
     "suggested_action": "review",
     "created_by": "ai_agent",
 }
@@ -273,7 +266,6 @@ payload = {
     "content": "CLI smoke edited accepted observation.",
     "claim_type": "fact",
     "ai_use_policy": "cautious_use",
-    "sensitivity": "medium",
 }
 open(path, "w").write(json.dumps(payload))
 PY
@@ -294,13 +286,11 @@ payload = {
         "content": "CLI smoke rejected candidate.",
         "claim_type": "inference",
         "ai_use_policy": "cautious_use",
-        "sensitivity": "medium",
     },
     "evidence": [
         {"episode_id": episode_id, "excerpt": "CLI smoke rejected candidate.", "confidence": 0.8}
     ],
     "confidence": 0.8,
-    "sensitivity": "medium",
     "suggested_action": "review",
     "created_by": "ai_agent",
 }
@@ -325,13 +315,11 @@ payload = {
         "content": "CLI smoke needs clarification candidate.",
         "claim_type": "inference",
         "ai_use_policy": "cautious_use",
-        "sensitivity": "medium",
     },
     "evidence": [
         {"episode_id": episode_id, "excerpt": "CLI smoke needs clarification candidate.", "confidence": 0.7}
     ],
     "confidence": 0.7,
-    "sensitivity": "medium",
     "suggested_action": "review",
     "created_by": "ai_agent",
 }
@@ -358,7 +346,6 @@ payload = {
             "content": "CLI smoke corrected canonical observation.",
             "claim_type": "fact",
             "confidence": 1,
-            "sensitivity": "medium",
             "ai_use_policy": "cautious_use",
             "recency_weight": 1,
         },

@@ -119,6 +119,7 @@ class Entity(Base, TimestampMixin):
     properties: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
     confirmation_status: Mapped[str] = mapped_column(String(40), default="confirmed")
     status: Mapped[str] = mapped_column(String(40), default="active")
+    # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
     ai_use_policy: Mapped[str] = mapped_column(String(60), default="cautious_use")
     created_by: Mapped[str] = mapped_column(String(60), nullable=False)
@@ -185,6 +186,7 @@ class EntityFact(Base, TimestampMixin):
     value: Mapped[dict | None] = mapped_column(JSON_TYPE)
     claim_type: Mapped[str] = mapped_column(String(60), nullable=False)
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), default=1.0)
+    # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
     ai_use_policy: Mapped[str] = mapped_column(String(60), default="cautious_use")
     status: Mapped[str] = mapped_column(String(40), default="active")
@@ -212,6 +214,7 @@ class Episode(Base, TimestampMixin):
     actor: Mapped[str] = mapped_column(String(80), nullable=False)
     occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
     retention_policy: Mapped[str] = mapped_column(String(60), default="excerpt_only")
 
@@ -241,6 +244,7 @@ class EntityEdge(Base, TimestampMixin):
     claim_type: Mapped[str] = mapped_column(String(60), nullable=False)
     properties: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), default=1.0)
+    # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
     ai_use_policy: Mapped[str] = mapped_column(String(60), default="cautious_use")
     status: Mapped[str] = mapped_column(String(40), default="active")
@@ -275,6 +279,7 @@ class Observation(Base, TimestampMixin):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     claim_type: Mapped[str] = mapped_column(String(60), nullable=False)
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), default=1.0)
+    # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
     ai_use_policy: Mapped[str] = mapped_column(String(60), default="cautious_use")
     status: Mapped[str] = mapped_column(String(40), default="active")
@@ -365,6 +370,7 @@ class Candidate(Base, TimestampMixin):
     target_entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id"))
     payload: Mapped[dict] = mapped_column(JSON_TYPE, nullable=False)
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), nullable=False)
+    # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
     suggested_action: Mapped[str | None] = mapped_column(String(80))
     status: Mapped[str] = mapped_column(String(40), default="pending")

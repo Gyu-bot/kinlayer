@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
+from kinlayer_backend.schemas.common import without_legacy_sensitivity
 from kinlayer_backend.config import Settings
 from kinlayer_backend.models import (
     AllowedEdgeType,
@@ -46,6 +47,7 @@ class RelationshipService:
         return edge_type
 
     def create_edge(self, payload: dict[str, Any], commit: bool = True) -> EntityEdge:
+        payload = without_legacy_sensitivity(payload)
         validate_common(payload, self.session)
         entities = lock_active_entities(
             self.session, [payload["from_entity_id"], payload["to_entity_id"]]
@@ -63,6 +65,7 @@ class RelationshipService:
         return self.repository.add_edge(payload, commit=commit)
 
     def patch_edge(self, edge: EntityEdge, payload: dict[str, Any]) -> EntityEdge:
+        payload = without_legacy_sensitivity(payload)
         validate_common(payload, self.session)
         lock_active_entities(
             self.session, [edge.from_entity_id, edge.to_entity_id]
@@ -100,6 +103,7 @@ class RelationshipService:
             raise api_error(422, "validation_error", "Invalid observation_type.")
 
     def create_observation(self, payload: dict[str, Any], commit: bool = True) -> Observation:
+        payload = without_legacy_sensitivity(payload)
         related_entities = payload.pop("related_entities", [])
         validate_common(payload, self.session)
         lock_active_entities(
@@ -118,6 +122,7 @@ class RelationshipService:
         return observation
 
     def patch_observation(self, observation: Observation, payload: dict[str, Any]) -> Observation:
+        payload = without_legacy_sensitivity(payload)
         validate_common(payload, self.session)
         related = self.repository.list_observation_entities(observation.id)
         lock_active_entities(
@@ -156,6 +161,7 @@ class RelationshipService:
         return observation
 
     def create_episode(self, payload: dict[str, Any], commit: bool = True) -> Episode:
+        payload = without_legacy_sensitivity(payload)
         validate_common(payload, self.session)
         if not is_allowed_registry_value(self.session, "retention_policy", payload["retention_policy"]):
             raise api_error(422, "validation_error", "Invalid retention_policy.")

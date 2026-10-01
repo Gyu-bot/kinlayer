@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
+from kinlayer_backend.schemas.common import without_legacy_sensitivity
 from kinlayer_backend.models import (
     AllowedEdgeType,
     AllowedObservationType,
@@ -62,6 +63,7 @@ class CandidateService:
         self.repository = CandidateRepository(session)
 
     def create_candidate(self, payload: dict[str, Any], *, commit: bool = True) -> Candidate:
+        payload = without_legacy_sensitivity(payload)
         evidence = payload.pop("evidence", [])
         validate_common(payload, self.session)
         if not is_allowed_registry_value(self.session, "candidate_type", payload["candidate_type"]):
@@ -95,6 +97,7 @@ class CandidateService:
         return self.repository.add_candidate(payload, evidence, commit=commit)
 
     def patch_candidate(self, candidate: Candidate, payload: dict[str, Any]) -> Candidate:
+        payload = without_legacy_sensitivity(payload)
         validate_common(payload, self.session)
         suggested_action = payload.get("suggested_action")
         if suggested_action and suggested_action not in SUGGESTED_ACTIONS:
@@ -416,7 +419,6 @@ class CandidateService:
             },
             "claim_type": payload["claim_type"],
             "confidence": candidate.confidence,
-            "sensitivity": payload.get("sensitivity") or candidate.sensitivity,
             "ai_use_policy": payload.get("ai_use_policy", "cautious_use"),
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,
@@ -436,7 +438,6 @@ class CandidateService:
                 content=content,
                 field_path=payload.get("field_path"),
                 value=payload.get("value"),
-                sensitivity=payload.get("sensitivity"),
                 ai_use_policy=payload.get("ai_use_policy"),
                 created_by=candidate.created_by,
                 source_candidate_id=candidate.id,
@@ -449,7 +450,6 @@ class CandidateService:
     def _write_edge(self, candidate: Candidate) -> str:
         payload = {
             "confidence": candidate.confidence,
-            "sensitivity": candidate.sensitivity,
             "ai_use_policy": "cautious_use",
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,
@@ -462,7 +462,6 @@ class CandidateService:
     def _write_observation(self, candidate: Candidate) -> str:
         payload = {
             "confidence": candidate.confidence,
-            "sensitivity": candidate.sensitivity,
             "ai_use_policy": "cautious_use",
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,

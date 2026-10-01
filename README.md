@@ -1,5 +1,7 @@
 # Kinlayer
 
+> Sensitivity is retired. See [retirement and compatibility contract](docs/specs/sensitivity-retirement.md).
+
 Kinlayer는 AI 에이전트를 위한 로컬 우선 관계 맥락 레이어입니다.
 
 AI 에이전트가 사람, 관계, 최근 상호작용, 주의할 점 같은 맥락을 대화 속에서 축적하고 다시 꺼내 쓸 수 있도록 돕되, 사용자가 그 맥락을 직접 검토하고 수정하고 제한할 수 있게 만드는 것을 목표로 합니다.
@@ -98,13 +100,13 @@ AI agent = API 또는 CLI를 호출하는 클라이언트
 
 Kinlayer는 대화 원문 전체를 보관하는 시스템이 아닙니다.
 
-MVP에서는 짧은 발췌, 해시, 출처, 발생 시각, 민감도, 보존 정책을 저장합니다. 신뢰성은 정정, supersede, deprecate, evidence link, retrieval update를 통해 확보합니다.
+MVP에서는 짧은 발췌, 해시, 출처, 발생 시각, 보존 정책을 저장합니다. 신뢰성은 정정, supersede, deprecate, evidence link, retrieval update를 통해 확보합니다.
 
 ### 4. AI가 참고하는 것과 직접 말하는 것은 다르다
 
 민감한 정보는 AI가 내부 판단에 참고할 수는 있어도, 사용자에게 그대로 드러내면 안 될 수 있습니다.
 
-Kinlayer는 저장된 민감도와 사용 정책을 바탕으로 검색 시점에 다음 surface bucket을 계산합니다.
+Kinlayer는 저장된 AI 사용 정책을 바탕으로 검색 시점에 다음 surface bucket을 계산합니다.
 
 - `direct_surface`
 - `conditional_surface`
@@ -299,7 +301,7 @@ Settings 화면은 Kinlayer가 현재 어떤 방식으로 동작하는지 보여
 - 브라우저에 로컬 API token이 저장되어 있는지 여부
 - embedding provider, model, dimension, 상태
 - OpenAI-compatible embedding API URL과 API key가 서버에 설정되어 있는지 여부
-- entity type, fact type, relationship type, sensitivity, AI use policy 같은 ontology 값
+- entity type, fact type, relationship type, AI use policy 같은 ontology 값
 
 OpenAI embedding API key 같은 secret 값은 화면에 다시 표시하지 않습니다. Settings는 secret을 저장소나 브라우저에 노출하는 장소가 아니라, 서버가 해당 값을 갖고 있는지 확인하는 제어판입니다.
 

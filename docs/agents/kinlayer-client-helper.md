@@ -36,13 +36,13 @@ version
 schema-summary
 ontology
 entities [--query TEXT] [--entity-type TYPE] [--status STATUS]
-         [--sensitivity LEVEL] [--system-role ROLE] [--limit N] [--offset N]
+         [--system-role ROLE] [--limit N] [--offset N]
 context-card --entity-id ID [--include-provisional]
 observations [--subject-entity-id ID] [--related-entity-id ID]
              [--observation-type TYPE] [--status STATUS] [--claim-type TYPE]
              [--limit N] [--offset N]
 candidates [--status STATUS] [--candidate-type TYPE] [--target-entity-id ID]
-           [--sensitivity LEVEL] [--limit N] [--offset N]
+           [--limit N] [--offset N]
 candidate --id ID
 retrieve --query TEXT [--hint TEXT ...] [--focal-entity-id ID]
          [--include-debug] [--limit N]

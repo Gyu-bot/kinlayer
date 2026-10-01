@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from kinlayer_backend.schemas.common import without_legacy_sensitivity
+
 from fastapi import HTTPException
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
@@ -43,7 +45,6 @@ def _candidate_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "target_entity_id": payload.get("target_entity_id"),
         "suggested_action": payload.get("suggested_action"),
         "confidence": payload.get("confidence"),
-        "sensitivity": payload.get("sensitivity"),
     }
     for key in [
         "entity_id",
@@ -87,7 +88,6 @@ def _edge_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "relation_type": payload.get("relation_type"),
         "claim_type": payload.get("claim_type"),
         "confidence": payload.get("confidence"),
-        "sensitivity": payload.get("sensitivity"),
         "ai_use_policy": payload.get("ai_use_policy"),
     }
     claim_text = payload.get("claim_text")
@@ -142,7 +142,6 @@ class AgentOperationService:
                     "target_entity_id": candidate.target_entity_id,
                     "payload": candidate.payload,
                     "confidence": float(candidate.confidence),
-                    "sensitivity": candidate.sensitivity,
                     "suggested_action": candidate.suggested_action,
                 }
             ),
@@ -186,7 +185,6 @@ class AgentOperationService:
                     "target_entity_id": candidate.target_entity_id,
                     "payload": candidate.payload,
                     "confidence": float(candidate.confidence),
-                    "sensitivity": candidate.sensitivity,
                     "suggested_action": candidate.suggested_action,
                 }
             ),
@@ -223,7 +221,6 @@ class AgentOperationService:
                     "target_entity_id": candidate.target_entity_id,
                     "payload": attempted_payload or candidate.payload,
                     "confidence": float(candidate.confidence),
-                    "sensitivity": candidate.sensitivity,
                     "suggested_action": candidate.suggested_action,
                 }
             ),
@@ -395,7 +392,7 @@ class AgentOperationService:
         }
         lines = [manifest]
         lines.extend(self._export_record(item) for item in items)
-        return "\n".join(json.dumps(line, ensure_ascii=False, sort_keys=True) for line in lines) + "\n"
+        return "\n".join(json.dumps(without_legacy_sensitivity(line), ensure_ascii=False, sort_keys=True) for line in lines) + "\n"
 
     def _record(
         self,

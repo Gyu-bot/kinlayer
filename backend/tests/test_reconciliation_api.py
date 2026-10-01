@@ -202,7 +202,7 @@ def test_reconciliation_request_requires_exact_unique_candidate_snapshot_set() -
     ("sensitivity", "ai_use_policy"),
     [("low", "cautious_use"), ("high", "cautious_use"), ("medium", "never_surface")],
 )
-def test_current_reply_context_policy_is_fixed_medium_cautious(
+def test_current_reply_policy_is_fixed_but_legacy_sensitivity_is_ignored(
     sensitivity, ai_use_policy
 ) -> None:
     payload = valid_action_payload(
@@ -217,8 +217,11 @@ def test_current_reply_context_policy_is_fixed_medium_cautious(
             "evidence": {"evidence_class": "current_reply", "start": 0, "end": 4},
         }],
     )
-    with pytest.raises(ValidationError):
-        ReconciliationActionCreate.model_validate(payload)
+    if ai_use_policy != "cautious_use":
+        with pytest.raises(ValidationError):
+            ReconciliationActionCreate.model_validate(payload)
+    else:
+        assert ReconciliationActionCreate.model_validate(payload)
 
 
 @pytest.mark.parametrize(
@@ -501,7 +504,10 @@ def create_reviewed_entity(client: TestClient, name: str) -> tuple[dict, dict]:
     return candidate, entity.json()
 
 
-def test_rich_reconciliation_current_reply_is_atomic_and_span_derived(database_url) -> None:
+@pytest.mark.parametrize("legacy_sensitivity", [True, False])
+def test_rich_reconciliation_current_reply_is_atomic_and_span_derived(
+    database_url, legacy_sensitivity
+) -> None:
     reply = "응 맞아. 맞는데 소개팅 이후 잘 안되서 이제 연락은 안해"
     context = "소개팅 이후 잘 안되서 이제 연락은 안해"
     start = reply.index(context)
@@ -533,6 +539,8 @@ def test_rich_reconciliation_current_reply_is_atomic_and_span_derived(database_u
             "sensitivity": "medium", "ai_use_policy": "cautious_use",
             "evidence": {"evidence_class": "current_reply", "start": start, "end": len(reply)},
         }]
+        if not legacy_sensitivity:
+            request["context_claims"][0].pop("sensitivity")
         response = client.post("/api/reconciliation/actions", headers=headers, json=request)
         assert response.status_code == 200, response.text
         result = response.json()
@@ -565,7 +573,7 @@ def test_candidate_evidence_hydration_is_token_gated_exact_and_bounded(database_
         assert body["items"][0]["evidence"][0]["excerpt"] == "I met Hydrated Person today."
         assert "body_excerpt" not in body["items"][0]["evidence"][0]
         assert "source_ref" not in body["items"][0]["evidence"][0]
-        assert body["items"][0]["evidence"][0]["effective_sensitivity"] == "medium"
+        assert "effective_sensitivity" not in body["items"][0]["evidence"][0]
         assert body["items"][0]["evidence"][0]["effective_ai_use_policy"] == "cautious_use"
 
 
@@ -774,13 +782,13 @@ def test_prepared_candidate_evidence_writes_exact_span(database_url) -> None:
                 source_candidate_id=response.json()["context_outcomes"][0]["candidate_id"]
             ).one()
             assert edge.claim_text == prior
-            assert edge.sensitivity == "high"
+            assert edge.sensitivity == "medium"  # Inert storage default, not propagated.
             assert edge.ai_use_policy == "never_surface"
             derived = session.get(Candidate, edge.source_candidate_id)
-            assert derived.sensitivity == "high"
+            assert derived.sensitivity == "medium"
             assert derived.payload["ai_use_policy"] == "never_surface"
             action = session.get(ReconciliationAction, response.json()["id"])
-            assert action.readback_summary["context_manifest"][0]["sensitivity"] == "high"
+            assert "sensitivity" not in action.readback_summary["context_manifest"][0]
             assert action.readback_summary["context_manifest"][0]["ai_use_policy"] == "never_surface"
             action.status = "committed_unverified"
             edge.ai_use_policy = "cautious_use"

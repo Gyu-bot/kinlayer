@@ -175,10 +175,6 @@ export function Settings() {
             title="AI policies"
             items={ontology?.policies.ai_use_policies.map((item) => item.value) ?? []}
           />
-          <OntologyList
-            title="Sensitivity"
-            items={ontology?.policies.sensitivity_levels.map((item) => item.value) ?? []}
-          />
         </div>
       </section>
     </section>

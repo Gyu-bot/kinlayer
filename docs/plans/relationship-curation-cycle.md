@@ -1,5 +1,7 @@
 # Periodic Relationship Curation Cycle — Implementation Plan
 
+> Sensitivity is retired. See [retirement and compatibility contract](../specs/sensitivity-retirement.md).
+
 **Status:** Repository Phases 1-4 implemented; Phase 5 adapter handoff ready
 **Approved by user:** 2026-08-24
 **Execution branch:** `codex/kinlayer-curation-cycle`
@@ -83,7 +85,7 @@ Pending candidates are the incremental change feed. The normal cycle must not re
 A curation source pack may contain only:
 
 - pending candidate IDs and typed payloads;
-- candidate confidence, sensitivity, status, and suggested action;
+- candidate confidence, status, and suggested action;
 - candidate evidence IDs;
 - bounded user-authored evidence excerpts;
 - episode IDs, source refs, body hashes, actor, source type, and recorded timestamps;
@@ -271,7 +273,7 @@ All conditions must hold:
 - proposed content is self-contained, atomic, and within the active content limit;
 - related entity IDs resolve and remain active;
 - point-in-time or temporary context has usable temporal scope;
-- sensitivity is `low` or `medium` and the observation type is auto-action-eligible;
+- the observation type is auto-action-eligible;
 - no canonical conflict is detected;
 - no existing active canonical record is an exact normalized duplicate;
 - the decision idempotency key has not already completed;
@@ -290,14 +292,13 @@ For `claim_type=pattern`, automatic execution additionally requires evidence fro
 - `supersede`;
 - candidates with unresolved or fuzzy identity;
 - candidates whose target is an honorific role or generic profession rather than a resolved person;
-- high-sensitivity data;
 - self-harm, medical, legal, financial-account, contact, credential, or similarly high-impact context;
 - any decision that changes identity or graph structure;
 - any decision that depends on assistant/tool/retrieved text as evidence;
 - any action requiring an ontology value that is missing or ambiguous.
 
 Contact-like content includes deterministic phone, email, address, and contact keywords/patterns and
-is blocked regardless of declared sensitivity or planner-proposed wording. The check applies to both
+is blocked regardless of planner-proposed wording. The check applies to both
 stored source candidates and the proposed payload.
 
 These decisions remain pending, become `needs_clarification`, or are surfaced as review recommendations. The LLM may recommend them but cannot cause direct canonical mutation.

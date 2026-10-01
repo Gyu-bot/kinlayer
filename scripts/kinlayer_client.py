@@ -299,7 +299,6 @@ def _compact_observation(item: dict[str, Any]) -> dict[str, Any]:
             "content",
             "score",
             "match_reasons",
-            "sensitivity",
             "ai_use_policy",
             "status",
             "valid_from",
@@ -324,7 +323,6 @@ def compact_candidate(item: dict[str, Any], *, detail: bool = False) -> dict[str
             "candidate_type",
             "target_entity_id",
             "confidence",
-            "sensitivity",
             "suggested_action",
             "canonical_record_ref",
             "created_at",
@@ -411,7 +409,6 @@ def _compact_matched_entity(item: dict[str, Any]) -> dict[str, Any]:
             "score_breakdown",
             "penalties",
             "surface_bucket",
-            "sensitivity",
             "ai_use_policy",
             "confirmation_status",
         ),
@@ -421,7 +418,7 @@ def _compact_matched_entity(item: dict[str, Any]) -> dict[str, Any]:
 def _compact_provisional(item: dict[str, Any]) -> dict[str, Any]:
     return _pick(
         item,
-        ("candidate_id", "content", "observation_type", "sensitivity", "review_status"),
+        ("candidate_id", "content", "observation_type", "review_status"),
     )
 
 
@@ -530,7 +527,6 @@ def build_parser() -> argparse.ArgumentParser:
     entities.add_argument("--query", "--q", dest="query")
     entities.add_argument("--entity-type")
     entities.add_argument("--status")
-    entities.add_argument("--sensitivity")
     entities.add_argument("--system-role")
     entities.add_argument("--limit", type=_limit(200), default=50)
     entities.add_argument("--offset", type=_nonnegative, default=0)
@@ -552,7 +548,6 @@ def build_parser() -> argparse.ArgumentParser:
     candidates.add_argument("--status")
     candidates.add_argument("--candidate-type")
     candidates.add_argument("--target-entity-id")
-    candidates.add_argument("--sensitivity")
     candidates.add_argument("--limit", type=_limit(200), default=50)
     candidates.add_argument("--offset", type=_nonnegative, default=0)
 
@@ -607,7 +602,6 @@ def _dispatch(args: argparse.Namespace, transport: Transport) -> dict[str, Any]:
                 ("q", args.query),
                 ("entity_type", args.entity_type),
                 ("status", args.status),
-                ("sensitivity", args.sensitivity),
                 ("system_role", args.system_role),
                 ("limit", args.limit),
                 ("offset", args.offset),
@@ -642,7 +636,6 @@ def _dispatch(args: argparse.Namespace, transport: Transport) -> dict[str, Any]:
                 ("status", args.status),
                 ("candidate_type", args.candidate_type),
                 ("target_entity_id", args.target_entity_id),
-                ("sensitivity", args.sensitivity),
                 ("limit", args.limit),
                 ("offset", args.offset),
             ],

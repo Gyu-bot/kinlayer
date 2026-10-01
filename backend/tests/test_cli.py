@@ -511,8 +511,6 @@ def test_fact_promote_posts_direct_payload_and_reports_refs(monkeypatch) -> None
             "alex@example.com",
             "--field-path",
             "profile.email",
-            "--sensitivity",
-            "high",
             "--ai-use-policy",
             "ask_before_use",
         ],
@@ -532,7 +530,6 @@ def test_fact_promote_posts_direct_payload_and_reports_refs(monkeypatch) -> None
             "fact_type": "email",
             "content": "alex@example.com",
             "field_path": "profile.email",
-            "sensitivity": "high",
             "ai_use_policy": "ask_before_use",
         },
     )
@@ -898,15 +895,13 @@ def test_graph_ego_cli_reads_graph_endpoint(monkeypatch) -> None:
             "self-id",
             "--relation-type",
             "client_contact",
-            "--sensitivity",
-            "medium",
             "--json",
         ],
     )
 
     assert result.exit_code == 0
     assert calls[0].endswith(
-        "/api/graph/ego/self-id?depth=1&relation_type=client_contact&status=active&sensitivity=medium"
+        "/api/graph/ego/self-id?depth=1&relation_type=client_contact&status=active"
     )
     assert json.loads(result.stdout)["focal_entity_id"] == "self-id"
 

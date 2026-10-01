@@ -137,7 +137,6 @@ def _ensure_protected_self(session, self_name: str) -> None:
             "system_role": "self",
             "is_system": True,
             "confirmation_status": "confirmed",
-            "sensitivity": "medium",
             "ai_use_policy": "cautious_use",
         }
     )

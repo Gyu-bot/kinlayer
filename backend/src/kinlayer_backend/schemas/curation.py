@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from kinlayer_backend.schemas.common import APIModel, ListResponse
+from kinlayer_backend.schemas.common import APIModel, PublicReadModel, ListResponse
 
 
 class CurationModel(APIModel):
@@ -187,19 +187,17 @@ class CurationSourceEvidenceRead(CurationModel):
     source_ref: str | None = None
     body_hash: str
     actor: str
-    sensitivity: str
     occurred_at: datetime | None = None
     ingested_at: datetime
     created_at: datetime
 
 
-class CurationSourceCandidateRead(CurationModel):
+class CurationSourceCandidateRead(CurationModel, PublicReadModel):
     id: str
     candidate_type: str
     target_entity_id: str | None = None
     payload: dict[str, Any]
     confidence: float
-    sensitivity: str
     suggested_action: str | None = None
     status: str
     created_at: datetime
@@ -212,7 +210,7 @@ class CurationSourceCandidateRead(CurationModel):
     normalizations: list[dict[str, Any]]
 
 
-class CurationSourceGroupRead(CurationModel):
+class CurationSourceGroupRead(CurationModel, PublicReadModel):
     group_key: str
     target_entity_id: str | None = None
     unresolved_identity_key: str | None = None
@@ -327,7 +325,7 @@ class CurationRunCreate(CurationModel):
         return self
 
 
-class CurationDecisionRead(CurationModel):
+class CurationDecisionRead(CurationModel, PublicReadModel):
     id: str
     run_id: str
     action: CurationAction
@@ -358,7 +356,7 @@ class CurationDecisionRead(CurationModel):
         )
 
 
-class CurationRunSummaryRead(CurationModel):
+class CurationRunSummaryRead(CurationModel, PublicReadModel):
     id: str
     mode: CurationMode
     status: CurationRunStatus

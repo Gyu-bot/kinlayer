@@ -1,5 +1,7 @@
 # Kinlayer API Specification
 
+> Sensitivity is retired. See [retirement and compatibility contract](sensitivity-retirement.md).
+
 Authenticated reconciliation actions may carry up to six deterministically ordered typed context claims.
 Each targets only the resulting primary person and derives content from an exact native-reply span or
 candidate-bound original user evidence. Identity and context commit in one transaction.
@@ -183,7 +185,6 @@ Request:
     "short_note": "Met through work"
   },
   "confirmation_status": "confirmed",
-  "sensitivity": "medium",
   "ai_use_policy": "cautious_use",
   "created_by": "user"
 }
@@ -211,7 +212,6 @@ Query params:
 q
 entity_type
 status
-sensitivity
 limit
 offset
 ```
@@ -411,7 +411,6 @@ Request:
   "content": "Example Corp",
   "claim_type": "fact",
   "confidence": 0.95,
-  "sensitivity": "low",
   "ai_use_policy": "freely_use",
   "status": "active",
   "created_by": "user",
@@ -471,7 +470,6 @@ Request:
   "content": "alex@example.com",
   "field_path": "profile.email",
   "value": "alex@example.com",
-  "sensitivity": "high",
   "ai_use_policy": "ask_before_use"
 }
 ```
@@ -498,7 +496,7 @@ Semantics:
 - Replacement `value` stores `field_path`, `value`, and
   `supersedes_record_ref = entity_facts:<source_id>`.
 - Replacement preserves source `claim_type`, confidence, validity window, and copied evidence.
-  `sensitivity` and `ai_use_policy` default from the source unless provided.
+  `ai_use_policy` defaults from the source unless provided.
 - Errors include `validation_error` for invalid target type/content, entity mismatch, or already
   structured source; `conflict` for inactive/stale source paths; and `not_found` for missing facts.
 
@@ -522,7 +520,6 @@ Request:
   "confidence": 0.95,
   "status": "active",
   "valid_from": "2026-06-10T00:00:00Z",
-  "sensitivity": "medium",
   "ai_use_policy": "cautious_use",
   "created_by": "user"
 }
@@ -580,7 +577,6 @@ Request:
   "content": "Alex contacted the user again and the user felt unsure how to respond.",
   "claim_type": "fact",
   "confidence": 0.86,
-  "sensitivity": "medium",
   "ai_use_policy": "cautious_use",
   "status": "active",
   "valid_from": null,
@@ -646,7 +642,6 @@ Request:
   "body_hash": "sha256:...",
   "actor": "user",
   "occurred_at": "2026-06-10T00:00:00Z",
-  "sensitivity": "medium",
   "retention_policy": "excerpt_only"
 }
 ```
@@ -684,7 +679,6 @@ Request:
   "target_entity_id": "uuid",
   "payload": {},
   "confidence": 0.86,
-  "sensitivity": "medium",
   "suggested_action": "accept",
   "created_by": "ai_agent",
   "evidence": [
@@ -782,7 +776,6 @@ Query params:
 status
 candidate_type
 target_entity_id
-sensitivity
 limit
 offset
 ```
@@ -985,7 +978,6 @@ Response:
       },
       "penalties": {},
       "surface_bucket": "direct_surface",
-      "sensitivity": "medium",
       "ai_use_policy": "cautious_use",
       "confirmation_status": "confirmed",
       "observations": []
@@ -1071,7 +1063,6 @@ Query params:
 depth=1
 relation_type
 status
-sensitivity
 ```
 
 Response:
@@ -1086,7 +1077,6 @@ Response:
       "display_name": "Self",
       "entity_type": "person",
       "status": "active",
-      "sensitivity": "medium",
       "is_focal": true
     }
   ],
@@ -1377,7 +1367,7 @@ all entity IDs. Each immutable authorization entity snapshot contains exactly `i
 `display_name`, nullable `canonical_name`, nullable `system_role`, `confirmation_status`, `status`,
 `updated_at`, and `entity_digest`. The existing digest/stale comparison remains exact. Snapshots do
 not contain aliases, raw context, properties, question/reply text, or capabilities. The backend fixes
-policy/sensitivity/claim type, validates the small proactive ontology
+policy/claim type, validates the small proactive ontology
 allowlists, rejects duplicate semantic slot authority, and rejects already-filled gaps. A gap is
 also filled when an exact semantically matching candidate for the subject is `pending` or
 `needs_clarification`; stage and answer-time revalidation return `409 pending_gap_filled` before any
@@ -1411,7 +1401,7 @@ complete bounded set must fail closed instead of silently comparing a partial pe
 unique candidate IDs. It returns exact candidate status/`updated_at`/payload/evidence digests plus
 only eligible user-authored `agent_conversation` evidence: candidate/evidence/episode IDs, the exact
 bounded excerpt (maximum 500 code points), body hash, actor/source type, and server-derived effective
-sensitivity/AI-use policy. It never returns `source_ref`, an Episode body, record summaries, or
+AI-use policy. It never returns `source_ref`, an Episode body, record summaries, or
 assistant/system evidence. This is a private stage-validation surface, not generic CLI/session output.
 If any requested candidate has more than twenty attached evidence rows, the whole request fails
 closed with deterministic `409 candidate_evidence_limit_exceeded`; evidence is never silently
@@ -1434,12 +1424,10 @@ cross-question, cross-agenda, cross-claim, and cross-action bindings return 422.
 The commitment key must differ from the reconciliation bearer token; equal configured values are
 invalid. Do not rotate it while an action is pending fresh readback.
 An action may carry at most six sorted, semantically unique typed context claims. Current-reply
-claims use exact code-point spans and are fixed to `medium`/`cautious_use`. Prepared claims carry
+claims use exact code-point spans and are fixed to `cautious_use`. Prepared claims carry
 only candidate/evidence/episode IDs, exact body/excerpt commitments, and server-validated offsets;
-their effective sensitivity is the most restrictive of `medium`, candidate sensitivity, and Episode
-sensitivity, and their AI-use policy preserves the more restrictive of `cautious_use` and the
-original candidate policy. The backend re-derives these values under the same transaction and fresh
-readback verifies candidate payload, manifest, and canonical sensitivity/policy without downgrade.
+their AI-use policy preserves the more restrictive of `cautious_use` and the original candidate policy. The backend re-derives these values under the same transaction and fresh
+readback verifies candidate payload, manifest, and canonical AI-use policy without downgrade.
 
 The actions are `reject_candidates`, `map_to_existing_entity`, `confirm_new_entity_group`,
 `accept_existing_entity_observation_group`, `rename_and_accept_new_entity`,

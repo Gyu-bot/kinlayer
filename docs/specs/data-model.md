@@ -1,5 +1,7 @@
 # Kinlayer Data Model
 
+> Sensitivity is retired. See [retirement and compatibility contract](sensitivity-retirement.md).
+
 `ReconciliationAction` uses existing JSON ledger fields for compact context commitments and verified outcomes;
 raw replies and prior excerpts are not stored there. Canonical context rows retain exact Episode evidence.
 This contract requires no `0011` migration.
@@ -131,7 +133,7 @@ preference
 pattern
 ```
 
-### Sensitivity
+### Legacy sensitivity (retired)
 
 ```text
 low
@@ -174,7 +176,7 @@ entities
 - properties jsonb not null default '{}'
 - confirmation_status text not null default 'confirmed'
 - status text not null default 'active'
-- sensitivity text not null default 'medium'
+- sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - ai_use_policy text not null default 'cautious_use'
 - created_by text not null
 - system_role text nullable              # e.g. self
@@ -249,7 +251,7 @@ entity_facts
 - value jsonb nullable                    # optional structured value
 - claim_type text not null
 - confidence numeric not null
-- sensitivity text not null default 'medium'
+- sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - ai_use_policy text not null default 'cautious_use'
 - status text not null default 'active'
 - valid_from timestamptz nullable
@@ -303,7 +305,7 @@ entity_edges
 - claim_type text not null
 - properties jsonb not null default '{}'
 - confidence numeric not null
-- sensitivity text not null default 'medium'
+- sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - ai_use_policy text not null default 'cautious_use'
 - status text not null default 'active'
 - valid_from timestamptz nullable
@@ -340,7 +342,7 @@ observations
 - content text not null
 - claim_type text not null
 - confidence numeric not null
-- sensitivity text not null default 'medium'
+- sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - ai_use_policy text not null default 'cautious_use'
 - status text not null default 'active'
 - valid_from timestamptz nullable
@@ -412,7 +414,7 @@ episodes
 - actor text not null
 - occurred_at timestamptz nullable
 - ingested_at timestamptz not null
-- sensitivity text not null default 'medium'
+- sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - retention_policy text not null default 'excerpt_only'
 - created_at timestamptz not null
 - updated_at timestamptz not null
@@ -449,7 +451,7 @@ candidates
 - target_entity_id uuid nullable references entities(id)
 - payload jsonb not null
 - confidence numeric not null
-- sensitivity text not null default 'medium'
+- sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - suggested_action text nullable
 - status text not null default 'pending'
 - created_by text not null
@@ -489,7 +491,7 @@ Merge payload fields:
 - `source_entity_id`: possible duplicate entity to retire from active person workflows.
 - `target_entity_id`: canonical entity that should remain active.
 - `merge_plan`: explicit plan for aliases, facts, edges, observations, evidence, and conflicts.
-- `field_conflict_policy`: per-field decisions for display name, canonical name, sensitivity,
+- `field_conflict_policy`: per-field decisions for display name, canonical name,
   AI use policy, profile facts, aliases, active edges, and observations.
 - `merged_entity_ref`: durable reference from the source entity to the target after execution.
 
@@ -571,7 +573,7 @@ allowed_edge_types
 allowed_observation_types
 ```
 
-`ontology_registry_values` stores controlled values by category, including `entity_type`, `fact_type`, `claim_type`, `sensitivity`, `ai_use_policy`, `retention_policy`, `evidence_source_type`, and `candidate_type`.
+`ontology_registry_values` stores controlled values by category, including `entity_type`, `fact_type`, `claim_type`, `ai_use_policy`, `retention_policy`, `evidence_source_type`, and `candidate_type`.
 
 ```text
 ontology_registry_values
@@ -647,14 +649,12 @@ surface bucket
 Stored policy metadata:
 
 ```text
-sensitivity
 ai_use_policy
 ```
 
-Reconciliation-derived context never downgrades these fields. Exact current-reply claims persist as
-at least `medium` with `cautious_use`. Prepared user-evidence claims inherit the most restrictive
-effective sensitivity across the medium floor, candidate, and Episode, and preserve any stricter
-candidate AI-use policy. The reconciliation action's compact context manifest commits those values,
+Reconciliation-derived context never downgrades AI-use policy. Exact current-reply claims use
+`cautious_use`. Prepared user-evidence claims preserve any stricter candidate AI-use policy.
+The reconciliation action's compact context manifest commits that policy,
 and fresh readback compares the derived candidate payload and canonical row exactly.
 
 Computed retrieval-time buckets:

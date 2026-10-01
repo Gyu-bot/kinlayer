@@ -6,7 +6,6 @@ class GraphNode(APIModel):
     display_name: str
     entity_type: str
     status: str
-    sensitivity: str
     is_focal: bool = False
 
 
@@ -18,7 +17,6 @@ class GraphEdge(APIModel):
     directed: bool
     status: str
     confidence: float
-    sensitivity: str
 
 
 class EgoGraph(APIModel):

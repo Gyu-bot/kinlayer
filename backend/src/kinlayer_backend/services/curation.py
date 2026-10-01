@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
+from kinlayer_backend.schemas.common import without_legacy_sensitivity
 from kinlayer_backend.models import (
     Candidate,
     CurationDecision,
@@ -566,8 +567,6 @@ class CurationService:
             or candidate.candidate_type != "observation"
             or candidate.target_entity_id != entity_id
             or candidate.payload.get("subject_entity_id") != entity_id
-            or candidate.sensitivity == "high"
-            or candidate.payload.get("sensitivity", candidate.sensitivity) == "high"
             or candidate.payload.get("observation_type") not in AUTO_OBSERVATION_TYPES
             or candidate.payload.get("ai_use_policy", "cautious_use")
             in RESTRICTED_AI_USE_POLICIES
@@ -826,11 +825,6 @@ class CurationService:
                 "evidence_episode_set_mismatch",
                 "Consolidation evidence must match attached candidate evidence.",
             )
-        sensitivity_rank = {"low": 0, "medium": 1, "high": 2}
-        sensitivity = max(
-            (candidate.sensitivity for candidate in candidates),
-            key=lambda value: sensitivity_rank.get(value, 99),
-        )
         replacement = CandidateService(self.session).create_candidate(
             {
                 "candidate_type": "observation",
@@ -838,7 +832,6 @@ class CurationService:
                 "payload": deepcopy(decision.proposed_payload),
                 "evidence": list(evidence_by_key.values()),
                 "confidence": min(float(candidate.confidence) for candidate in candidates),
-                "sensitivity": sensitivity,
                 "suggested_action": "accept",
                 "created_by": "system",
             },
@@ -1093,13 +1086,6 @@ class CurationService:
         observation_type = proposed.get("observation_type")
         if observation_type not in AUTO_OBSERVATION_TYPES:
             reasons.append("observation_type_not_auto_eligible")
-        sensitivities = {
-            *(candidate.sensitivity for candidate in ordered),
-            *(candidate.payload.get("sensitivity", candidate.sensitivity) for candidate in ordered),
-            proposed.get("sensitivity", "medium"),
-        }
-        if "high" in sensitivities:
-            reasons.append("high_sensitivity")
         policies = {
             *(candidate.payload.get("ai_use_policy", "cautious_use") for candidate in ordered),
             proposed.get("ai_use_policy", "cautious_use"),
@@ -1177,7 +1163,7 @@ class CurationService:
         reasons: list[str] = []
         if decision.target_entity_id is not None or candidate.target_entity_id is not None:
             reasons.append("target_entity_mismatch")
-        if decision.proposed_payload != payload:
+        if without_legacy_sensitivity(decision.proposed_payload) != without_legacy_sensitivity(payload):
             reasons.append("new_entity_payload_inference_not_allowed")
         if payload.get("entity_type") != "person":
             reasons.append("new_entity_person_required")
@@ -1305,7 +1291,6 @@ class CurationService:
                     "source_ref": episode.source_ref,
                     "body_hash": episode.body_hash,
                     "actor": episode.actor,
-                    "sensitivity": episode.sensitivity,
                     "occurred_at": episode.occurred_at,
                     "ingested_at": episode.ingested_at,
                     "created_at": evidence.created_at,
@@ -1319,7 +1304,6 @@ class CurationService:
             "target_entity_id": candidate.target_entity_id,
             "payload": validation["safe_payload"],
             "confidence": float(candidate.confidence),
-            "sensitivity": candidate.sensitivity,
             "suggested_action": candidate.suggested_action,
             "status": candidate.status,
             "created_at": candidate.created_at,
@@ -1352,7 +1336,6 @@ class CurationService:
                     for evidence in candidate.evidence
                 ],
                 "confidence": float(candidate.confidence),
-                "sensitivity": candidate.sensitivity,
                 "suggested_action": candidate.suggested_action,
                 "created_by": candidate.created_by,
                 "supersedes_candidate_id": candidate.supersedes_candidate_id,
@@ -1454,7 +1437,6 @@ class CurationService:
                 "payload": deepcopy(proposed_payload),
                 "evidence": [],
                 "confidence": float(candidate.confidence),
-                "sensitivity": candidate.sensitivity,
                 "suggested_action": candidate.suggested_action,
                 "created_by": "system",
             },

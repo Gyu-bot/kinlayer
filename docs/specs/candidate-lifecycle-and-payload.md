@@ -1,5 +1,7 @@
 # Kinlayer Candidate Lifecycle and Payload Contract
 
+> Sensitivity is retired. See [retirement and compatibility contract](sensitivity-retirement.md).
+
 - Status: Draft v0.1
 - Parent PRD: `prd.md`
 - Related docs: `ontology-design.md`, `context-output-contract.md`, `../agents/agent-write-instruction-pack.md`
@@ -133,7 +135,6 @@ candidates
 - target_entity_id nullable
 - payload jsonb
 - confidence
-- sensitivity
 - suggested_action
 - status
 - created_by
@@ -199,7 +200,6 @@ All candidate submissions use a common envelope.
     }
   ],
   "confidence": 0.72,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -218,7 +218,6 @@ Strongly recommended fields:
 
 ```text
 evidence[]
-sensitivity
 suggested_action
 target_entity_id when candidate applies to existing entity
 supersedes_record_ref when a profile_field candidate replaces an existing entity_facts row
@@ -236,8 +235,7 @@ supersedes_record_ref when a profile_field candidate replaces an existing entity
   "display_name": "Alex",
   "canonical_name": "alex",
   "properties": {},
-  "ai_use_policy": "cautious_use",
-  "sensitivity": "medium"
+  "ai_use_policy": "cautious_use"
 }
 ```
 
@@ -278,7 +276,6 @@ candidate.canonical_record_ref = entity_aliases:<id>
     "email": "alex@example.com"
   },
   "claim_type": "fact",
-  "sensitivity": "high",
   "ai_use_policy": "ask_before_use"
 }
 ```
@@ -318,7 +315,6 @@ Promotion candidate example:
     "content": "alex@example.com",
     "value": "alex@example.com",
     "claim_type": "fact",
-    "sensitivity": "high",
     "ai_use_policy": "ask_before_use"
   },
   "evidence": [
@@ -329,7 +325,6 @@ Promotion candidate example:
     }
   ],
   "confidence": 0.8,
-  "sensitivity": "high",
   "suggested_action": "review",
   "created_by": "ai_agent",
   "supersedes_record_ref": "entity_facts:general-fact-id"
@@ -386,7 +381,6 @@ Validation:
   "content": "Alex tends to prefer concise follow-ups.",
   "claim_type": "pattern",
   "ai_use_policy": "cautious_use",
-  "sensitivity": "medium",
   "occurred_at": null,
   "valid_from": null,
   "valid_to": null
@@ -434,7 +428,6 @@ Quality behavior:
   "field_conflict_policy": {
     "display_name": "keep_target",
     "canonical_name": "keep_target",
-    "sensitivity": "use_more_restrictive",
     "ai_use_policy": "use_more_restrictive"
   },
   "risk_notes": ["Both entities have similar names but different contexts."],
@@ -567,7 +560,7 @@ groups exact targets or exact normalized unresolved names, and includes only bou
 evidence. Similar spellings remain separate review cases.
 
 Kinlayer revalidates status/type, target, ontology, warnings, evidence ownership, temporal scope,
-sensitivity, AI-use policy, duplicates/conflicts, and pattern episode count. Automatic promotion is
+AI-use policy, duplicates/conflicts, and pattern episode count. Automatic promotion is
 limited to safe existing-person observations plus a single specific named-person `new_entity` whose
 name is supported by linked user-authored evidence. The named-person exception rejects protected
 self names/aliases, pronouns, generic relationship nouns, honorific-only and role/title-only labels,

@@ -156,12 +156,10 @@ export function Candidates() {
   const [filters, setFilters] = useState<CandidateFilters>({
     status: "pending",
     candidate_type: "all",
-    sensitivity: "all",
   });
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [people, setPeople] = useState<Entity[]>([]);
   const [candidateTypeOptions, setCandidateTypeOptions] = useState<SelectOption[]>([]);
-  const [sensitivityOptions, setSensitivityOptions] = useState<SelectOption[]>([]);
   const [selected, setSelected] = useState<Candidate | null>(null);
   const [editedPayload, setEditedPayload] = useState("");
   const [showRawPayload, setShowRawPayload] = useState(false);
@@ -185,7 +183,6 @@ export function Candidates() {
         setPeople(peopleResult.items);
         if (ontology) {
           setCandidateTypeOptions(registryOptions(ontology.policies.candidate_types));
-          setSensitivityOptions(registryOptions(ontology.policies.sensitivity_levels));
         }
         setTotal(result.total);
         setSelected(result.items[0] ?? null);
@@ -326,19 +323,6 @@ export function Candidates() {
             {includeAllOption(candidateTypeOptions).map((candidateType) => (
               <option value={candidateType.value} key={candidateType.value}>
                 {candidateType.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <FieldHelp label="Sensitivity" help="정보가 얼마나 조심스러운지로 좁혀 보기" />
-          <select
-            value={filters.sensitivity}
-            onChange={(event) => updateFilter("sensitivity", event.target.value)}
-          >
-            {includeAllOption(sensitivityOptions).map((sensitivity) => (
-              <option value={sensitivity.value} key={sensitivity.value}>
-                {sensitivity.label}
               </option>
             ))}
           </select>

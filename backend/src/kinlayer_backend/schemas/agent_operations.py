@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from kinlayer_backend.schemas.common import APIModel, ListResponse
+from kinlayer_backend.schemas.common import PublicReadModel, ListResponse
 
 
-class AgentWriteOperationRead(APIModel):
+class AgentWriteOperationRead(PublicReadModel):
     id: str
     audit_id: str
     operation_type: str

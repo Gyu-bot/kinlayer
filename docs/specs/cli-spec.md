@@ -101,7 +101,6 @@ MVP options:
 --name TEXT
 --alias TEXT  # repeatable optional
 --note TEXT   # lightweight short note / property
---sensitivity low|medium|high
 --ai-use-policy freely_use|cautious_use|ask_before_use|never_surface
 --json
 ```
@@ -198,7 +197,6 @@ Structured profile fact candidate example:
       "email": "alex@example.com"
     },
     "claim_type": "fact",
-    "sensitivity": "high",
     "ai_use_policy": "ask_before_use"
   },
   "evidence": [
@@ -209,7 +207,6 @@ Structured profile fact candidate example:
     }
   ],
   "confidence": 0.8,
-  "sensitivity": "high",
   "suggested_action": "review",
   "created_by": "ai_agent",
   "supersedes_record_ref": "entity_facts:general-fact-id"
@@ -238,7 +235,6 @@ Options:
 --type observation
 --target-entity-id <entity_id>
 --target <entity_id>
---sensitivity medium
 --json
 ```
 
@@ -323,7 +319,6 @@ Options:
 --fact-type legal_name|birth_date|phone|email|address|organization|role
 --content TEXT
 --field-path TEXT
---sensitivity low|medium|high
 --ai-use-policy freely_use|cautious_use|ask_before_use|never_surface
 --json
 ```
@@ -359,7 +354,6 @@ Structured profile fact correction example:
         "email": "alex.new@example.com"
       },
       "claim_type": "fact",
-      "sensitivity": "high",
       "ai_use_policy": "ask_before_use"
     }
   },
@@ -467,7 +461,6 @@ Options:
 ```bash
 --relation-type TEXT
 --status active
---sensitivity low|medium|high
 --depth 1
 --json
 ```

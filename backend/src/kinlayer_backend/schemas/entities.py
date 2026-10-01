@@ -13,7 +13,6 @@ class EntityBase(APIModel):
     canonical_name: str | None = None
     properties: dict[str, Any] = Field(default_factory=dict)
     confirmation_status: str = "confirmed"
-    sensitivity: str = "medium"
     ai_use_policy: str = "cautious_use"
     created_by: str = "user"
     system_role: str | None = None
@@ -30,7 +29,6 @@ class EntityPatch(APIModel):
     properties: dict[str, Any] | None = None
     confirmation_status: str | None = None
     status: str | None = None
-    sensitivity: str | None = None
     ai_use_policy: str | None = None
     system_role: str | None = None
 
@@ -127,7 +125,6 @@ class EntityFactCreate(APIModel):
     value: dict[str, Any] | None = None
     claim_type: str = "fact"
     confidence: float = 1.0
-    sensitivity: str = "medium"
     ai_use_policy: str = "cautious_use"
     status: str = "active"
     valid_from: datetime | None = None
@@ -142,7 +139,6 @@ class EntityFactPatch(APIModel):
     value: dict[str, Any] | None = None
     claim_type: str | None = None
     confidence: float | None = None
-    sensitivity: str | None = None
     ai_use_policy: str | None = None
     status: str | None = None
     valid_from: datetime | None = None
@@ -155,7 +151,6 @@ class EntityFactPromoteRequest(APIModel):
     content: str
     field_path: str | None = None
     value: JsonValue = None
-    sensitivity: str | None = None
     ai_use_policy: str | None = None
 
 

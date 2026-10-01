@@ -398,7 +398,6 @@ Source-pack response shape:
       "target_entity_id": "entity-id",
       "payload": {},
       "confidence": 0.9,
-      "sensitivity": "low",
       "suggested_action": "accept",
       "status": "pending",
       "created_at": "2026-08-25T00:03:00Z",
@@ -411,7 +410,6 @@ Source-pack response shape:
         "source_ref": "thread-ref",
         "body_hash": "sha256:hash",
         "actor": "user",
-        "sensitivity": "medium",
         "occurred_at": "2026-08-25T00:00:00Z",
         "ingested_at": "2026-08-25T00:01:00Z",
         "created_at": "2026-08-25T00:03:00Z"
@@ -466,7 +464,6 @@ Source-pack response shape:
       "observation_type": "communication_preference",
       "content": "As of 2026-08-24, Casey prefers concise scheduling messages.",
       "claim_type": "preference",
-      "sensitivity": "low",
       "ai_use_policy": "cautious_use",
       "occurred_at": "2026-08-24T00:00:00Z"
     },

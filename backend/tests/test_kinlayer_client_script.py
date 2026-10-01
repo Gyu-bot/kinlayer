@@ -215,7 +215,6 @@ def test_query_and_response_normalization(monkeypatch, capsys):
             "candidate_id": "cand_1",
             "content": "Possible preference.",
             "observation_type": "communication_preference",
-            "sensitivity": "medium",
             "review_status": "unreviewed",
         }
     ]
@@ -409,8 +408,6 @@ def test_command_surface_is_write_free_and_keeps_secrets_out_of_output(monkeypat
             "person",
             "--status",
             "active",
-            "--sensitivity",
-            "medium",
             "--system-role",
             "self",
             "--limit",
@@ -444,8 +441,6 @@ def test_command_surface_is_write_free_and_keeps_secrets_out_of_output(monkeypat
             "observation",
             "--target-entity-id",
             "person 1",
-            "--sensitivity",
-            "high",
             "--limit",
             "6",
             "--offset",
@@ -495,7 +490,7 @@ def test_command_surface_is_write_free_and_keeps_secrets_out_of_output(monkeypat
         ("GET", "/api/ontology", None),
         (
             "GET",
-            "/api/entities?q=Jordan+Kim&entity_type=person&status=active&sensitivity=medium&system_role=self&limit=2&offset=3",
+            "/api/entities?q=Jordan+Kim&entity_type=person&status=active&system_role=self&limit=2&offset=3",
             None,
         ),
         ("GET", "/api/entities/person%2F1/context-card?include_provisional=true", None),
@@ -506,7 +501,7 @@ def test_command_surface_is_write_free_and_keeps_secrets_out_of_output(monkeypat
         ),
         (
             "GET",
-            "/api/candidates?status=needs_clarification&candidate_type=observation&target_entity_id=person+1&sensitivity=high&limit=6&offset=7",
+            "/api/candidates?status=needs_clarification&candidate_type=observation&target_entity_id=person+1&limit=6&offset=7",
             None,
         ),
         ("GET", "/api/candidates/cand%2F1", None),

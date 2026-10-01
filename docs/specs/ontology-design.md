@@ -29,7 +29,7 @@ Kinlayer uses:
 
 - Postgres as the canonical source of truth.
 - Entity-generic schema with person-first MVP behavior.
-- Registry-backed allowed types for entities, edges, claims, candidates, sensitivity, and AI-use policy.
+- Registry-backed allowed types for entities, edges, claims, candidates, and AI-use policy.
 - Relationship edges for durable relationship structure.
 - Observations for situational, advisory, or behavior/context knowledge.
 
@@ -439,16 +439,6 @@ observation
 merge
 conflict
 supersede
-```
-
-### `allowed_sensitivity_levels`
-
-Initial values:
-
-```text
-low
-medium
-high
 ```
 
 ### `allowed_ai_use_policies`

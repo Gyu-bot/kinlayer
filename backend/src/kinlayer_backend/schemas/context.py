@@ -26,7 +26,6 @@ class RetrievedObservationRead(APIModel):
     content: str
     score: float
     match_reasons: list[str]
-    sensitivity: str
     ai_use_policy: str
     status: str
     valid_from: datetime | None = None
@@ -45,7 +44,6 @@ class MatchedEntityRead(APIModel):
     score_breakdown: dict[str, float]
     penalties: dict[str, float]
     surface_bucket: str
-    sensitivity: str
     ai_use_policy: str
     confirmation_status: str
     profile_facts: list[EntityFactRead] = Field(default_factory=list)
@@ -71,7 +69,6 @@ class ProvisionalContextRead(APIModel):
     candidate_id: str
     content: str
     observation_type: str
-    sensitivity: str
     valid_from: datetime | None = None
     valid_to: datetime | None = None
     occurred_at: datetime | None = None

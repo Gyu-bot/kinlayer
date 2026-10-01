@@ -135,7 +135,7 @@ Sensitive or restricted context can be retrieved for internal use without being 
 
 ### Steps
 
-1. Create observation with `ai_use_policy = never_surface` or high sensitivity.
+1. Create observation with `ai_use_policy = never_surface`.
 2. Run context retrieval/pack for a semantically relevant query.
 3. Inspect context buckets.
 

@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
-from kinlayer_backend.schemas.common import APIModel
+from kinlayer_backend.schemas.common import APIModel, PublicReadModel
 
 Digest = str
 
@@ -89,13 +89,13 @@ class ReconciliationContextClaim(ClosedAPIModel):
     ] | None = None
     claim_type: Literal["fact", "preference", "pattern"]
     ai_use_policy: Literal["cautious_use", "ask_before_use", "never_surface"]
-    sensitivity: Literal["medium", "high"]
+    sensitivity: str | None = Field(default=None, max_length=40, deprecated=True, description="Ignored legacy signing metadata.")
     evidence: ContextEvidence
 
     @model_validator(mode="after")
     def kind_shape(self):
         if self.evidence.evidence_class == "current_reply" and (
-            self.sensitivity != "medium" or self.ai_use_policy != "cautious_use"
+            self.ai_use_policy != "cautious_use"
         ):
             raise ValueError("current reply context policy must be fixed")
         if self.kind == "profile_field":
@@ -303,7 +303,6 @@ class ReconciliationCandidateEvidenceRead(ClosedAPIModel):
     source_type: Literal["agent_conversation"]
     actor: Literal["user"]
     body_hash: Digest = Field(pattern=r"^sha256:[0-9a-f]{64}$")
-    effective_sensitivity: Literal["medium", "high"]
     effective_ai_use_policy: Literal["cautious_use", "ask_before_use", "never_surface"]
 
 
@@ -320,7 +319,7 @@ class ReconciliationCandidateEvidenceSnapshotList(ClosedAPIModel):
     items: list[ReconciliationCandidateEvidenceSnapshot] = Field(max_length=50)
 
 
-class ReconciliationActionRead(ClosedAPIModel):
+class ReconciliationActionRead(ClosedAPIModel, PublicReadModel):
     id: str
     resolution_id: str
     action: str

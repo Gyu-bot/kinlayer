@@ -60,9 +60,9 @@ Purpose: list and search person entities.
 
 Required behavior:
 
-- list people with display name, aliases preview, relationship summary, status, sensitivity, last_referenced_at;
+- list people with display name, aliases preview, relationship summary, status, last_referenced_at;
 - search by name/alias using API-backed query;
-- filter by status/sensitivity where API supports it, including `merged` for audit inspection;
+- filter by status where API supports it, including `merged` for audit inspection;
 - create button linking to `/people/new`;
 - open each person through an explicit display-name action, such as `Open {display_name}`,
   while keeping the entity ID internal;
@@ -86,7 +86,6 @@ Required fields:
 
 - display_name;
 - aliases optional;
-- sensitivity;
 - ai_use_policy;
 - short note / lightweight properties;
 - optional initial relationship edge to protected self entity;
@@ -99,7 +98,7 @@ Expected behavior:
 - creates optional initial edge/observation through API;
 - loads initial relationship type choices from ontology edge types and submits the selected
   canonical `relation_type`;
-- loads profile fact type, initial observation type, sensitivity, and AI use policy choices from
+- loads profile fact type, initial observation type, and AI use policy choices from
   ontology registries or policy values and submits canonical values;
 - redirects to `/people/:id` after creation.
 
@@ -120,7 +119,6 @@ Required sections:
 1. Entity summary
    - display_name;
    - aliases;
-   - sensitivity;
    - ai_use_policy;
    - status;
    - last_referenced_at.
@@ -133,7 +131,7 @@ Required sections:
 3. Profile facts
    - list active `entity_facts`;
    - show claim_type/confidence/policy.
-   - use ontology-backed fact type, sensitivity, and AI use policy controls for creation and edit
+   - use ontology-backed fact type and AI use policy controls for creation and edit
      flows.
    - support adding structured profile facts for `legal_name`, `birth_date`, `phone`, `email`,
      `address`, `organization`, and `role` through the canonical entity-facts API.
@@ -165,9 +163,9 @@ Current MVP actions:
 - patch entity summary fields;
 - add/deprecate alias;
 - soft delete/deprecate canonical records through DELETE endpoints;
-- add and update relationship edges with ontology-backed relationship type, sensitivity, and AI
+- add and update relationship edges with ontology-backed relationship type and AI
   use policy controls;
-- add and update profile facts with ontology-backed fact type, sensitivity, and AI use policy
+- add and update profile facts with ontology-backed fact type and AI use policy
   controls;
 - open related candidates if applicable.
 
@@ -181,7 +179,7 @@ Merge contract:
 
 - Merge execution is reviewed from `/candidates`, not directly from person detail.
 - Review UI must show source/target names, aliases, facts, relationship edges, observations,
-  sensitivity/policy conflicts, protected self warnings, and risk notes before enabling merge
+  policy conflicts, protected self warnings, and risk notes before enabling merge
   accept.
 - Merge accept is disabled until the reviewer confirms the target and acknowledges audit/risk notes.
 - Web must not perform merge rewrites client-side; all state changes go through the canonical API.
@@ -194,10 +192,10 @@ Purpose: candidate inbox and review surface.
 
 Required behavior:
 
-- list candidates with status, candidate_type, target entity, confidence, sensitivity, created_by, created_at;
+- list candidates with status, candidate_type, target entity, confidence, created_by, created_at;
 - replace candidate IDs in the default list/detail with candidate summaries, type, status,
   confidence, target summary, and timestamps;
-- filter by status/type/sensitivity;
+- filter by status/type;
 - show candidate detail drawer/panel with evidence excerpts and suggested action;
 - render `merge` candidates with a source/target comparison panel, merge fields, risk warnings,
   target confirmation, and audit acknowledgement;
@@ -242,10 +240,9 @@ Required behavior:
 - support filters:
   - relation_type from ontology edge types, plus an all-types option;
   - status;
-  - sensitivity;
 - node click opens person detail side panel;
 - edge click opens edge detail/evidence side panel.
-- detail panels show names, relationship labels, direction, status, sensitivity, and confidence
+- detail panels show names, relationship labels, direction, status, and confidence
   without raw entity or edge IDs by default.
 
 MVP official support:
@@ -337,7 +334,6 @@ Required sections:
   - fact types;
   - edge types;
   - observation types;
-  - sensitivity levels;
   - ai_use_policies.
 
 MVP non-goals:

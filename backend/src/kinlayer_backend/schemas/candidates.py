@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import Field, model_validator
 
-from kinlayer_backend.schemas.common import APIModel, ListResponse
+from kinlayer_backend.schemas.common import APIModel, PublicReadModel, ListResponse
 
 CANDIDATE_TYPES = {
     "new_entity",
@@ -23,7 +23,6 @@ class NewEntityPayload(APIModel):
     canonical_name: str | None = None
     properties: dict[str, Any] = Field(default_factory=dict)
     ai_use_policy: str = "cautious_use"
-    sensitivity: str = "medium"
 
 
 class AliasPayload(APIModel):
@@ -39,7 +38,6 @@ class ProfileFieldPayload(APIModel):
     fact_type: str | None = None
     content: str | None = None
     claim_type: str
-    sensitivity: str | None = None
     ai_use_policy: str | None = None
 
 
@@ -60,7 +58,6 @@ class ObservationPayload(APIModel):
     content: str
     claim_type: str
     ai_use_policy: str = "cautious_use"
-    sensitivity: str = "medium"
     valid_from: datetime | None = None
     valid_to: datetime | None = None
     occurred_at: datetime | None = None
@@ -124,7 +121,6 @@ class CandidateCreate(APIModel):
     payload: dict[str, Any]
     evidence: list[CandidateEvidenceCreate] = Field(default_factory=list)
     confidence: float = Field(ge=0, le=1)
-    sensitivity: str = "medium"
     suggested_action: str | None = None
     created_by: str
     supersedes_candidate_id: str | None = None
@@ -142,7 +138,6 @@ class CandidateCreate(APIModel):
 class CandidatePatch(APIModel):
     target_entity_id: str | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
-    sensitivity: str | None = None
     suggested_action: str | None = None
     resolution_note: str | None = None
 
@@ -159,13 +154,12 @@ class CandidateEditAcceptRequest(APIModel):
     resolved_by: str = "user"
 
 
-class CandidateRead(APIModel):
+class CandidateRead(PublicReadModel):
     id: str
     candidate_type: str
     target_entity_id: str | None = None
     payload: dict[str, Any]
     confidence: float
-    sensitivity: str
     suggested_action: str | None = None
     status: str
     created_by: str

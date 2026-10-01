@@ -132,7 +132,6 @@ class CorrectionService:
                 "body_hash": f"sha256:{sha256(excerpt.encode()).hexdigest()}",
                 "actor": source_actor,
                 "occurred_at": source.get("occurred_at"),
-                "sensitivity": "medium",
                 "retention_policy": "excerpt_only",
             },
             commit=False,

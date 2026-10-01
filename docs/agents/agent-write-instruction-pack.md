@@ -1,5 +1,7 @@
 # Kinlayer Agent Write Instruction Pack
 
+> Sensitivity is retired. See [retirement and compatibility contract](../specs/sensitivity-retirement.md).
+
 - Status: Draft v0.1
 - Scope: Instructions for AI agents, skills, plugins, MCP adapters, and runtime hooks that write or propose data into Kinlayer
 - Parent docs: `../specs/api-spec.md`, `../specs/candidate-lifecycle-and-payload.md`, `../specs/ontology-design.md`
@@ -48,7 +50,6 @@ relation_type
 observation_type
 fact_type
 claim_type
-sensitivity
 ai_use_policy
 entity_type
 source_type
@@ -417,7 +418,6 @@ All candidate submissions use this envelope shape:
     }
   ],
   "confidence": 0.72,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -440,8 +440,7 @@ Use `suggested_action: "accept"` only when the user statement is explicit, the t
     "display_name": "Minji",
     "canonical_name": "minji",
     "properties": {},
-    "ai_use_policy": "cautious_use",
-    "sensitivity": "medium"
+    "ai_use_policy": "cautious_use"
   },
   "evidence": [
     {
@@ -451,7 +450,6 @@ Use `suggested_action: "accept"` only when the user statement is explicit, the t
     }
   ],
   "confidence": 0.8,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -476,7 +474,6 @@ Use `suggested_action: "accept"` only when the user statement is explicit, the t
     }
   ],
   "confidence": 0.82,
-  "sensitivity": "low",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -515,7 +512,6 @@ includes them.
       "organization": "Example Corp"
     },
     "claim_type": "fact",
-    "sensitivity": "medium",
     "ai_use_policy": "cautious_use"
   },
   "evidence": [
@@ -526,7 +522,6 @@ includes them.
     }
   ],
   "confidence": 0.88,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -567,7 +562,6 @@ Only use this when `former_coworker` is an active `allowed_edge_types.relation_t
     }
   ],
   "confidence": 0.9,
-  "sensitivity": "medium",
   "suggested_action": "accept",
   "created_by": "ai_agent"
 }
@@ -588,7 +582,6 @@ If the user says "Minji is important to me" or "I should be careful with Minji",
     "content": "Minji prefers concise replies.",
     "claim_type": "preference",
     "ai_use_policy": "cautious_use",
-    "sensitivity": "medium",
     "occurred_at": null,
     "valid_from": null,
     "valid_to": null
@@ -601,7 +594,6 @@ If the user says "Minji is important to me" or "I should be careful with Minji",
     }
   ],
   "confidence": 0.84,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -641,7 +633,6 @@ Preferred discovery flow:
     }
   ],
   "confidence": 0.7,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -667,7 +658,6 @@ Preferred discovery flow:
     }
   ],
   "confidence": 0.8,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -691,8 +681,7 @@ Use `conflict` when the old record or intended replacement is not safe enough fo
         "observation_type": "relationship_context",
         "content": "Minji is currently a client contact, not only a former coworker.",
         "claim_type": "fact",
-        "ai_use_policy": "cautious_use",
-        "sensitivity": "medium"
+        "ai_use_policy": "cautious_use"
       }
     },
     "reason": "Newer user statement is more specific."
@@ -705,7 +694,6 @@ Use `conflict` when the old record or intended replacement is not safe enough fo
     }
   ],
   "confidence": 0.78,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -738,7 +726,6 @@ Use direct correction only when all are true:
       "properties": {},
       "confidence": 0.95,
       "status": "active",
-      "sensitivity": "medium",
       "ai_use_policy": "cautious_use",
       "created_by": "ai_agent"
     }
@@ -773,7 +760,6 @@ Invalid:
     "properties": {}
   },
   "confidence": 0.84,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }
@@ -799,7 +785,6 @@ Safer alternative when `communication_preference` is an active observation type:
     "content": "Minji prefers short replies.",
     "claim_type": "preference",
     "ai_use_policy": "cautious_use",
-    "sensitivity": "medium",
     "occurred_at": null,
     "valid_from": null,
     "valid_to": null
@@ -812,7 +797,6 @@ Safer alternative when `communication_preference` is an active observation type:
     }
   ],
   "confidence": 0.84,
-  "sensitivity": "medium",
   "suggested_action": "review",
   "created_by": "ai_agent"
 }

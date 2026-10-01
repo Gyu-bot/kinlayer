@@ -158,7 +158,7 @@ def test_structured_profile_fact_types_are_validated_and_visible_in_context_card
     body = created.json()
     assert body["fact_type"] == "email"
     assert body["value"] == {"kind": "work", "email": "alex@example.com"}
-    assert body["sensitivity"] == "high"
+    assert "sensitivity" not in body
     assert body["ai_use_policy"] == "ask_before_use"
 
     invalid = client.post(
@@ -316,7 +316,7 @@ def test_promote_general_fact_to_structured_fact_replaces_active_context(client)
     }
     assert replacement["claim_type"] == "fact"
     assert replacement["confidence"] == 0.73
-    assert replacement["sensitivity"] == "high"
+    assert "sensitivity" not in replacement
     assert replacement["ai_use_policy"] == "ask_before_use"
     assert replacement["created_by"] == "user"
 

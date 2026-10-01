@@ -30,7 +30,6 @@ class RetrievedObservation:
     content: str
     score: float
     match_reasons: list[str]
-    sensitivity: str
     ai_use_policy: str
     status: str
     valid_from: datetime | None = None
@@ -51,7 +50,6 @@ class RetrievalMatch:
     score_breakdown: dict[str, float]
     penalties: dict[str, float]
     surface_bucket: str
-    sensitivity: str
     ai_use_policy: str
     confirmation_status: str
     observations: list[RetrievedObservation] = field(default_factory=list)
@@ -191,7 +189,6 @@ class RetrievalService:
             score_breakdown=score_breakdown,
             penalties=penalties,
             surface_bucket=bucket,
-            sensitivity=entity.sensitivity,
             ai_use_policy=entity.ai_use_policy,
             confirmation_status=entity.confirmation_status,
             observations=retrieved_observations,
@@ -229,7 +226,6 @@ class RetrievalService:
                         content=observation.content,
                         score=score,
                         match_reasons=sorted(set(reasons)),
-                        sensitivity=observation.sensitivity,
                         ai_use_policy=observation.ai_use_policy,
                         status=observation.status,
                         valid_from=observation.valid_from,
@@ -253,8 +249,6 @@ class RetrievalService:
             penalties["stale_status"] = 0.20
         if any(observation.status in {"deprecated", "superseded", "disputed"} for observation in observations):
             penalties["stale_status"] = max(penalties.get("stale_status", 0), 0.20)
-        if entity.sensitivity == "high" or any(observation.sensitivity == "high" for observation in observations):
-            penalties["sensitivity"] = 0.10
         if entity.ai_use_policy == "never_surface" or any(
             observation.ai_use_policy == "never_surface" for observation in observations
         ):
@@ -267,13 +261,12 @@ class RetrievalService:
 
     def _surface_bucket(self, entity: Entity, observations: list[Observation], score: float) -> str:
         policies = {entity.ai_use_policy, *(observation.ai_use_policy for observation in observations)}
-        sensitivities = {entity.sensitivity, *(observation.sensitivity for observation in observations)}
         statuses = {entity.confirmation_status, *(observation.status for observation in observations)}
         if "never_surface" in policies:
             return "blocked"
         if statuses & {"deprecated", "superseded", "disputed", "rejected", "merged"}:
             return "internal_only"
-        if "high" in sensitivities or "ask_before_use" in policies:
+        if "ask_before_use" in policies:
             return "conditional_surface"
         return "direct_surface"
 

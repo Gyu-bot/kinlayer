@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from kinlayer_backend.schemas.common import APIModel
+from kinlayer_backend.schemas.common import APIModel, PublicReadModel
 
 
 class ClosedModel(APIModel):
@@ -17,7 +17,7 @@ class ProfileSlotCreate(ClosedModel):
     field_path: Literal["role", "job", "organization"]
     claim_type: Literal["fact"] = "fact"
     ai_use_policy: Literal["cautious_use"] = "cautious_use"
-    sensitivity: Literal["low"] = "low"
+    sensitivity: str = Field(default="low", max_length=40, deprecated=True, description="Ignored legacy fingerprint metadata.")
 
     @model_validator(mode="after")
     def matching_field(self):
@@ -50,7 +50,7 @@ class EdgeSlotCreate(ClosedModel):
     directed: Literal[True] = True
     claim_type: Literal["fact"] = "fact"
     ai_use_policy: Literal["cautious_use"] = "cautious_use"
-    sensitivity: Literal["low"] = "low"
+    sensitivity: str = Field(default="low", max_length=40, deprecated=True, description="Ignored legacy fingerprint metadata.")
 
     @field_validator("allowed_relation_types")
     @classmethod
@@ -77,7 +77,7 @@ class ObservationSlotCreate(ClosedModel):
     related_entity_id: str | None = Field(default=None, min_length=1, max_length=36)
     claim_type: Literal["fact", "preference", "pattern"]
     ai_use_policy: Literal["cautious_use"] = "cautious_use"
-    sensitivity: Literal["low"] = "low"
+    sensitivity: str = Field(default="low", max_length=40, deprecated=True, description="Ignored legacy fingerprint metadata.")
 
     @field_validator("allowed_observation_types")
     @classmethod
@@ -179,7 +179,7 @@ class EnrichmentAnswerCreate(ClosedModel):
         return self
 
 
-class EnrichmentAuthorizationRead(ClosedModel):
+class EnrichmentAuthorizationRead(ClosedModel, PublicReadModel):
     id: str
     authorization_ref: str
     subject_entity_id: str
@@ -194,7 +194,7 @@ class EnrichmentAuthorizationRead(ClosedModel):
     answer_capability: str
 
 
-class EnrichmentAnswerRead(ClosedModel):
+class EnrichmentAnswerRead(ClosedModel, PublicReadModel):
     id: str
     resolution_id: str
     authorization_id: str

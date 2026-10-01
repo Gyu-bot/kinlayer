@@ -48,7 +48,6 @@ class CandidateRepository:
         status: str | None = None,
         candidate_type: str | None = None,
         target_entity_id: str | None = None,
-        sensitivity: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ):
@@ -60,8 +59,6 @@ class CandidateRepository:
             filters.append(Candidate.candidate_type == candidate_type)
         if target_entity_id:
             filters.append(Candidate.target_entity_id == target_entity_id)
-        if sensitivity:
-            filters.append(Candidate.sensitivity == sensitivity)
         if filters:
             statement = statement.where(*filters)
         return page(self.session, statement.order_by(Candidate.created_at.desc()), limit, offset)

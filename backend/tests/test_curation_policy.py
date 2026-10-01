@@ -453,7 +453,8 @@ def test_policy_allows_only_safe_user_grounded_observations_and_persists_reasons
     assert "policy_allowed" in by_key["policy:safe"].reason_codes
     assert "pattern_requires_multiple_episodes" in by_key["policy:pattern"].reason_codes
     assert "non_user_evidence" in by_key["policy:non-user"].reason_codes
-    assert "high_sensitivity" in by_key["policy:sensitive"].reason_codes
+    assert "high_sensitivity" not in by_key["policy:sensitive"].reason_codes
+    assert "evidence_excerpt_not_source" in by_key["policy:sensitive"].reason_codes
     assert "missing_temporal_scope" in by_key["policy:transient"].reason_codes
     assert "target_entity_mismatch" in by_key["policy:mixed-subject"].reason_codes
     assert "specific_person_name_required" in by_key["policy:structural"].reason_codes

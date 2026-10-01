@@ -17,7 +17,6 @@ export type RetrievedObservation = {
   content: string;
   score: number;
   match_reasons: string[];
-  sensitivity: string;
   ai_use_policy: string;
   status: string;
   valid_from: string | null;
@@ -36,7 +35,6 @@ export type MatchedEntity = {
   score_breakdown: Record<string, number>;
   penalties: Record<string, number>;
   surface_bucket: string;
-  sensitivity: string;
   ai_use_policy: string;
   confirmation_status: string;
   profile_facts: EntityFact[];

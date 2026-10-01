@@ -414,7 +414,6 @@ def graph_ego(
     entity_id: str,
     relation_type: Annotated[str | None, typer.Option("--relation-type")] = None,
     status: Annotated[str, typer.Option("--status")] = "active",
-    sensitivity: Annotated[str | None, typer.Option("--sensitivity")] = None,
     depth: Annotated[int, typer.Option("--depth", min=1, max=2)] = 1,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
@@ -423,8 +422,6 @@ def graph_ego(
         params.append(f"relation_type={relation_type}")
     if status:
         params.append(f"status={status}")
-    if sensitivity:
-        params.append(f"sensitivity={sensitivity}")
     response = _request("GET", f"/api/graph/ego/{entity_id}?{'&'.join(params)}")
     _raise_for_api(response)
     payload = response.json()
@@ -489,7 +486,6 @@ def candidate_list(
     status: Annotated[str | None, typer.Option("--status")] = None,
     candidate_type: Annotated[str | None, typer.Option("--candidate-type", "--type")] = None,
     target_entity_id: Annotated[str | None, typer.Option("--target-entity-id", "--target")] = None,
-    sensitivity: Annotated[str | None, typer.Option("--sensitivity")] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     params = []
@@ -499,8 +495,6 @@ def candidate_list(
         params.append(f"candidate_type={candidate_type}")
     if target_entity_id:
         params.append(f"target_entity_id={target_entity_id}")
-    if sensitivity:
-        params.append(f"sensitivity={sensitivity}")
     query = f"?{'&'.join(params)}" if params else ""
     response = _request("GET", f"/api/candidates{query}")
     _raise_for_api(response)
@@ -638,7 +632,6 @@ def fact_promote(
     fact_type: Annotated[str, typer.Option("--fact-type")],
     content: Annotated[str, typer.Option("--content")],
     field_path: Annotated[str | None, typer.Option("--field-path")] = None,
-    sensitivity: Annotated[str | None, typer.Option("--sensitivity")] = None,
     ai_use_policy: Annotated[str | None, typer.Option("--ai-use-policy")] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
@@ -652,8 +645,6 @@ def fact_promote(
     }
     if field_path:
         payload["field_path"] = field_path
-    if sensitivity:
-        payload["sensitivity"] = sensitivity
     if ai_use_policy:
         payload["ai_use_policy"] = ai_use_policy
     response = _request("POST", f"/api/entity-facts/{fact_id}/promote", payload=payload)
@@ -807,7 +798,6 @@ def init(
             "system_role": "self",
             "is_system": True,
             "confirmation_status": "confirmed",
-            "sensitivity": "medium",
             "ai_use_policy": "cautious_use",
         },
     )
@@ -833,7 +823,6 @@ def person_create(
     name: Annotated[str, typer.Option("--name")],
     alias: Annotated[list[str] | None, typer.Option("--alias")] = None,
     note: Annotated[str | None, typer.Option("--note")] = None,
-    sensitivity: Annotated[str, typer.Option("--sensitivity")] = "medium",
     ai_use_policy: Annotated[str, typer.Option("--ai-use-policy")] = "cautious_use",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
@@ -845,7 +834,6 @@ def person_create(
             "display_name": name,
             "properties": {"short_note": note} if note else {},
             "confirmation_status": "confirmed",
-            "sensitivity": sensitivity,
             "ai_use_policy": ai_use_policy,
             "created_by": "user",
         },
@@ -883,7 +871,7 @@ def person_list(
         _emit(payload, json_output=True)
         return
     for item in payload["items"]:
-        typer.echo(f"{item['id']}  {item['display_name']}  {item['sensitivity']}")
+        typer.echo(f"{item['id']}  {item['display_name']}")
 
 
 @person_app.command("resolve")

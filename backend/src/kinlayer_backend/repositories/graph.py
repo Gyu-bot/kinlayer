@@ -16,7 +16,6 @@ class GraphRepository:
         entity_id: str,
         relation_type: str | None = None,
         status: str | None = None,
-        sensitivity: str | None = None,
     ) -> list[EntityEdge]:
         filters = [
             or_(EntityEdge.from_entity_id == entity_id, EntityEdge.to_entity_id == entity_id),
@@ -24,8 +23,6 @@ class GraphRepository:
         ]
         if relation_type:
             filters.append(EntityEdge.relation_type == relation_type)
-        if sensitivity:
-            filters.append(EntityEdge.sensitivity == sensitivity)
         from_entity = aliased(Entity)
         to_entity = aliased(Entity)
         statement = (

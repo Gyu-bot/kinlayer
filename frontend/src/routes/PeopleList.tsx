@@ -5,11 +5,9 @@ import {
   formatApiError,
   getAliases,
   getContextCard,
-  getOntology,
   listPeople,
 } from "../api/client";
 import {FieldHelp, helpCopy} from "../components/FieldHelp";
-import {includeAllOption, registryOptions, type SelectOption} from "../ontologyOptions";
 import type {Entity, EntityAlias} from "../types/entities";
 
 type Props = {
@@ -48,23 +46,10 @@ function personName(people: Entity[], id: string) {
   return people.find((person) => person.id === id)?.display_name ?? "selected person";
 }
 
-function mergeCandidateSensitivity(source: Entity | undefined, target: Entity | undefined) {
-  const rank: Record<string, number> = {low: 0, medium: 1, high: 2};
-  const values = [source?.sensitivity, target?.sensitivity].filter(
-    (value): value is string => Boolean(value),
-  );
-  return values.reduce(
-    (highest, value) => (rank[value] > rank[highest] ? value : highest),
-    "medium",
-  );
-}
-
 export function PeopleList({onNavigate}: Props) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [sensitivityFilter, setSensitivityFilter] = useState("all");
   const [people, setPeople] = useState<Entity[]>([]);
-  const [sensitivityOptions, setSensitivityOptions] = useState<SelectOption[]>([]);
   const [aliasesByPerson, setAliasesByPerson] = useState<Record<string, EntityAlias[]>>({});
   const [summariesByPerson, setSummariesByPerson] = useState<Record<string, string>>({});
   const [mergeSourceId, setMergeSourceId] = useState("");
@@ -77,16 +62,10 @@ export function PeopleList({onNavigate}: Props) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getOntology()
-      .then((ontology) => setSensitivityOptions(registryOptions(ontology.policies.sensitivity_levels)))
-      .catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
     let active = true;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      listPeople(query, {status: statusFilter, sensitivity: sensitivityFilter})
+      listPeople(query, {status: statusFilter})
         .then(async (result) => {
           if (!active) {
             return;
@@ -116,7 +95,7 @@ export function PeopleList({onNavigate}: Props) {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [query, sensitivityFilter, statusFilter]);
+  }, [query, statusFilter]);
 
   const sourcePerson = people.find((person) => person.id === mergeSourceId);
   const targetPerson = people.find((person) => person.id === mergeTargetId);
@@ -147,13 +126,11 @@ export function PeopleList({onNavigate}: Props) {
         field_conflict_policy: {
           display_name: "keep_target",
           canonical_name: "keep_target",
-          sensitivity: "use_more_restrictive",
           ai_use_policy: "use_more_restrictive",
         },
         risk_notes: ["Manual Web merge request requires reviewer confirmation before acceptance."],
       },
       confidence: 0.5,
-      sensitivity: mergeCandidateSensitivity(sourcePerson, targetPerson),
       suggested_action: "review",
       created_by: "user",
     })
@@ -187,19 +164,6 @@ export function PeopleList({onNavigate}: Props) {
             <option value="deprecated">deprecated</option>
             <option value="merged">merged</option>
             <option value="deleted">deleted</option>
-          </select>
-        </label>
-        <label>
-          <FieldHelp label="Sensitivity filter" help="정보가 얼마나 조심스러운지로 좁혀 보기" />
-          <select
-            value={sensitivityFilter}
-            onChange={(event) => setSensitivityFilter(event.target.value)}
-          >
-            {includeAllOption(sensitivityOptions).map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
           </select>
         </label>
       </div>
@@ -277,7 +241,6 @@ export function PeopleList({onNavigate}: Props) {
             <tr>
               <th>Name</th>
               <th>{helpCopy.status.label}</th>
-              <th>{helpCopy.sensitivity.label}</th>
               <th>{helpCopy.policy.label}</th>
               <th>Relationships</th>
               <th>Last referenced</th>
@@ -299,7 +262,6 @@ export function PeopleList({onNavigate}: Props) {
                   </span>
                 </td>
                 <td>{person.status}</td>
-                <td>{person.sensitivity}</td>
                 <td>{person.ai_use_policy}</td>
                 <td>{summariesByPerson[person.id] ?? "Loading"}</td>
                 <td>{person.last_referenced_at ?? "None"}</td>
@@ -319,7 +281,7 @@ export function PeopleList({onNavigate}: Props) {
             ))}
             {!loading && people.length === 0 ? (
               <tr>
-                <td colSpan={7}>No people found.</td>
+                <td colSpan={6}>No people found.</td>
               </tr>
             ) : null}
           </tbody>

@@ -767,7 +767,7 @@ def test_profile_field_candidate_accept_writes_structured_fact_and_context_card(
     }
     assert fact["claim_type"] == "fact"
     assert fact["confidence"] == 0.8
-    assert fact["sensitivity"] == "high"
+    assert "sensitivity" not in fact
     assert fact["ai_use_policy"] == "ask_before_use"
     assert fact["source_candidate_id"] == candidate.json()["id"]
 

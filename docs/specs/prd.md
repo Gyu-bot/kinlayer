@@ -128,7 +128,7 @@ MVP episodes store:
 - bounded excerpt;
 - body hash;
 - occurred_at / ingested_at;
-- sensitivity / retention policy.
+- retention policy.
 
 Full raw body retention is out of MVP. Reliability should come from correction, supersede, deprecate, evidence links, and retrieval updates.
 
@@ -139,7 +139,6 @@ AI agents may use context internally without directly surfacing it.
 Kinlayer separates:
 
 ```text
-sensitivity = information sensitivity
 ai_use_policy = stored default usage policy
 surface_visibility = retrieval-time computed bucket
 ```
@@ -569,7 +568,7 @@ Penalties include:
 
 ```text
 ambiguity
-sensitivity/surface constraints
+surface constraints
 stale/deprecated status
 policy blocks
 ```
@@ -591,7 +590,7 @@ Ambiguity guard prevents/downgrades high confidence when:
 - top1-top2 score gap is small;
 - reference resolution confidence is low;
 - focal_entity_id is absent with pronoun/implicit reference;
-- policy/sensitivity conflicts exist.
+- policy conflicts exist.
 
 Suggested response policy is based on confidence + surface buckets:
 
@@ -714,7 +713,6 @@ edge types
 observation types
 entity_fact types
 claim types
-sensitivity values
 ai_use_policy values
 candidate types
 retrieval/UI filters

@@ -3,7 +3,6 @@ export type GraphNode = {
   display_name: string;
   entity_type: string;
   status: string;
-  sensitivity: string;
   is_focal: boolean;
 };
 
@@ -15,7 +14,6 @@ export type GraphEdge = {
   directed: boolean;
   status: string;
   confidence: number;
-  sensitivity: string;
 };
 
 export type EgoGraph = {
@@ -29,5 +27,4 @@ export type EgoGraph = {
 export type GraphFilters = {
   relation_type: string;
   status: string;
-  sensitivity: string;
 };

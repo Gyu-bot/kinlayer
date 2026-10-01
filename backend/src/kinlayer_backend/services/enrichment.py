@@ -570,7 +570,6 @@ class EnrichmentService:
                 for category, key in (
                     ("claim_type", "claim_type"),
                     ("ai_use_policy", "ai_use_policy"),
-                    ("sensitivity", "sensitivity"),
                 )
             ):
                 raise api_error(409, "ontology_inactive", "Authorized ontology is inactive.")
@@ -711,7 +710,6 @@ class EnrichmentService:
                 "body_hash": "sha256:" + hashlib.sha256(body.source_excerpt.encode()).hexdigest(),
                 "actor": "user",
                 "occurred_at": body.source.occurred_at,
-                "sensitivity": "low",
                 "retention_policy": ENRICHMENT_RETENTION_POLICY,
             },
             commit=False,
@@ -755,7 +753,6 @@ class EnrichmentService:
                 "content": answer.value,
                 "value": answer.value,
                 "claim_type": slot["claim_type"],
-                "sensitivity": slot["sensitivity"],
                 "ai_use_policy": slot["ai_use_policy"],
             }
         elif slot["kind"] == "relationship_edge":
@@ -790,7 +787,6 @@ class EnrichmentService:
                 "content": answer.value,
                 "claim_type": slot["claim_type"],
                 "ai_use_policy": slot["ai_use_policy"],
-                "sensitivity": slot["sensitivity"],
             }
         return {
             "candidate_type": slot["kind"],
@@ -800,7 +796,6 @@ class EnrichmentService:
                 {"episode_id": episode_id, "excerpt": answer.evidence_excerpt, "confidence": 1.0}
             ],
             "confidence": 1.0,
-            "sensitivity": slot["sensitivity"],
             "suggested_action": "accept",
             "created_by": "user",
         }
@@ -824,7 +819,6 @@ class EnrichmentService:
             or episode.body_hash
             != "sha256:" + hashlib.sha256(episode.body_excerpt.encode()).hexdigest()
             or episode.source_description != ENRICHMENT_SOURCE_DESCRIPTION
-            or episode.sensitivity != "low"
             or episode.retention_policy != ENRICHMENT_RETENTION_POLICY
         ):
             raise ValueError
@@ -853,7 +847,6 @@ class EnrichmentService:
             or candidate.created_by != "user"
             or candidate.resolved_by != "user"
             or candidate.target_entity_id != slot["subject_entity_id"]
-            or candidate.sensitivity != slot["sensitivity"]
             or candidate.canonical_record_ref != outcome["canonical_ref"]
             or _digest(candidate.payload) != outcome["candidate_payload_digest"]
         ):
@@ -885,7 +878,6 @@ class EnrichmentService:
                 or payload.get("field_path") != slot["field_path"]
                 or payload.get("fact_type") != slot["fact_type"]
                 or payload.get("claim_type") != slot["claim_type"]
-                or payload.get("sensitivity") != slot["sensitivity"]
                 or payload.get("ai_use_policy") != slot["ai_use_policy"]
                 or payload.get("content") != payload.get("value")
             ):
@@ -908,7 +900,6 @@ class EnrichmentService:
             or sorted(payload.get("related_entity_ids", [])) != slot["related_entity_ids"]
             or payload.get("claim_type") != slot["claim_type"]
             or payload.get("ai_use_policy") != slot["ai_use_policy"]
-            or payload.get("sensitivity") != slot["sensitivity"]
         ):
             raise ValueError
 
@@ -951,7 +942,6 @@ class EnrichmentService:
             or record.content != payload["content"]
             or record.value != {"field_path": slot["field_path"], "value": payload["value"]}
             or record.claim_type != slot["claim_type"]
-            or record.sensitivity != slot["sensitivity"]
             or record.ai_use_policy != slot["ai_use_policy"]
         ):
             raise ValueError
@@ -964,7 +954,6 @@ class EnrichmentService:
             or record.claim_text != payload["claim_text"]
             or record.claim_type != slot["claim_type"]
             or record.properties != slot["properties"]
-            or record.sensitivity != candidate.sensitivity
             or record.ai_use_policy != "cautious_use"
         ):
             raise ValueError
@@ -974,7 +963,6 @@ class EnrichmentService:
             or record.observation_type not in slot["allowed_observation_types"]
             or record.content != payload["content"]
             or record.claim_type != slot["claim_type"]
-            or record.sensitivity != slot["sensitivity"]
             or record.ai_use_policy != slot["ai_use_policy"]
         ):
             raise ValueError

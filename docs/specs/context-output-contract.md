@@ -45,7 +45,6 @@ Response:
     "score_breakdown": {},
     "penalties": {},
     "surface_bucket": "direct_surface",
-    "sensitivity": "low",
     "ai_use_policy": "cautious_use",
     "confirmation_status": "confirmed",
     "profile_facts": [],
@@ -60,7 +59,7 @@ Response:
 }
 ```
 
-Observation results carry `observation_id`, content, score, match reasons, sensitivity, AI-use
+Observation results carry `observation_id`, content, score, match reasons, AI-use
 policy, status, and any `valid_from`, `valid_to`, `occurred_at`, and `created_at` values.
 
 ## Context pack
@@ -136,7 +135,7 @@ resolve to the active target entity.
 
 Provisional context is opt-in and structurally separate from every canonical field. It contains at
 most five recent pending observation candidates for one exactly resolved active entity, after
-user-authored evidence, content, temporal, sensitivity, contact/high-impact, and policy checks.
+user-authored evidence, content, temporal, contact/high-impact, and policy checks.
 
 Each item contains:
 
@@ -144,7 +143,6 @@ Each item contains:
 candidate_id
 content
 observation_type
-sensitivity
 valid_from / valid_to / occurred_at
 created_at
 label = provisional
@@ -153,7 +151,7 @@ write_evidence_eligible = false
 ```
 
 It never enters provenance, canonical stable/recent/caution fields, retrieval evidence, or later
-writes. Identity, structural, high-sensitivity, contact-like, warned, ambiguous, or non-user-grounded
+writes. Identity, structural, contact-like, warned, ambiguous, or non-user-grounded
 candidates are excluded.
 
 ## Temporal and policy rules

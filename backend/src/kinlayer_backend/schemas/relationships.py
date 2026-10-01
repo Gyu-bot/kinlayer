@@ -17,7 +17,6 @@ class EdgeCreate(APIModel):
     confidence: float = 1.0
     status: str = "active"
     valid_from: datetime | None = None
-    sensitivity: str = "medium"
     ai_use_policy: str = "cautious_use"
     created_by: str = "user"
 
@@ -32,7 +31,6 @@ class EdgePatch(APIModel):
     status: str | None = None
     valid_from: datetime | None = None
     valid_to: datetime | None = None
-    sensitivity: str | None = None
     ai_use_policy: str | None = None
 
 
@@ -67,7 +65,6 @@ class ObservationCreate(APIModel):
     content: str
     claim_type: str = "fact"
     confidence: float = 1.0
-    sensitivity: str = "medium"
     ai_use_policy: str = "cautious_use"
     status: str = "active"
     valid_from: datetime | None = None
@@ -83,7 +80,6 @@ class ObservationPatch(APIModel):
     content: str | None = None
     claim_type: str | None = None
     confidence: float | None = None
-    sensitivity: str | None = None
     ai_use_policy: str | None = None
     status: str | None = None
     valid_from: datetime | None = None
@@ -113,7 +109,6 @@ class EpisodeCreate(APIModel):
     body_hash: str
     actor: str
     occurred_at: datetime | None = None
-    sensitivity: str = "medium"
     retention_policy: str = "excerpt_only"
 
 

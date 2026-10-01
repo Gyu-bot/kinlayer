@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from kinlayer_backend.api.errors import api_error
+from kinlayer_backend.schemas.common import without_legacy_sensitivity
 from kinlayer_backend.models import (
     AgentWriteOperationAudit,
     Candidate,
@@ -51,7 +52,6 @@ ROLE_TITLES = {
     "회장님",
 }
 
-SENSITIVITY_RANK = {"low": 0, "medium": 1, "high": 2}
 AI_USE_POLICY_RANK = {
     "freely_use": 0,
     "cautious_use": 1,
@@ -61,14 +61,12 @@ AI_USE_POLICY_RANK = {
 
 
 def effective_context_policy(candidate: Candidate, episode: Episode) -> dict[str, str]:
-    sensitivities = ("medium", candidate.sensitivity, episode.sensitivity)
     policies = ("cautious_use", candidate.payload.get("ai_use_policy", "cautious_use"))
-    if any(value not in SENSITIVITY_RANK for value in sensitivities) or any(
+    if any(
         value not in AI_USE_POLICY_RANK for value in policies
     ):
         raise api_error(422, "validation_error", "Prepared evidence policy is invalid.")
     return {
-        "effective_sensitivity": max(sensitivities, key=SENSITIVITY_RANK.__getitem__),
         "effective_ai_use_policy": max(policies, key=AI_USE_POLICY_RANK.__getitem__),
     }
 
@@ -370,7 +368,6 @@ class ReconciliationService:
                 "body_excerpt": body.source.body_excerpt,
                 "body_hash": body.source.body_hash,
                 "actor": body.source.source_actor,
-                "sensitivity": "medium",
                 "retention_policy": "excerpt_only",
             },
             commit=False,
@@ -406,7 +403,6 @@ class ReconciliationService:
                 excerpt = excerpt_source[evidence.start:evidence.end]
                 episode = current_episode
                 effective_policy = {
-                    "effective_sensitivity": "medium",
                     "effective_ai_use_policy": "cautious_use",
                 }
             else:
@@ -432,15 +428,14 @@ class ReconciliationService:
             if not excerpt or episode is None:
                 raise api_error(422, "validation_error", "Evidence span is empty.")
             if (
-                claim.sensitivity != effective_policy["effective_sensitivity"]
-                or claim.ai_use_policy != effective_policy["effective_ai_use_policy"]
+                claim.ai_use_policy != effective_policy["effective_ai_use_policy"]
             ):
                 raise api_error(422, "validation_error", "Context policy commitment is invalid.")
             if claim.kind == "profile_field":
                 payload = {
                     "entity_id": primary.id, "field_path": claim.field_path,
                     "fact_type": claim.fact_type, "content": excerpt, "value": excerpt,
-                    "claim_type": claim.claim_type, "sensitivity": claim.sensitivity,
+                    "claim_type": claim.claim_type,
                     "ai_use_policy": claim.ai_use_policy,
                 }
             elif claim.kind == "relationship_edge":
@@ -449,7 +444,6 @@ class ReconciliationService:
                     "from_entity_id": protected_self.id, "to_entity_id": primary.id,
                     "relation_type": claim.relation_type, "directed": True,
                     "claim_text": excerpt, "claim_type": claim.claim_type, "properties": {},
-                    "sensitivity": claim.sensitivity,
                     "ai_use_policy": claim.ai_use_policy,
                 }
             else:
@@ -457,13 +451,12 @@ class ReconciliationService:
                     "subject_entity_id": primary.id, "related_entity_ids": [],
                     "observation_type": claim.observation_type, "content": excerpt,
                     "claim_type": claim.claim_type, "ai_use_policy": claim.ai_use_policy,
-                    "sensitivity": claim.sensitivity,
                 }
             candidate = service.create_candidate({
                 "candidate_type": claim.kind, "target_entity_id": primary.id,
                 "payload": payload,
                 "evidence": [{"episode_id": episode.id, "excerpt": excerpt, "confidence": 1.0}],
-                "confidence": 1.0, "sensitivity": claim.sensitivity,
+                "confidence": 1.0,
                 "suggested_action": "accept", "created_by": "user",
             }, commit=False)
             service.accept_candidate(candidate, resolution_note=body.resolution_note,
@@ -474,7 +467,6 @@ class ReconciliationService:
                 "payload_digest": _digest(candidate.payload), "episode_id": episode.id,
                 "excerpt_digest": "sha256:" + hashlib.sha256(excerpt.encode()).hexdigest(),
                 "source_body_hash": episode.body_hash,
-                "sensitivity": claim.sensitivity,
                 "ai_use_policy": claim.ai_use_policy,
             }
             manifest.append(commitment)
@@ -552,7 +544,6 @@ class ReconciliationService:
                         "field_conflict_policy": {
                             "display_name": "keep_target",
                             "canonical_name": "keep_target",
-                            "sensitivity": "use_more_restrictive",
                             "ai_use_policy": "use_more_restrictive",
                         },
                         "risk_notes": ["User explicitly confirmed this canonical merge."],
@@ -564,7 +555,6 @@ class ReconciliationService:
                         "confidence": 1.0,
                     }],
                     "confidence": 1.0,
-                    "sensitivity": source.sensitivity or "medium",
                     "suggested_action": "review",
                     "created_by": "user",
                 },
@@ -659,7 +649,6 @@ class ReconciliationService:
                             }
                         ],
                         "confidence": 1.0,
-                        "sensitivity": "medium",
                         "suggested_action": "review",
                         "created_by": "user",
                     },
@@ -1013,7 +1002,6 @@ class ReconciliationService:
                 not candidate or candidate.status != "accepted" or candidate.resolved_by != "user"
                 or candidate.target_entity_id != action.primary_entity_id
                 or candidate.candidate_type != item["kind"]
-                or candidate.sensitivity != item["sensitivity"]
                 or candidate.canonical_record_ref != item["canonical_ref"]
                 or _digest(candidate.payload) != item["payload_digest"]
                 or item["canonical_ref"] not in action.outcome_canonical_refs
@@ -1050,7 +1038,6 @@ class ReconciliationService:
                     "value": payload.get("value"),
                 }
                 and record.claim_type == payload.get("claim_type")
-                and record.sensitivity == payload.get("sensitivity")
                 and record.ai_use_policy == payload.get("ai_use_policy")
             ):
                 raise RuntimeError("context profile readback mismatch")
@@ -1062,7 +1049,6 @@ class ReconciliationService:
                 and record.directed == payload.get("directed")
                 and record.claim_text == payload.get("claim_text")
                 and record.claim_type == payload.get("claim_type")
-                and record.sensitivity == payload.get("sensitivity")
                 and record.ai_use_policy == payload.get("ai_use_policy")
                 and (record.properties or {}) == (payload.get("properties") or {})
             ):
@@ -1077,13 +1063,12 @@ class ReconciliationService:
                 if not (
                     record.status == "active"
                     and record.subject_entity_id == action.primary_entity_id
-                    and payload == {
+                    and without_legacy_sensitivity(payload) == {
                         "subject_entity_id": record.subject_entity_id,
                         "related_entity_ids": related_ids,
                         "observation_type": record.observation_type,
                         "content": record.content, "claim_type": record.claim_type,
                         "ai_use_policy": record.ai_use_policy,
-                        "sensitivity": record.sensitivity,
                     }
                     and observation_evidence == [item["episode_id"]]
                 ):

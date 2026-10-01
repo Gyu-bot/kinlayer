@@ -18,7 +18,6 @@ type Props = {
 export function NewPerson({onNavigate}: Props) {
   const [displayName, setDisplayName] = useState("");
   const [aliases, setAliases] = useState("");
-  const [sensitivity, setSensitivity] = useState("medium");
   const [aiUsePolicy, setAiUsePolicy] = useState("cautious_use");
   const [shortNote, setShortNote] = useState("");
   const [factType, setFactType] = useState("");
@@ -30,7 +29,6 @@ export function NewPerson({onNavigate}: Props) {
   const [factTypeOptions, setFactTypeOptions] = useState<SelectOption[]>([]);
   const [edgeTypes, setEdgeTypes] = useState<SelectOption[]>([]);
   const [observationTypes, setObservationTypes] = useState<SelectOption[]>([]);
-  const [sensitivityOptions, setSensitivityOptions] = useState<SelectOption[]>([]);
   const [policyOptions, setPolicyOptions] = useState<SelectOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -41,17 +39,14 @@ export function NewPerson({onNavigate}: Props) {
         const nextFactTypes = registryOptions(ontology.fact_types);
         const nextEdgeTypes = edgeTypeOptions(ontology.edge_types);
         const nextObservationTypes = observationTypeOptions(ontology.observation_types);
-        const nextSensitivityOptions = registryOptions(ontology.policies.sensitivity_levels);
         const nextPolicyOptions = registryOptions(ontology.policies.ai_use_policies);
         setFactTypeOptions(nextFactTypes);
         setEdgeTypes(nextEdgeTypes);
         setObservationTypes(nextObservationTypes);
-        setSensitivityOptions(nextSensitivityOptions);
         setPolicyOptions(nextPolicyOptions);
         setFactType((current) => normalizeOptionValue(current, nextFactTypes));
         setInitialRelationshipType((current) => normalizeOptionValue(current, nextEdgeTypes));
         setInitialObservationType((current) => normalizeOptionValue(current, nextObservationTypes));
-        setSensitivity((current) => normalizeOptionValue(current, nextSensitivityOptions));
         setAiUsePolicy((current) => normalizeOptionValue(current, nextPolicyOptions));
       })
       .catch(() => undefined);
@@ -67,7 +62,6 @@ export function NewPerson({onNavigate}: Props) {
           .split(",")
           .map((alias) => alias.trim())
           .filter(Boolean),
-        sensitivity,
         aiUsePolicy,
         shortNote,
         factType,
@@ -111,16 +105,6 @@ export function NewPerson({onNavigate}: Props) {
           />
         </label>
         <div className="form-grid">
-          <label>
-            <FieldHelp {...helpCopy.sensitivity} />
-            <select value={sensitivity} onChange={(e) => setSensitivity(e.target.value)}>
-              {optionsWithCurrent(sensitivityOptions, sensitivity).map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
           <label>
             <FieldHelp {...helpCopy.policy} />
             <select value={aiUsePolicy} onChange={(e) => setAiUsePolicy(e.target.value)}>

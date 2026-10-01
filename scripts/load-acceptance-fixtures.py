@@ -65,7 +65,6 @@ def ensure_self(client: ApiClient) -> dict[str, Any]:
         "system_role": "self",
         "is_system": True,
         "confirmation_status": "confirmed",
-        "sensitivity": "medium",
         "ai_use_policy": "cautious_use",
     }
     try:
@@ -82,7 +81,6 @@ def ensure_person(
     display_name: str,
     aliases: list[str],
     *,
-    sensitivity: str = "medium",
     ai_use_policy: str = "cautious_use",
     note: str = "",
 ) -> dict[str, Any]:
@@ -102,7 +100,6 @@ def ensure_person(
                 "display_name": display_name,
                 "properties": {"acceptance_fixture": True, "note": note},
                 "confirmation_status": "confirmed",
-                "sensitivity": sensitivity,
                 "ai_use_policy": ai_use_policy,
                 "created_by": "user",
             },
@@ -134,7 +131,6 @@ def ensure_fact(client: ApiClient, entity_id: str, fact_type: str, content: str)
             "content": content,
             "claim_type": "fact",
             "confidence": 1,
-            "sensitivity": "medium",
             "ai_use_policy": "cautious_use",
             "created_by": "user",
         },
@@ -172,7 +168,6 @@ def ensure_edge(
             "claim_text": claim_text,
             "claim_type": "fact",
             "confidence": 1,
-            "sensitivity": "medium",
             "ai_use_policy": "cautious_use",
             "created_by": "user",
         },
@@ -186,7 +181,6 @@ def ensure_observation(
     content: str,
     *,
     related_entity_ids: list[str] | None = None,
-    sensitivity: str = "medium",
     ai_use_policy: str = "cautious_use",
     recency_weight: float = 1,
 ) -> dict[str, Any]:
@@ -215,7 +209,6 @@ def ensure_observation(
             "content": content,
             "claim_type": "fact",
             "confidence": 1,
-            "sensitivity": sensitivity,
             "ai_use_policy": ai_use_policy,
             "recency_weight": recency_weight,
             "created_by": "user",
@@ -233,7 +226,6 @@ def create_episode(client: ApiClient, source_ref: str, excerpt: str, actor: str 
             "body_excerpt": excerpt,
             "body_hash": content_hash(excerpt),
             "actor": actor,
-            "sensitivity": "medium",
             "retention_policy": "excerpt_only",
         },
     )
@@ -245,8 +237,6 @@ def create_candidate(
     target_entity_id: str,
     payload: dict[str, Any],
     episode: dict[str, Any],
-    *,
-    sensitivity: str = "medium",
 ) -> dict[str, Any]:
     return client.post(
         "/api/candidates",
@@ -262,7 +252,6 @@ def create_candidate(
                 }
             ],
             "confidence": 0.92,
-            "sensitivity": sensitivity,
             "suggested_action": "review",
             "created_by": "ai_agent",
         },
@@ -344,7 +333,6 @@ def load_fixtures(client: ApiClient) -> dict[str, Any]:
         "caution",
         "Acceptance sensitive detail should never be placed in direct_surface.",
         related_entity_ids=[self_entity["id"]],
-        sensitivity="high",
         ai_use_policy="never_surface",
         recency_weight=0.2,
     )
@@ -372,7 +360,6 @@ def load_fixtures(client: ApiClient) -> dict[str, Any]:
             "content": "민지는 다음 회의 전 한국어 요약을 먼저 받으면 빠르게 확인한다.",
             "claim_type": "fact",
             "ai_use_policy": "cautious_use",
-            "sensitivity": "medium",
         },
         accepted_episode,
     )
@@ -394,7 +381,6 @@ def load_fixtures(client: ApiClient) -> dict[str, Any]:
             "content": "Acceptance Alex may prefer weekly async summaries.",
             "claim_type": "inference",
             "ai_use_policy": "cautious_use",
-            "sensitivity": "medium",
         },
         pending_episode,
     )
@@ -419,7 +405,6 @@ def load_fixtures(client: ApiClient) -> dict[str, Any]:
                     "content": "Acceptance Alex prefers concise async written updates before calls.",
                     "claim_type": "fact",
                     "confidence": 1,
-                    "sensitivity": "medium",
                     "ai_use_policy": "cautious_use",
                     "recency_weight": 1,
                 },
