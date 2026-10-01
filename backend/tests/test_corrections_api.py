@@ -111,7 +111,7 @@ def test_explicit_edge_correction_supersedes_old_record_and_links_evidence(
     old_after = client.get(f"/api/edges/{old_edge['id']}")
     assert old_after.status_code == 200
     assert old_after.json()["status"] == "superseded"
-    assert old_after.json()["valid_to"] is not None
+    assert old_after.json()["valid_to"] is None
 
     new_edge_id = body["new_record_ref"].split(":", 1)[1]
     new_edge = client.get(f"/api/edges/{new_edge_id}")
@@ -665,3 +665,61 @@ def test_correction_apply_rejects_records_without_canonical_evidence_table(clien
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_legacy_correction_replay_and_new_actions_share_change_history(client, database_url):
+    from kinlayer_backend.models import EntityFact, MemoryChange
+
+    alex = create_person(client, "Alex")
+    blair = create_person(client, "Blair")
+    old = client.post("/api/entity-facts", json={
+        "entity_id": alex["id"], "fact_type": "organization", "content": "Old Corp",
+        "claim_type": "fact", "created_by": "user",
+    }).json()
+    payload = {
+        "old_record_ref": f"entity_facts:{old['id']}",
+        "new_record": {"record_type": "entity_facts", "payload": {
+            "entity_id": alex["id"], "fact_type": "organization", "content": "New Corp", "claim_type": "fact",
+        }},
+        "correction_source": {"source_type": "agent_conversation", "user_explicit": True, "excerpt": "Alex works with New Corp."},
+    }
+    response = client.post("/api/corrections/apply", json=payload)
+    assert response.status_code == 200, response.text
+    first = response.json()
+    replay = client.post("/api/corrections/apply", json=payload)
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == first
+    payload.update(request_id="legacy-move", action="reattribute", old_record_ref=first["new_record_ref"])
+    payload["new_record"]["payload"]["entity_id"] = blair["id"]
+    payload["correction_source"]["excerpt"] = "That was Blair's company, not Alex's."
+    moved_response = client.post("/api/corrections/apply", json=payload)
+    assert moved_response.status_code == 200, moved_response.text
+    moved = moved_response.json()
+    payload.update(request_id="legacy-retract", action="retract", old_record_ref=moved["new_record_ref"])
+    payload.pop("new_record")
+    payload["correction_source"]["excerpt"] = "Remove that claim entirely."
+    retracted_response = client.post("/api/corrections/apply", json=payload)
+    assert retracted_response.status_code == 200, retracted_response.text
+    assert retracted_response.json()["new_record_ref"] is None
+    assert client.post("/api/corrections/apply", json=payload).json() == retracted_response.json()
+    with create_session_maker(Settings(database_url=database_url))() as session:
+        row = session.get(EntityFact, moved["new_record_ref"].split(":", 1)[1])
+        assert row.entity_id == blair["id"]
+        assert row.status == "deleted"
+        assert row.valid_to is None
+        assert session.query(MemoryChange).count() == 3
+        assert session.query(Episode).count() == 3
+
+
+def test_legacy_correction_request_id_conflict_does_not_mutate(client):
+    user, alex = create_person(client, "User"), create_person(client, "Alex")
+    old = create_edge(client, user["id"], alex["id"], "coworker")
+    payload = {
+        "request_id": "legacy-reused", "action": "retract", "old_record_ref": f"entity_edges:{old['id']}",
+        "correction_source": {"source_type": "agent_conversation", "user_explicit": True, "excerpt": "Remove that claim."},
+    }
+    assert client.post("/api/corrections/apply", json=payload).status_code == 200
+    payload["correction_source"]["excerpt"] = "Different source under reused id."
+    response = client.post("/api/corrections/apply", json=payload)
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "idempotency_conflict"

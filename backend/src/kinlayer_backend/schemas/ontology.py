@@ -85,6 +85,8 @@ class PoliciesRead(APIModel):
 class OntologyRead(APIModel):
     entity_types: list[RegistryValueRead]
     fact_types: list[RegistryValueRead]
+    claim_bases: list[RegistryValueRead]
+    participant_roles: list[RegistryValueRead]
     edge_types: list[EdgeTypeRead]
     observation_types: list[ObservationTypeRead]
     policies: PoliciesRead

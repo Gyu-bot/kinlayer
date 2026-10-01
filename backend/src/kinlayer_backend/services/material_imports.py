@@ -1,4 +1,4 @@
-"""Bounded authorized import using the existing episode/candidate lifecycle."""
+"""Atomically save authorized material as canonical memories and source receipts."""
 
 from copy import deepcopy
 from datetime import UTC
@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
-from kinlayer_backend.models import Entity, Episode, MaterialImport
+from kinlayer_backend.models import Entity, Episode, MaterialImport, MemoryChange
 from kinlayer_backend.schemas.material_imports import MaterialImportRequest, json_digest
 from kinlayer_backend.services.agent_write_filter import AgentWriteFilter
 from kinlayer_backend.services.candidates import CandidateService
@@ -51,11 +51,19 @@ class MaterialImportService:
 
     @staticmethod
     def _receipt(row, status):
+        canonical_refs = sorted(
+            link["canonical_record_ref"]
+            for link in row.candidate_links.values()
+            if link.get("canonical_record_ref")
+        )
         return {
+            # Old receipts retain their original lifecycle and signed manifest.
+            "validation_scope": "immediate_memories" if canonical_refs else "pending_candidates_only",
             "status": status,
             "import_id": row.id,
             "request_sha256": row.request_sha256,
             "candidate_ids": sorted(row.candidate_links),
+            "canonical_record_refs": canonical_refs,
             "episode_ids": sorted(
                 {eid for link in row.candidate_links.values() for eid in link["episodes"]}
             ),
@@ -75,7 +83,6 @@ class MaterialImportService:
             or target.status != "active"
             or target.entity_type != "person"
             or target.system_role == "self"
-            or target.confirmation_status != "confirmed"
         ):
             raise api_error(
                 422,
@@ -117,20 +124,10 @@ class MaterialImportService:
                 self.session.flush()
                 episodes[source.source_id] = episode
             candidates = []
+            candidate_rows = []
             links = {}
             sources = {s.source_id: s for s in payload.sources}
             for claim in payload.claims:
-                support = [sources[sid] for sid in claim.source_ids]
-                # The dates describe the supporting material, not an open-ended personality fact.
-                dates = sorted(s.occurred_at for s in support if s.occurred_at is not None)
-                all_dated = len(dates) == len(support)
-                attribution = "; ".join(
-                    f"{s.author}, {s.occurred_at.date().isoformat() if s.occurred_at else 'date unknown'}, {s.message_id}"
-                    for s in support
-                )
-                label = (
-                    "Source report" if claim.kind == "sourced_report" else "Source-based inference"
-                )
                 body = {
                     "candidate_type": "observation",
                     "target_entity_id": target.id,
@@ -138,12 +135,11 @@ class MaterialImportService:
                         "subject_entity_id": target.id,
                         "related_entity_ids": [],
                         "observation_type": claim.observation_type,
-                        "content": f"{label} [{attribution}]: {claim.summary}",
+                        "content": claim.summary,
                         "claim_type": "fact" if claim.kind == "sourced_report" else "inference",
-                        "ai_use_policy": claim.ai_use_policy,
-                        "occurred_at": dates[-1].astimezone(UTC).isoformat()
-                        if claim.kind == "sourced_report" and all_dated
-                        else None,
+                        "claim_basis": "reported" if claim.kind == "sourced_report" else "inferred",
+                        # Source dates are evidence metadata, not the event date.
+                        "occurred_at": None,
                     },
                     "evidence": [
                         {
@@ -154,7 +150,7 @@ class MaterialImportService:
                         for sid in claim.source_ids
                     ],
                     "confidence": claim.confidence,
-                    "suggested_action": "review",
+                    "suggested_action": "accept",
                     "created_by": "ai_agent",
                 }
                 result = AgentWriteFilter(self.session).validate("candidate", body)
@@ -175,7 +171,32 @@ class MaterialImportService:
                     "episodes": {episodes[sid].id: sid for sid in claim.source_ids},
                 }
                 candidates.append(deepcopy(candidate.payload))
-            row.candidate_links = links
+                candidate_rows.append(candidate)
+            row.candidate_links = deepcopy(links)
+            self.session.flush()
+            # Persist source links before accepting so the ordinary provenance
+            # verifier checks exactly the same signed manifest and evidence.
+            for index, candidate in enumerate(candidate_rows):
+                CandidateService(self.session).accept_candidate(
+                    candidate,
+                    resolved_by="ai_agent",
+                    resolution_note="Saved from authorized material import.",
+                    commit=False,
+                )
+                links[candidate.id]["canonical_record_ref"] = candidate.canonical_record_ref
+                self.session.add(MemoryChange(
+                    request_id=f"material-import:{row.id}:{index}",
+                    request_sha256=json_digest({
+                        "import_request_sha256": fingerprint, "claim_index": index,
+                    }),
+                    change_kind="create",
+                    new_record_ref=candidate.canonical_record_ref,
+                    source_episode_id=candidate.evidence[0].episode_id,
+                    actor="ai_agent",
+                    reason="Saved from authorized material import.",
+                ))
+            # Assign a fresh JSON value to make persisted receipts replayable.
+            row.candidate_links = deepcopy(links)
             self.session.flush()
             receipt = self._receipt(row, "submitted" if submit else "validated")
             if submit:
@@ -186,6 +207,7 @@ class MaterialImportService:
                 **receipt,
                 "import_id": None,
                 "candidate_ids": [],
+                "canonical_record_refs": [],
                 "episode_ids": [],
                 "candidates": candidates,
             }

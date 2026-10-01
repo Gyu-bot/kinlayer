@@ -13,6 +13,63 @@ candidate-bound original user evidence. Identity and context commit in one trans
 
 ---
 
+## Current memory write API — 2026-10-01
+
+`POST /api/memories` is the canonical agent write contract. It stores one independently correctable
+claim immediately; no candidate accept, curation run or human approval is required. See the full
+[agent request contract and JSON examples](../agents/agent-write-instruction-pack.md).
+
+| Request field | Meaning |
+| --- | --- |
+| `request_id` | Stable logical operation ID; same-body retry returns the original change. |
+| `action` | `create`, `correct`, `retract`, `reattribute`. |
+| `old_record_ref` | Required for non-create actions; exact fact/edge/observation ref. |
+| `record` | Required except for retract: `record_type` plus its typed `payload`. |
+| `source` | `source_type`, actual human `actor`, 1–4,000-character `excerpt`, optional `source_ref` and statement `occurred_at`. |
+| `reason` | Optional bounded change rationale, not evidence. |
+| `created_by` | Defaults to `ai_agent`; distinct from the source author. |
+| `expected_updated_at` | Optional concurrency precondition for the old record. |
+
+Accepted record types are `entity_facts`, `entity_edges`, `observations`. New payloads require
+`claim_basis: reported|inferred|unknown` and `confidence` from 0 to 1. Legacy `claim_type`,
+`ai_use_policy`, and `confirmation_status` are not accepted in this new payload.
+
+New text profile facts require matching `content` and `value: {text}`. Birth date/birthday facts
+use known date components with explicit `precision`. Generic note fact types are rejected; use an
+observation with an appropriate topic. The agent splits multi-claim paragraphs before submission.
+
+Ordinary `source_type` is `agent_conversation` or `manual_entry`. Import/connector material must
+use its separately authorized import API. Invalid/missing source, malformed type/value/reference,
+conflicting request-ID reuse, and stale record changes fail without partial canonical/evidence/
+history writes. A receipt identifies `change_id`, `action`, `old_record_ref`, `new_record_ref`, and
+`source_episode_id`; a retraction has no new record. The endpoint returns HTTP 200 on initial success and replay.
+All new-memory timestamp fields require a timezone offset; unknown values are omitted/null and naive
+values are HTTP 422. Active/disputed old records can be changed; superseded/deleted targets conflict.
+
+Episode hashing, evidence linkage, old-record status change, replacement and common change history
+are one transaction. Replacement observation embeddings remain reindexable; provider absence must
+not prevent storage. AI-use-policy and confirmation values retained on old APIs are inert
+compatibility metadata. A fact/edge/observation referenced by `memory_changes`, including migrated
+records, rejects legacy PATCH/DELETE with HTTP 409 `memory_change_required`. Its changes must use
+`/api/memories` correct/retract/reattribute. Legacy GET remains valid, and untracked historical data
+retains compatibility behavior. Old CRUD/candidate/correction examples below document retained interfaces;
+new agents must use the memory endpoint so source and history remain atomic.
+
+History reads:
+
+- `GET /api/memory-changes?record_ref=<type:id>&limit=50&offset=0`: filter either old or new ref;
+  limit is 1–100. Returns `{items,total,limit,offset}`.
+- `GET /api/memory-changes/{change_id}`: exact change row or HTTP 404.
+
+Change rows expose `id`, `request_id`, `change_kind`, `old_record_ref`, `new_record_ref`,
+`source_episode_id`, writer `actor`, `reason`, and `created_at`. They do not dump source excerpts or
+internal request hashes. Original source details are read through the linked Episode.
+
+The running `/openapi.json` is the machine-readable contract. Do not infer new endpoint support from
+older Markdown examples. Frontend replacement is [planned separately](../plans/frontend-rebuild.md).
+
+---
+
 ## 1. API Principles
 
 Kinlayer's HTTP API is the canonical capability layer.
@@ -21,11 +78,12 @@ Explicit user-authorized source imports use `POST /api/material-imports/validate
 `POST /api/material-imports/submit`, and `GET /api/material-imports/{import_id}`.
 They require a separate token and bounded manifest; see the
 [authorized material import contract](authorized-material-imports.md).
-Ordinary post-turn evidence and correction/reconciliation identity guards are unchanged.
+Ordinary post-turn source admission and retained correction/reconciliation identity guards remain;
+immediate storage does not grant arbitrary material-import authorization.
 
-Product boundary: AI agents interpret current-turn user-authored text and propose candidates or
-explicit corrections; Kinlayer validates, stores, retrieves, reviews, and canonicalizes relationship
-context.
+Product boundary: agents interpret current human source and split atomic claims; Kinlayer
+validates and stores canonical records, evidence, and change history immediately. Corrections,
+retractions and reattributions use the same memory contract.
 
 Agent-facing write behavior is specified in `../agents/agent-write-instruction-pack.md`. In
 particular, agent-visible relationship type, API `relation_type`, candidate
@@ -127,9 +185,14 @@ Response:
 {
   "status": "ok",
   "database": "ok",
-  "embedding": "ready|pending|disabled|error"
+  "embedding": "disabled"
 }
 ```
+
+`embedding` reports the same effective configuration status as `/api/system/config`:
+`ready`, `configured`, `misconfigured`, `disabled`, or `unsupported`. This checks configuration,
+not a live provider request or index completeness. Overall health `status` remains based on DB
+health; use embedding status/backfill and an actual provider operation to verify index/provider use.
 
 ### `GET /api/system/version`
 
@@ -157,6 +220,11 @@ Response:
 {
   "bind_host": "0.0.0.0",
   "auth_token_configured": false,
+  "memory_write": {
+    "endpoint": "/api/memories",
+    "review_required": false,
+    "contract_version": "2"
+  },
   "embedding": {
     "provider": "disabled",
     "model": null,
@@ -241,7 +309,7 @@ Response: entity object.
 
 ### `POST /api/entities/resolve`
 
-Purpose: agent-facing deterministic entity resolution before candidate/correction planning.
+Purpose: agent-facing deterministic entity resolution before memory writes or retrieval.
 
 Request:
 
@@ -406,7 +474,7 @@ Purpose: soft delete/deprecate alias.
 
 ### `POST /api/entity-facts`
 
-Purpose: create provenance/policy-backed stable profile field.
+Purpose: low-level compatibility profile CRUD. Agents use /api/memories for atomic source/history.
 
 Request:
 
@@ -979,17 +1047,16 @@ Response:
         "alias_name": 0.2,
         "semantic_observation": 0.2,
         "recency": 0.15,
-        "graph_proximity": 0.1,
-        "confirmation_policy": 0.1
+        "graph_proximity": 0.1
       },
       "penalties": {},
       "surface_bucket": "direct_surface",
-      "ai_use_policy": "cautious_use",
-      "confirmation_status": "confirmed",
+      "profile_facts": [],
       "observations": []
     }
   ],
   "observations": [],
+  "provenance": [],
   "scores": {"uuid": 0.82},
   "match_reasons": {"uuid": ["entity_hint", "recent"]},
   "score_breakdown": {"uuid": {"entity_hint": 0.25}},
@@ -1002,7 +1069,7 @@ Response:
 
 ### `POST /api/context/pack`
 
-Purpose: agent-facing context pack with policy buckets.
+Purpose: agent-facing context pack with basis, participants, timestamps and provenance. Legacy bucket keys remain for compatibility, without AI-use-policy gating.
 
 Response:
 

@@ -341,7 +341,7 @@ def test_subject_name_or_alias_collision_blocks_stage(database_url, collision_ki
         assert session.query(Candidate).count() == 0
 
 
-def test_unrelated_inactive_and_unconfirmed_people_do_not_create_ambiguity(database_url):
+def test_active_name_collision_counts_even_with_legacy_unconfirmed_status(database_url):
     headers = {"Authorization": "Bearer reconcile-secret"}
     factory = create_session_maker(Settings(database_url=database_url))
     with enrichment_client(database_url) as client:
@@ -384,7 +384,8 @@ def test_unrelated_inactive_and_unconfirmed_people_do_not_create_ambiguity(datab
             headers=headers,
             json=stage_payload(subject["id"]),
         )
-        assert response.status_code == 200, response.text
+        assert response.status_code == 409, response.text
+        assert response.json()["error"]["code"] == "subject_ambiguous"
 
 
 def test_protected_self_bypasses_ordinary_name_collision(database_url):

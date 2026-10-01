@@ -472,9 +472,8 @@ class EnrichmentService:
             not subject
             or subject.entity_type != "person"
             or subject.status != "active"
-            or subject.confirmation_status != "confirmed"
         ):
-            raise api_error(422, "validation_error", "Subject must be an active confirmed person.")
+            raise api_error(422, "validation_error", "Subject must be an active person.")
 
     def _require_unambiguous_subject(self, subject: Entity | None) -> None:
         self._validate_subject(subject)
@@ -489,14 +488,13 @@ class EnrichmentService:
                 Entity.id != subject.id,
                 Entity.entity_type == "person",
                 Entity.status == "active",
-                Entity.confirmation_status == "confirmed",
             )
         )
         if any(subject_identifiers & self._normalized_identifiers(other) for other in others):
             raise api_error(
                 409,
                 "subject_ambiguous",
-                "Subject identity overlaps another active confirmed person.",
+                "Subject identity overlaps another active person.",
             )
 
     @staticmethod
@@ -518,12 +516,11 @@ class EnrichmentService:
             or subject.system_role == "self"
             or subject.entity_type != "person"
             or subject.status != "active"
-            or subject.confirmation_status != "confirmed"
         ):
             raise api_error(
                 422,
                 "validation_error",
-                "Related subject must be an active confirmed non-self person.",
+                "Related subject must be an active non-self person.",
             )
 
     def _compile_slot(self, subject: Entity, slot: dict[str, Any]) -> dict[str, Any]:
@@ -878,7 +875,6 @@ class EnrichmentService:
                 or payload.get("field_path") != slot["field_path"]
                 or payload.get("fact_type") != slot["fact_type"]
                 or payload.get("claim_type") != slot["claim_type"]
-                or payload.get("ai_use_policy") != slot["ai_use_policy"]
                 or payload.get("content") != payload.get("value")
             ):
                 raise ValueError
@@ -899,7 +895,6 @@ class EnrichmentService:
             or payload.get("observation_type") not in slot["allowed_observation_types"]
             or sorted(payload.get("related_entity_ids", [])) != slot["related_entity_ids"]
             or payload.get("claim_type") != slot["claim_type"]
-            or payload.get("ai_use_policy") != slot["ai_use_policy"]
         ):
             raise ValueError
 
@@ -942,7 +937,6 @@ class EnrichmentService:
             or record.content != payload["content"]
             or record.value != {"field_path": slot["field_path"], "value": payload["value"]}
             or record.claim_type != slot["claim_type"]
-            or record.ai_use_policy != slot["ai_use_policy"]
         ):
             raise ValueError
         if table == "entity_edges" and (
@@ -954,7 +948,6 @@ class EnrichmentService:
             or record.claim_text != payload["claim_text"]
             or record.claim_type != slot["claim_type"]
             or record.properties != slot["properties"]
-            or record.ai_use_policy != "cautious_use"
         ):
             raise ValueError
         if table == "observations" and (
@@ -963,7 +956,6 @@ class EnrichmentService:
             or record.observation_type not in slot["allowed_observation_types"]
             or record.content != payload["content"]
             or record.claim_type != slot["claim_type"]
-            or record.ai_use_policy != slot["ai_use_policy"]
         ):
             raise ValueError
         if table == "observations":

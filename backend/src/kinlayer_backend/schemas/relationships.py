@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -13,11 +13,12 @@ class EdgeCreate(APIModel):
     directed: bool | None = None
     claim_text: str
     claim_type: str = "fact"
+    claim_basis: Literal["reported", "inferred", "unknown"] = "unknown"
     properties: dict[str, Any] = Field(default_factory=dict)
     confidence: float = 1.0
     status: str = "active"
     valid_from: datetime | None = None
-    ai_use_policy: str = "cautious_use"
+    ai_use_policy: str = Field(default="cautious_use", deprecated=True, description="Legacy inert metadata; ignored on writes.")
     created_by: str = "user"
 
 
@@ -26,12 +27,13 @@ class EdgePatch(APIModel):
     directed: bool | None = None
     claim_text: str | None = None
     claim_type: str | None = None
+    claim_basis: Literal["reported", "inferred", "unknown"] | None = None
     properties: dict[str, Any] | None = None
     confidence: float | None = None
     status: str | None = None
     valid_from: datetime | None = None
     valid_to: datetime | None = None
-    ai_use_policy: str | None = None
+    ai_use_policy: str | None = Field(default=None, deprecated=True)
 
 
 class EdgeRead(EdgeCreate):
@@ -64,8 +66,9 @@ class ObservationCreate(APIModel):
     observation_type: str
     content: str
     claim_type: str = "fact"
+    claim_basis: Literal["reported", "inferred", "unknown"] = "unknown"
     confidence: float = 1.0
-    ai_use_policy: str = "cautious_use"
+    ai_use_policy: str = Field(default="cautious_use", deprecated=True, description="Legacy inert metadata; ignored on writes.")
     status: str = "active"
     valid_from: datetime | None = None
     valid_to: datetime | None = None
@@ -79,8 +82,9 @@ class ObservationPatch(APIModel):
     observation_type: str | None = None
     content: str | None = None
     claim_type: str | None = None
+    claim_basis: Literal["reported", "inferred", "unknown"] | None = None
     confidence: float | None = None
-    ai_use_policy: str | None = None
+    ai_use_policy: str | None = Field(default=None, deprecated=True)
     status: str | None = None
     valid_from: datetime | None = None
     valid_to: datetime | None = None

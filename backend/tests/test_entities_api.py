@@ -159,7 +159,7 @@ def test_structured_profile_fact_types_are_validated_and_visible_in_context_card
     assert body["fact_type"] == "email"
     assert body["value"] == {"kind": "work", "email": "alex@example.com"}
     assert "sensitivity" not in body
-    assert body["ai_use_policy"] == "ask_before_use"
+    assert body["ai_use_policy"] == "cautious_use"  # Legacy writes ignore retired policy.
 
     invalid = client.post(
         "/api/entity-facts",
@@ -317,7 +317,7 @@ def test_promote_general_fact_to_structured_fact_replaces_active_context(client)
     assert replacement["claim_type"] == "fact"
     assert replacement["confidence"] == 0.73
     assert "sensitivity" not in replacement
-    assert replacement["ai_use_policy"] == "ask_before_use"
+    assert replacement["ai_use_policy"] == "cautious_use"
     assert replacement["created_by"] == "user"
 
     fetched_source = client.get(f"/api/entity-facts/{source['id']}").json()

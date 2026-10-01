@@ -41,3 +41,13 @@ class APIError(BaseModel):
     code: str
     message: str
     details: dict = Field(default_factory=dict)
+
+
+def without_retired_write_metadata(value: dict[str, Any]) -> dict[str, Any]:
+    """Ignore obsolete approval/permission knobs on compatibility write routes."""
+    clean = without_legacy_sensitivity(value)
+    clean.pop("ai_use_policy", None)
+    clean.pop("confirmation_status", None)
+    if isinstance(clean.get("properties"), dict):
+        clean["properties"].pop("needs_identity_review", None)
+    return clean

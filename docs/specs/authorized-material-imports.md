@@ -1,5 +1,11 @@
 # Explicit user-authorized material imports
 
+> **2026-10-01 integration boundary:** The new ordinary memory endpoint does not replace or bypass
+> this import authorization contract. Actual human authorship, bounded locators/manifests, hashes
+> and source authorization remain required. Ordinary conversation writes use
+> [the save-first memory contract](../agents/agent-write-instruction-pack.md); legacy candidate or
+> policy fields mentioned below are compatibility details, not a new approval requirement.
+
 ## Boundary and supported scope
 
 Ordinary automatic post-turn writes remain **current-turn user-authored only**. This
@@ -8,24 +14,22 @@ user-supplied chat export, document, transcript, or explicitly designated extern
 human source. A generic tool response, retrieved memory, assistant report, or the
 words “approved” in a source description do not authorize anything.
 
-This first slice creates **observation candidates for one existing confirmed,
-active, non-self person**. It does not create/merge people, change aliases, promote
-profile fields, create edges, correct existing records, or relax reconciliation
-and enrichment's user-only reply/identity proofs. Those remain separate review
-operations. `scripts/kinlayer_client.py` remains read-only.
+The supported import saves **observations immediately for one existing active, non-self person**.
+It does not create/merge people, change aliases, promote profile fields, create edges or correct
+existing records. Those operations use their relevant APIs. `scripts/kinlayer_client.py` remains
+read-only. Person confirmation/AI-use policy does not gate a new authorized import.
 
-“Save this analysis” allows an attributable synthesis **linked to the actual
-human sources**. The assistant's synthesis is a claim, never a relabeled human
-original. `sourced_report` is stored as a fact that the source *reported* something,
-not a claim that the underlying assertion is objectively true. `inference` stays
-`claim_type=inference`. Both get a mandatory visible source-author/date/locator
-prefix (`date unknown` when explicitly undated). Source dates on an inference
-are evidence dates, not inferred event dates. For reports with **all** sources
-dated, `occurred_at` is the most recent supporting report's timestamp in UTC. If
-**any** supporting source is undated, the report has no event timestamp, including
-mixed dated/undated support. Inferences never acquire an event timestamp.
-Individual known dates and explicit nulls remain in the manifest and episodes. No import assigns
-open-ended `valid_from`/`valid_to` or converts an old report into a current fact.
+“Save this analysis” allows an attributable synthesis linked to the actual human sources. The
+assistant synthesis is the claim, never a relabeled human original. `sourced_report` maps to
+`claim_basis=reported`; `inference` maps to `claim_basis=inferred`. Each summary is one independently
+correctable claim. Reports are attributed statements, not externally verified assertions.
+
+Canonical `content` is the submitted semantic summary. Author/date/locator metadata stays in the
+manifest and Episode/evidence and is exposed in provenance; it is not prepended to every claim.
+The manifest carries source statement dates, not event dates. This input has no separate event-date
+field, so new imported observations have `occurred_at=null`, even if every source is dated. Known
+source dates and explicit nulls remain in Episodes. No import invents validity bounds or changes an
+old source report into a current fact.
 
 ## Trust boundary (not a proof of human consent)
 
@@ -50,19 +54,22 @@ backend import operation.
 
 All three routes use the dedicated bearer token:
 
-- `POST /api/material-imports/validate`: same deterministic validation as submit,
-  with a rollback-only transaction; **no persisted** episodes/candidates/receipts.
-  It may take transient database locks. Returns `status=validated`, generated
-  candidate payload previews, and a request hash; does not return disposable IDs.
-  `validation_scope=pending_candidates_only` explicitly means candidate staging
-  validation, **not autoaccept eligibility or a canonical save**. All import
-  responses carry that scope; replay is not a read of current candidate state.
-- `POST /api/material-imports/submit`: atomic receipt + episodes + pending
-  candidates. Returns import ID, candidate IDs, episode IDs, request hash, and
-  `trust_boundary=authenticated_caller_attestation`. Never canonicalizes.
-- `GET /api/material-imports/{import_id}`: exact receipt and bounded manifest for
-  audit/readback; no write. Candidate and canonical state are read from their
-  existing endpoints, not inferred from the import receipt.
+- `POST /api/material-imports/validate`: run the same deterministic canonical-write validation as
+  submit in a rollback-only transaction. No receipts, Episodes, candidates, observations, evidence
+  or changes remain. It may take transient database locks. Returns `status=validated`, payload
+  previews and the request hash, with empty persisted-ID/reference arrays.
+- `POST /api/material-imports/submit`: atomically save the receipt, source Episodes, immediately
+  active observations/evidence and MemoryChange rows. Accepted candidate rows are retained as
+  internal provenance/compatibility ledger entries, never as pending approval tasks. The response
+  includes `canonical_record_refs`, existing `candidate_ids`/`episode_ids`, request hash and
+  `trust_boundary=authenticated_caller_attestation`.
+- `GET /api/material-imports/{import_id}`: exact durable receipt and bounded manifest for readback;
+  no write. Read current canonical status at its record endpoint.
+
+New validation/submit receipts use `validation_scope=immediate_memories`. Historical staging
+receipts retain `pending_candidates_only`; reading or replaying an old receipt does not auto-upgrade
+or repeat its old operation. Existing pending imports are handled by the separately verified data
+conversion, not a side effect of receipt lookup.
 
 Use the maintained Typer entrypoint with a staged JSON manifest:
 
@@ -104,8 +111,10 @@ request level. Required fields:
   results remain invalid even when the source is undated.
 - `claims`: 1–20 entries with 1–5 `source_ids` each, `kind` (`sourced_report` or
   `inference`), registry-backed `observation_type`, `summary` (at most 1000
-  characters), `confidence`, and `ai_use_policy` (`cautious_use`,
-  `ask_before_use`, or `never_surface`). Every source must support a claim.
+  characters), `confidence`, and legacy `ai_use_policy` (`cautious_use`,
+  `ask_before_use`, or `never_surface`). The policy field is deprecated/inert but remains in the
+  compatible signed input shape; it never prevents immediate saving or use. Every source must
+  support a claim.
 
 Hashes use `sha256:` plus lowercase hex. Excerpt hashes cover **exact UTF-8**
 bytes, not normalized or paraphrased text. To bind a manifest, validate source
@@ -118,83 +127,52 @@ request hash additionally binds authorization and all claims, excluding only the
 idempotency key. Source serialization preserves non-UTC offsets and explicit
 nulls so existing manifest hashes and original local-date attribution remain
 consistent. Episode timestamps are converted to UTC **before DB storage** (SQLite
-drops tzinfo); report payload timestamps are also UTC. Provenance compares exact
+drops tzinfo); claim event timestamps are not inferred from them. Provenance compares exact
 instants/nulls, never local wall-clock approximations. The manifest is not silently
 rehash-normalized to UTC. Full raw source bodies are never sent or stored.
 
-## Replay, curation, and retrieval
+## Replay, provenance, and retrieval
 
-- Same key + exact normalized request returns the original receipt/IDs, without
-  new rows, even after candidate review. Same key + changed content is 409.
-- Same request under a new key is 409 `material_import_duplicate_content`, with
-  the original import ID. It does not silently reserve an alternate key. Changed
-  authorizations/summaries are different requests; existing curation's exact
-  candidate/canonical duplicate signals still apply (no semantic/vector dedup).
-- Receipt primary-key and request-hash uniqueness plus one transaction protect
-  concurrent submits. Target row locks use PostgreSQL's existing guard.
-  Receipt candidate and episode ID arrays are sorted, independent of JSONB object
-  key order; CLI verifies them through a separate GET after submission.
-- Curation exports human authorship and bounded `material_provenance` only after
-  verifying the durable receipt, source, candidate, target, excerpt, and hashes.
-  Material metadata includes `source_date_status=known|unknown`, which PCR checks
-  against the aware/null evidence timestamp. Source packs containing imported episodes declare
-  `user_authored_or_authorized_material_v1`; ordinary packs keep
-  `user_authored_only` and omit the new field for wire compatibility.
-- PCR validates both contracts, preserves the source metadata in planner input,
-  and never uses retrieval as write evidence. Bare `source_type=import` is not
-  eligible, even if someone labels its actor `user`.
-- Curation keeps high-impact, identity, policy, temporal, conflict, snapshot and
-  replay guards. High-impact **source excerpts** also block autoaccept. Imported
-  claims may only autoaccept unchanged (or undergo exact duplicate handling);
-  editing/consolidation cannot remove attribution or upgrade inferences.
-  Any date-unknown supporting material unconditionally emits
-  `material_source_date_unknown` and blocks **every automatic action**, independent
-  of words such as `현재` or `recently` and of other dated support. Its evidence
-  stays in the source pack for review. PCR instructs the planner to defer with
-  that reason; the backend guard applies even if a planner requests autoaccept.
-  Warnings, long **fully attributed content** beyond the existing planner's
-  300-character proposal budget, restricted policies, and high-impact claims
-  remain for review/defer. The budget is not raised and attribution is not
-  truncated to fit.
-- Manual acceptance still uses the existing review operation and verifies import
-  linkage. Changed imported payloads cannot be edit-accepted; stage a newly
-  authorized corrected import instead. Import permission alone is not permission
-  to bypass an outstanding review decision.
-- Canonical observations keep the dated/date-unknown attribution and normal evidence links.
-  Receipt metadata remains durable via episodes/candidates after acceptance and
-  is available through the explicit receipt GET. Normal lexical/context retrieval
-  works without vector retrieval. Retrieval and card reads never write.
+- Same key and normalized request return original IDs/references without new rows. Different
+  content for the same key is 409. A historical staging receipt replays historically; it does not
+  resubmit or promote its candidates.
+- Same request under a new key is 409 `material_import_duplicate_content`, with the original import
+  ID. Changed source/authorization/summary is a different request; no semantic deduplication is
+  claimed.
+- Receipt uniqueness, request-hash uniqueness and one transaction protect concurrent submits.
+  Failure in canonical validation rolls back the entire batch, including Episodes and the receipt.
+- `candidate_ids`, `episode_ids` and `canonical_record_refs` support exact readback. Accepted
+  candidates are internal lineage and preserve source-import compatibility validation.
+- The actual human source actor, locator and source timestamp/null are preserved in the manifest
+  and Episode. They appear in structured context provenance. A source author's statement and the
+  agent's inference remain distinct.
+- Unknown source dates remain null and do not require an approval step. Do not invent an event date
+  or inject recency wording to make a summary appear current.
+- Saved observations are available to lexical/context retrieval immediately. Embedding generation
+  remains an independent derived-index operation. Retrieval never writes or supplies fresh evidence.
+- Corrections after import use exact-record memory correction with a new bounded human correction
+  source; they preserve the old imported record, Episode/evidence, receipt and history.
 
-### Explicit review route, not an automatic-save promise
+### Historical staging and curation compatibility
 
-A dated Korean inference can still receive the existing
-`observation_content_missing_temporal_scope` warning: evidence date attribution
-is not an inferred event date. Do not invent `occurred_at` or inject recency words
-to suppress the warning. Review the inference manually. A multi-source prefix can
-itself push content beyond 300 characters; a planner returning that unchanged
-content fails closed with `model_output_schema_invalid`. The candidate remains
-pending and can use the same manual route. Validation success in either case
-means only that pending candidates can be staged.
+Older `pending_candidates_only` receipts and accepted/pending candidate records remain inspectable.
+Their existing source-pack verification continues to check receipt, target, author, locator,
+excerpt and hashes; bare `source_type=import` never establishes authorization. Legacy curation and
+manual-accept interfaces may still recognize those old records, but are not steps in new import
+submission. Any original `material_source_date_unknown`, review/defer or planner-budget diagnostics
+remain historical facts, not current approval requirements. Do not rewrite old signed request
+bodies or hashes to pretend they used the new protocol.
 
-After the actual user has authorized manual acceptance and the reviewer has
-checked the exact candidate, human sources, attribution, uncertainty, and policy:
+## Deployment and previous migration history
 
-```sh
-uv run kinlayer candidate show CANDIDATE_ID --json
-# State-changing review operation; not implied by import/preview permission:
-uv run kinlayer candidate accept CANDIDATE_ID --resolved-by user \
-  --resolution-note "Reviewed original human evidence and date uncertainty" --json
-uv run kinlayer candidate show CANDIDATE_ID --json
-```
+The current schema adds `20261001_0012` on top of the original import migration. Apply it with the
+[save-first conversion procedure](../plans/save-first-memory-schema.md), a verified backup/restore
+and bounded conversion manifest. Replaying legacy receipts does not itself convert pending rows.
 
-These existing review commands use the normal API credential, not the import
-token. Confirm `status=accepted` and the `canonical_record_ref`; then read
-`GET /api/observations/{record_id}` with the normal API credential. Unknown source
-dates stay null and `date unknown` remains in canonical content. Manual acceptance
-still verifies the hash-bound payload and provenance; it does not permit editing
-away attribution, inventing dates, or changing the claim type.
+The original import migration and deployment constraints below are retained as history for existing
+installations. They do not impose another approval stage on new authorized import saves.
 
-## Activation and migration gate
+### Original `0011` activation record
 
 No migration, deployment, live import, credential configuration, or restart is
 performed by the implementation tests. Before activation:
@@ -243,8 +221,7 @@ source-pack → real PCR `run_curation` parser/planner boundary → deterministi
 curation executor → canonical GET and lexical retrieval. Only the planner is an
 explicit deterministic synthetic fixture; no provider is contacted. It also
 checks disabled/unauthorized/incomplete/out-of-scope/assistant-only/tampered
-inputs, atomic rollback, concurrent replay, review gates, and immutable imported
-attribution. PCR's separate synthetic test exercises unchanged ordinary current-
+inputs, atomic rollback, concurrent replay, immediate canonical saves and preserved source attribution. PCR's separate synthetic test exercises unchanged ordinary current-
 user-only post-turn and no-write read hooks. Run the wider existing curation,
 reconciliation, enrichment, CLI, candidate, context, and migration regressions
 before integration.

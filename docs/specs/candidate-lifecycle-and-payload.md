@@ -1,5 +1,12 @@
 # Kinlayer Candidate Lifecycle and Payload Contract
 
+> **Compatibility contract only, 2026-10-01.** Existing candidates, evidence and lifecycle APIs
+> remain for history and old adapters. New agent writes use [the memory contract](../agents/agent-write-instruction-pack.md)
+> and immediately create canonical records. Do not implement a new candidate approval queue from
+> this document. Old policy fields do not control storage/retrieval. Earlier statuses and examples
+> below describe the retained candidate interface, not the product's default workflow.
+
+
 > Sensitivity is retired. See [retirement and compatibility contract](sensitivity-retirement.md).
 
 - Status: Draft v0.1

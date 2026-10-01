@@ -10,7 +10,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from kinlayer_backend.api.errors import api_error
-from kinlayer_backend.schemas.common import without_legacy_sensitivity
 from kinlayer_backend.models import (
     AgentWriteOperationAudit,
     Candidate,
@@ -388,7 +387,6 @@ class ReconciliationService:
         ):
             raise api_error(422, "validation_error", "Action has no eligible context target.")
         reviewed_ids = {candidate.id for candidate in reviewed_candidates}
-        reviewed_by_id = {candidate.id: candidate for candidate in reviewed_candidates}
         current_episode = self.session.get(Episode, action.confirmation_episode_id)
         protected_self = None
         service = CandidateService(self.session)
@@ -402,9 +400,6 @@ class ReconciliationService:
                     raise api_error(422, "validation_error", "Evidence span is invalid.")
                 excerpt = excerpt_source[evidence.start:evidence.end]
                 episode = current_episode
-                effective_policy = {
-                    "effective_ai_use_policy": "cautious_use",
-                }
             else:
                 if evidence.candidate_id not in reviewed_ids:
                     raise api_error(422, "validation_error", "Prepared evidence is not candidate-bound.")
@@ -422,15 +417,8 @@ class ReconciliationService:
                 ):
                     raise api_error(422, "validation_error", "Prepared evidence is invalid.")
                 excerpt = row.excerpt[evidence.start:evidence.end]
-                effective_policy = effective_context_policy(
-                    reviewed_by_id[evidence.candidate_id], episode
-                )
             if not excerpt or episode is None:
                 raise api_error(422, "validation_error", "Evidence span is empty.")
-            if (
-                claim.ai_use_policy != effective_policy["effective_ai_use_policy"]
-            ):
-                raise api_error(422, "validation_error", "Context policy commitment is invalid.")
             if claim.kind == "profile_field":
                 payload = {
                     "entity_id": primary.id, "field_path": claim.field_path,
@@ -1038,7 +1026,6 @@ class ReconciliationService:
                     "value": payload.get("value"),
                 }
                 and record.claim_type == payload.get("claim_type")
-                and record.ai_use_policy == payload.get("ai_use_policy")
             ):
                 raise RuntimeError("context profile readback mismatch")
             if item["kind"] == "relationship_edge" and not (
@@ -1049,7 +1036,6 @@ class ReconciliationService:
                 and record.directed == payload.get("directed")
                 and record.claim_text == payload.get("claim_text")
                 and record.claim_type == payload.get("claim_type")
-                and record.ai_use_policy == payload.get("ai_use_policy")
                 and (record.properties or {}) == (payload.get("properties") or {})
             ):
                 raise RuntimeError("context relationship readback mismatch")
@@ -1063,13 +1049,11 @@ class ReconciliationService:
                 if not (
                     record.status == "active"
                     and record.subject_entity_id == action.primary_entity_id
-                    and without_legacy_sensitivity(payload) == {
-                        "subject_entity_id": record.subject_entity_id,
-                        "related_entity_ids": related_ids,
-                        "observation_type": record.observation_type,
-                        "content": record.content, "claim_type": record.claim_type,
-                        "ai_use_policy": record.ai_use_policy,
-                    }
+                    and payload.get("subject_entity_id") == record.subject_entity_id
+                    and sorted(payload.get("related_entity_ids", [])) == related_ids
+                    and payload.get("observation_type") == record.observation_type
+                    and payload.get("content") == record.content
+                    and payload.get("claim_type") == record.claim_type
                     and observation_evidence == [item["episode_id"]]
                 ):
                     raise RuntimeError("context observation readback mismatch")

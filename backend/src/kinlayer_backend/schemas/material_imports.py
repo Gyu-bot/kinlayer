@@ -78,7 +78,10 @@ class MaterialClaim(ImportModel):
     observation_type: Annotated[str, Field(min_length=1, max_length=120)]
     summary: Annotated[str, Field(min_length=1, max_length=1000)]
     confidence: float = Field(ge=0, le=1)
-    ai_use_policy: Literal["cautious_use", "ask_before_use", "never_surface"] = "cautious_use"
+    ai_use_policy: Literal["cautious_use", "ask_before_use", "never_surface"] = Field(
+        default="cautious_use", deprecated=True,
+        description="Legacy input retained for signed-manifest compatibility; ignored for memory use.",
+    )
 
 
 class MaterialImportRequest(ImportModel):
@@ -136,11 +139,12 @@ class MaterialImportRequest(ImportModel):
 
 
 class MaterialImportRead(ImportModel):
-    validation_scope: Literal["pending_candidates_only"] = "pending_candidates_only"
+    validation_scope: Literal["pending_candidates_only", "immediate_memories"] = "pending_candidates_only"
     status: Literal["validated", "submitted", "replayed"]
     import_id: str | None = None
     request_sha256: SHA256
     candidate_ids: list[str] = Field(default_factory=list)
+    canonical_record_refs: list[str] = Field(default_factory=list)
     episode_ids: list[str] = Field(default_factory=list)
     candidates: list[dict] = Field(default_factory=list)
     manifest: dict | None = None

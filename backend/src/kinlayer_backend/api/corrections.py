@@ -25,7 +25,12 @@ def apply_correction(payload: CorrectionApplyRequest, session: SessionDep):
     try:
         if body.get("created_by") == "ai_agent":
             filter_result = AgentWriteFilter(session).validate("correction", body)
-            if not filter_result["accepted"]:
+            # Let the atomic writer recognize successful retries before its own
+            # active-record check. Other validation errors still reject here.
+            only_stale = bool(filter_result["errors"]) and all(
+                error.get("code") == "stale_record_ref" for error in filter_result["errors"]
+            )
+            if not filter_result["accepted"] and not only_stale:
                 if _filter_has_error(filter_result, "stale_record_ref"):
                     raise HTTPException(
                         status_code=409,

@@ -1,6 +1,6 @@
 # Kinlayer Context Output Contract
 
-- Status: Implemented v0.3
+- Status: save-first read-contract revision, 2026-10-01
 - Wire schema: `backend/src/kinlayer_backend/schemas/context.py`
 - Related: `api-spec.md`, `data-model.md`, `candidate-lifecycle-and-payload.md`
 
@@ -45,12 +45,11 @@ Response:
     "score_breakdown": {},
     "penalties": {},
     "surface_bucket": "direct_surface",
-    "ai_use_policy": "cautious_use",
-    "confirmation_status": "confirmed",
     "profile_facts": [],
     "observations": []
   }],
   "observations": [],
+  "provenance": [],
   "scores": {"entity-id": 0.82},
   "match_reasons": {"entity-id": ["entity_hint"]},
   "score_breakdown": {"entity-id": {}},
@@ -59,8 +58,15 @@ Response:
 }
 ```
 
-Observation results carry `observation_id`, content, score, match reasons, AI-use
-policy, status, and any `valid_from`, `valid_to`, `occurred_at`, and `created_at` values.
+Observation results carry the exact record ID, content, topic (`observation_type`), `claim_basis`,
+confidence, subject and related people/roles, relevance score/reasons, status, and known temporal
+fields. Agent context outputs omit legacy `claim_type`, `ai_use_policy`, and entity
+`confirmation_status`; low-level CRUD compatibility responses may still carry them. The stored `reported` basis means a source stated the claim,
+not that Kinlayer independently verified it.
+
+Raw retrieval also returns a top-level `provenance` array, with the same structured source fields
+as `context_pack.provenance` and `provenance_summary.evidence`. Agents need not call a second pack
+endpoint merely to obtain source author and statement time.
 
 ## Context pack
 
@@ -104,8 +110,10 @@ Response:
 }
 ```
 
-Suggested response policies are `natural_use`, `conditional_use`, `ask_clarifying_question`,
-`no_relevant_context`, and `blocked_by_policy`. Surface buckets are deterministic and policy-driven.
+Response guidance reflects match confidence and identity ambiguity. Compatibility bucket and
+policy keys remain for older clients, but stored AI-use policies do not block current records.
+New integrations must read record basis, subject/roles, times and provenance rather than treating
+`direct_surface` or `confirmed` as proof of factual truth.
 
 ## Person context card
 
@@ -128,12 +136,17 @@ provisional_context
 ```
 
 `provenance_summary` contains fact/edge/observation/evidence counts and bounded evidence records.
+Structured attribution includes `source_type`, `source_ref`, actual human `actor`, and
+`source_occurred_at` when available. A source statement timestamp is not the described event time. An absent historical source
+is reported as absent, never synthesized from an existing claim.
 `retrieval_hints` contains `entity_id`, `canonical_name`, aliases, and entity type. Merged source IDs
 resolve to the active target entity.
 
-## Provisional context
+## Legacy provisional context
 
-Provisional context is opt-in and structurally separate from every canonical field. It contains at
+Provisional context is retained for old candidate clients; new immediately saved memories use
+ordinary canonical fields without waiting for promotion. Provisional context is opt-in and
+structurally separate from every canonical field. It contains at
 most five recent pending observation candidates for one exactly resolved active entity, after
 user-authored evidence, content, temporal, contact/high-impact, and policy checks.
 
@@ -154,12 +167,15 @@ It never enters provenance, canonical stable/recent/caution fields, retrieval ev
 writes. Identity, structural, contact-like, warned, ambiguous, or non-user-grounded
 candidates are excluded.
 
-## Temporal and policy rules
+## Temporal, basis and compatibility rules
 
 - `occurred_at` is described event time.
 - `valid_from` and `valid_to` are applicability bounds.
 - `created_at` is storage time only.
-- `never_surface` records remain blocked.
+- Retired AI-use-policy values, including `never_surface`, do not hide current records.
+- Superseded, retracted and deprecated records are excluded from current context; inspect history separately.
+- Active/disputed records expose validity bounds for interpretation; the current read path does not
+  turn missing dates into known event times or infer validity from creation time.
 - Low confidence or ambiguity yields `ask_clarifying_question`.
-- Kinlayer returns policy metadata, not polished clarification wording.
+- Kinlayer returns basis, provenance and ambiguity metadata, not polished clarification wording.
 - Full episode bodies and conversations are never context outputs.

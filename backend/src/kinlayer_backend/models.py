@@ -184,7 +184,9 @@ class EntityFact(Base, TimestampMixin):
     fact_type: Mapped[str] = mapped_column(String(120), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     value: Mapped[dict | None] = mapped_column(JSON_TYPE)
+    # Legacy topic/basis mixture retained for historical compatibility.
     claim_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    claim_basis: Mapped[str] = mapped_column(String(40), default="unknown", server_default="unknown")
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), default=1.0)
     # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
@@ -251,7 +253,9 @@ class EntityEdge(Base, TimestampMixin):
     relation_type: Mapped[str] = mapped_column(String(120), nullable=False)
     directed: Mapped[bool] = mapped_column(Boolean, default=True)
     claim_text: Mapped[str] = mapped_column(Text, nullable=False)
+    # Legacy topic/basis mixture retained for historical compatibility.
     claim_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    claim_basis: Mapped[str] = mapped_column(String(40), default="unknown", server_default="unknown")
     properties: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), default=1.0)
     # Retired metadata: retained for historical storage and immutable digests only.
@@ -287,7 +291,9 @@ class Observation(Base, TimestampMixin):
     subject_entity_id: Mapped[str] = mapped_column(ForeignKey("entities.id"), nullable=False)
     observation_type: Mapped[str] = mapped_column(String(120), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # Legacy topic/basis mixture retained for historical compatibility.
     claim_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    claim_basis: Mapped[str] = mapped_column(String(40), default="unknown", server_default="unknown")
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), default=1.0)
     # Retired metadata: retained for historical storage and immutable digests only.
     sensitivity: Mapped[str] = mapped_column(String(40), default="medium")
@@ -364,6 +370,32 @@ class ObservationEvidence(Base):
     episode_id: Mapped[str] = mapped_column(ForeignKey("episodes.id"), nullable=False)
     excerpt: Mapped[str | None] = mapped_column(Text)
     confidence: Mapped[float | None] = mapped_column(Numeric(4, 3))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class MemoryChange(Base):
+    """Atomic write receipt and append-only link between memory revisions."""
+
+    __tablename__ = "memory_changes"
+    __table_args__ = (
+        UniqueConstraint("request_id", name="uq_memory_changes_request_id"),
+        CheckConstraint(
+            "change_kind IN ('create', 'correct', 'retract', 'reattribute', 'migrate')",
+            name="ck_memory_changes_kind",
+        ),
+        Index("ix_memory_changes_old_record_ref", "old_record_ref"),
+        Index("ix_memory_changes_new_record_ref", "new_record_ref"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    request_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(71), nullable=False)
+    change_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    old_record_ref: Mapped[str | None] = mapped_column(String(120))
+    new_record_ref: Mapped[str | None] = mapped_column(String(120))
+    source_episode_id: Mapped[str | None] = mapped_column(ForeignKey("episodes.id"))
+    actor: Mapped[str] = mapped_column(String(80), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 

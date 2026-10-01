@@ -426,6 +426,7 @@ class CandidateService:
                 "value": payload.get("value"),
             },
             "claim_type": payload["claim_type"],
+            "claim_basis": payload.get("claim_basis", "inferred" if payload["claim_type"] == "inference" else "unknown"),
             "confidence": candidate.confidence,
             "ai_use_policy": payload.get("ai_use_policy", "cautious_use"),
             "created_by": candidate.created_by,
@@ -458,6 +459,7 @@ class CandidateService:
     def _write_edge(self, candidate: Candidate) -> str:
         payload = {
             "confidence": candidate.confidence,
+            "claim_basis": "inferred" if candidate.payload["claim_type"] == "inference" else "unknown",
             "ai_use_policy": "cautious_use",
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,
@@ -470,6 +472,7 @@ class CandidateService:
     def _write_observation(self, candidate: Candidate) -> str:
         payload = {
             "confidence": candidate.confidence,
+            "claim_basis": "inferred" if candidate.payload["claim_type"] == "inference" else "unknown",
             "ai_use_policy": "cautious_use",
             "created_by": candidate.created_by,
             "source_candidate_id": candidate.id,

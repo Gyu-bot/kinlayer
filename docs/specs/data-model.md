@@ -1,12 +1,34 @@
 # Kinlayer Data Model
 
+## Current schema revision: save-first memory
+
+The [2026-10-01 plan](../plans/save-first-memory-schema.md) supersedes review-before-storage and
+AI-use-policy semantics. The physical models/migrations own exact column definitions. Older table
+and candidate examples below preserve compatibility/history and do not reintroduce approval.
+
+| Area | Current contract |
+| --- | --- |
+| Core records | Keep entities/aliases, typed entity facts, structural edges, observations and Episodes/evidence. |
+| Basis | Facts, edges and observations carry `claim_basis: reported|inferred|unknown`, separate from topic. `reported` is attributed testimony, not external verification. |
+| Typed facts | New memory facts have matching `content` and `value`: `{text}` for supported profile text; partial date components plus `precision` for birth dates/birthdays. |
+| Atomicity | One independently correctable claim per row. Generic note fact types cannot be used for new memory writes; contextual claims use observations. |
+| People roles | Reuse `observation_entities` roles to distinguish speaker, experiencer, target and related people from the context's subject. |
+| Time | Source statement time, described event time, applicability interval and storage time are separate. Unknown precision must not be filled with invented dates. |
+| History | `memory_changes` links exact old/new refs, source, actor and request identity for create/correct/retract/reattribute. |
+| Legacy controls | AI-use-policy and entity confirmation columns are retained for compatibility, not decisions. |
+| Embeddings | Keep observation embeddings, provider/model/dimension/status and backfill; changed/split content must be reindexed. |
+
+Structural migration is distinct from the live-data conversion. Conversion preserves old rows and
+available source links, records lineage and does not fabricate evidence for old unsourced data.
+
+
 > Sensitivity is retired. See [retirement and compatibility contract](sensitivity-retirement.md).
 
 `ReconciliationAction` uses existing JSON ledger fields for compact context commitments and verified outcomes;
 raw replies and prior excerpts are not stored there. Canonical context rows retain exact Episode evidence.
-This contract requires no `0011` migration.
+That earlier reconciliation change required no extra migration; the current memory revision adds `0012`.
 
-- Status: Draft v0.1
+- Status: save-first schema revision, 2026-10-01
 - Parent PRD: `prd.md`
 - Related docs: `ontology-design.md`, `candidate-lifecycle-and-payload.md`, `context-output-contract.md`
 
@@ -19,10 +41,10 @@ This document defines the MVP canonical data model for Kinlayer.
 Kinlayer is a single-user, local-first relationship context layer for AI agents. The data model must support:
 
 - agent-conversation-first context accumulation;
-- user-controlled correction and review;
-- candidate-to-canonical workflows;
+- immediate canonical storage and user-controlled correction;
+- atomic source evidence and common change history;
 - provenance through episodes and bounded evidence excerpts;
-- policy-aware retrieval;
+- basis-aware, time-aware retrieval;
 - person-first relationship graph behavior;
 - future ontology/graph expansion without overbuilding MVP.
 
@@ -89,7 +111,7 @@ import
 system
 ```
 
-### Confirmation/status values
+### Compatibility confirmation and current record status
 
 Entity-level:
 
@@ -124,7 +146,7 @@ needs_clarification
 superseded
 ```
 
-### Claim type
+### Legacy claim type
 
 ```text
 fact
@@ -141,7 +163,7 @@ medium
 high
 ```
 
-### AI use policy
+### Legacy AI use policy (inert)
 
 ```text
 freely_use
@@ -150,7 +172,7 @@ ask_before_use
 never_surface
 ```
 
-### Retrieval-time surface buckets
+### Compatibility retrieval surface buckets
 
 ```text
 direct_surface
@@ -240,16 +262,17 @@ pg_trgm index on alias/normalized_alias
 
 ## 4.3 `entity_facts`
 
-Stores stable relationship-relevant facts about an entity that need provenance, policy, and confidence.
+Stores stable profile facts with typed values, source provenance, explicit basis and confidence.
 
 ```text
 entity_facts
 - id uuid primary key
 - entity_id uuid references entities(id)
-- fact_type text not null                 # e.g. job, organization, birthday, role_note
+- fact_type text not null                 # e.g. job, organization, birthday, role
 - content text not null
-- value jsonb nullable                    # optional structured value
-- claim_type text not null
+- value jsonb nullable                    # legacy nullable; mandatory typed value for new memory writes
+- claim_type text not null (legacy compatibility)
+- claim_basis text not null default 'unknown' (reported | inferred | unknown)
 - confidence numeric not null
 - sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - ai_use_policy text not null default 'cautious_use'
@@ -264,6 +287,12 @@ entity_facts
 
 Notes:
 
+- New `/api/memories` facts require `{text}` values for supported profile text types and partial
+  date components plus precision for birth dates/birthdays. The displayed content must match the
+  typed value. `memo`, `important_context`, `relationship_note` and `contact_note` are legacy note
+  types; new contextual claims belong in observations.
+- The older low-level and candidate promotion interfaces below are compatibility behavior. Their
+  broader nullable/generic values do not define new agent requests.
 - `profile_field` candidates usually canonicalize into `entity_facts`.
 - Structured profile fact validators currently apply to `legal_name`, `birth_date`, `phone`,
   `email`, `address`, `organization`, and `role`.
@@ -302,7 +331,8 @@ entity_edges
 - relation_type text not null
 - directed boolean not null
 - claim_text text not null
-- claim_type text not null
+- claim_type text not null (legacy compatibility)
+- claim_basis text not null default 'unknown' (reported | inferred | unknown)
 - properties jsonb not null default '{}'
 - confidence numeric not null
 - sensitivity text not null default 'medium' (inert legacy storage; not API output)
@@ -325,7 +355,7 @@ Notes:
 - Graph, context card, and retrieval read paths exclude active legacy edge rows whose
   `relation_type` is missing from active `allowed_edge_types` or whose endpoint entity types no
   longer match the active edge type; diagnostics report those rows for explicit repair decisions.
-- Pending relationship proposals live in `candidates`, not active `entity_edges`.
+- New relationship memories use immediate active `entity_edges` with basis/evidence; old pending candidate proposals remain historical compatibility data.
 - Edge types should remain structural. Advisory/contextual items belong in `observations`.
 
 ---
@@ -340,7 +370,8 @@ observations
 - subject_entity_id uuid references entities(id)
 - observation_type text not null
 - content text not null
-- claim_type text not null
+- claim_type text not null (legacy compatibility)
+- claim_basis text not null default 'unknown' (reported | inferred | unknown)
 - confidence numeric not null
 - sensitivity text not null default 'medium' (inert legacy storage; not API output)
 - ai_use_policy text not null default 'cautious_use'
@@ -573,7 +604,7 @@ allowed_edge_types
 allowed_observation_types
 ```
 
-`ontology_registry_values` stores controlled values by category, including `entity_type`, `fact_type`, `claim_type`, `ai_use_policy`, `retention_policy`, `evidence_source_type`, and `candidate_type`.
+`ontology_registry_values` stores controlled values by category, including `entity_type`, `fact_type`, `claim_basis`, legacy `claim_type`/`ai_use_policy`, `retention_policy`, `evidence_source_type`, and `candidate_type`.
 
 ```text
 ontology_registry_values
@@ -609,62 +640,40 @@ allowed_edge_types
 
 ---
 
-## 7. Correction Model
+## 7. Memory Changes
 
-Explicit user corrections in agent conversation may apply directly.
+Alembic `20261001_0012` adds `claim_basis` to facts/edges/observations and the common history table.
+The public memory actions are create/correct/retract/reattribute; history also permits `migrate`
+for traceable existing-data conversion. Migration may have no original source Episode; null is
+honest provenance, not permission to invent one.
 
-Flow:
+The new `/api/memories` contract atomically creates the canonical record, source Episode and typed
+evidence link, and a common `memory_changes` ledger row. The ledger identifies the action, stable
+request id/hash, actor, old/new record refs, source Episode and optional reason. A same request retry
+returns the original references; changed-body key reuse conflicts. Original records remain stored. Once a fact/edge/observation appears as either side of a
+`memory_changes` row, legacy PATCH/DELETE is blocked with `memory_change_required`; corrections,
+retractions and reattributions must use the memory transaction rather than mutate a revision in place.
 
-```text
-user explicitly corrects agent
-→ agent submits trusted correction apply
-→ correction episode created with bounded excerpt/hash
-→ old canonical record deprecated/superseded
-→ new canonical record active
-→ evidence linked to correction episode
-```
+- `create`: one new active record, no old ref.
+- `correct`: supersede an exact active/disputed old record and create a replacement; correction may change kind.
+- `retract`: withdraw an exact old record with no replacement.
+- `reattribute`: preserve the old claim in history and replace it under corrected person IDs.
 
-Agent-inferred corrections/conflicts must enter candidate review instead.
-
----
+All normal operations require a bounded human source. Old-to-new lineage is no longer limited to
+edge-only `invalidated_by_edge_id`. Record concurrency and transaction rollback protect against
+racing/stale edits and partial history. Existing correction APIs remain compatibility clients.
 
 ## 8. Retrieval Implications
 
-Normal retrieval should include:
+Normal retrieval includes active entities and records with active/disputed status. It excludes
+superseded/deprecated/retracted records; historical inspection is separate. Validity bounds are
+returned for interpretation rather than silently treated as storage timestamps. Entity confirmation and
+AI-use-policy columns are compatibility data, not approval gates or scoring penalties.
 
-- active confirmed entities/facts/edges/observations;
-- policy-safe pending recent candidates only when explicitly allowed by retrieval request;
-- no rejected candidates;
-- no superseded/deprecated records unless debug/audit mode.
-
-Retrieval response computes:
-
-```text
-score
-confidence band
-suggested_response_policy
-surface bucket
-```
-
-Stored policy metadata:
-
-```text
-ai_use_policy
-```
-
-Reconciliation-derived context never downgrades AI-use policy. Exact current-reply claims use
-`cautious_use`. Prepared user-evidence claims preserve any stricter candidate AI-use policy.
-The reconciliation action's compact context manifest commits that policy,
-and fresh readback compares the derived candidate payload and canonical row exactly.
-
-Computed retrieval-time buckets:
-
-```text
-direct_surface
-conditional_surface
-internal_only
-blocked
-```
+Return `claim_basis`, observation topic, confidence, participant roles and source attribution to
+agents. The human author's statement time is different from the described event time and validity.
+Existing surface bucket keys may remain for older clients; they do not block memory use. Opt-in
+legacy provisional context is not necessary for immediately saved canonical memories.
 
 ---
 

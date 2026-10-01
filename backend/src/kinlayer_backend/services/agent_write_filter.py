@@ -4,7 +4,7 @@ from copy import deepcopy
 from typing import Any
 from typing import assert_never
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,12 +20,14 @@ from kinlayer_backend.models import (
 )
 from kinlayer_backend.schemas.candidates import CandidateCreate
 from kinlayer_backend.schemas.corrections import CorrectionApplyRequest
+from kinlayer_backend.schemas.memories import MemoryRecord, MemorySource
 from kinlayer_backend.services.entities import JsonValue, validate_common
 from kinlayer_backend.services.ontology import is_allowed_registry_value
 from kinlayer_backend.services.structured_facts import (
     InvalidStructuredFactContent,
     ValidStructuredFactContent,
     is_structured_fact_type,
+    normalize_profile_fact,
     validate_structured_fact_content,
 )
 
@@ -91,7 +93,7 @@ class AgentWriteFilter:
             self._add_error(
                 "schema_validation_failed",
                 "Payload does not match the expected schema.",
-                details={"errors": exc.errors()},
+                details={"errors": exc.errors(include_context=False, include_input=False)},
             )
         state.update(
             {
@@ -255,25 +257,47 @@ class AgentWriteFilter:
                 "Correction evidence excerpt is required.",
                 "correction_source.excerpt",
             )
+        MemorySource.model_validate({
+            "source_type": source["source_type"], "actor": source["source_actor"],
+            "excerpt": source["excerpt"], "source_ref": source.get("source_ref"),
+            "occurred_at": source.get("occurred_at"),
+        })
+        if source["source_actor"] != "user":
+            self._add_error("explicit_user_correction_required", "Correction source must be the user.", "correction_source.source_actor")
         self._validate_record_ref(payload["old_record_ref"], "old_record_ref")
+        prefix, _, record_id = payload["old_record_ref"].partition(":")
+        model = {"entity_facts": EntityFact, "entity_edges": EntityEdge, "observations": Observation}.get(prefix)
+        old = self.session.get(model, record_id) if model is not None and record_id else None
+        if old is not None and old.status not in {"active", "disputed"}:
+            self._add_error("stale_record_ref", "Old source record is no longer current.", "old_record_ref", {"status": old.status})
         new_record = payload["new_record"]
+        if new_record is None:
+            return  # Schema permits no replacement only for retraction.
         if new_record["record_type"] not in CORRECTION_RECORD_TYPES:
             self._add_error("unsupported_record_type", "Unsupported new record type.", "new_record.record_type")
             return
-        old_fact = self._entity_fact_from_ref(payload["old_record_ref"], "old_record_ref")
-        if old_fact and old_fact.status != "active":
-            self._add_error(
-                "stale_record_ref",
-                "Old source fact is not active.",
-                "old_record_ref",
-                {"status": old_fact.status},
-            )
+        # Reuse the strict nested shapes to reject malformed compatibility
+        # payloads as diagnostics, rather than letting dict lookups crash.
+        from kinlayer_backend.services.corrections import CorrectionService
+        from kinlayer_backend.services.memories import MemoryService
+
+        upgraded = deepcopy(new_record)
+        CorrectionService._upgrade_legacy_payload(upgraded)
+        parsed = TypeAdapter(MemoryRecord).validate_python(upgraded)
+        old_fact = old if isinstance(old, EntityFact) else None
+        if old is not None:
+            old_targets = MemoryService._targets(prefix, vars(old))
+            new_targets = MemoryService._targets(parsed.record_type, parsed.payload.model_dump())
+            if payload["action"] == "reattribute" and (prefix != parsed.record_type or old_targets == new_targets):
+                self._add_error("reattribution_target_invalid", "Reattribution requires the same record type and a different target.", "new_record.payload")
+            elif payload["action"] == "correct" and old_targets != new_targets and not (old_fact and parsed.record_type == "entity_facts"):
+                self._add_error("record_target_mismatch", "Use reattribute to change the record target.", "new_record.payload")
         if new_record["record_type"] == "entity_edges":
             self._validate_edge_payload(new_record["payload"], "new_record.payload.relation_type")
         elif new_record["record_type"] == "entity_facts":
             fact_payload = new_record["payload"]
             self._entity(fact_payload["entity_id"], "new_record.payload.entity_id")
-            if old_fact and old_fact.entity_id != fact_payload["entity_id"]:
+            if old_fact and payload["action"] != "reattribute" and old_fact.entity_id != fact_payload["entity_id"]:
                 self._add_error(
                     "old_fact_entity_mismatch",
                     "Fact correction replacement must target the old fact entity.",
@@ -294,6 +318,14 @@ class AgentWriteFilter:
                 )
                 return
             fact_payload["fact_type"] = fact_type
+            if fact_payload.get("value") or "claim_basis" in fact_payload:
+                try:
+                    fact_payload["content"], fact_payload["value"] = normalize_profile_fact(
+                        fact_type, fact_payload["content"], parsed.payload.value,
+                    )
+                except ValueError as exc:
+                    self._add_error("structured_fact_content_invalid", str(exc), "new_record.payload.content")
+                return
             normalized_content = self._validate_structured_fact_content(
                 fact_type,
                 fact_payload["content"],
@@ -301,6 +333,12 @@ class AgentWriteFilter:
             )
             if normalized_content is not None:
                 fact_payload["content"] = normalized_content
+        else:
+            observation = parsed.payload
+            self._entity(observation.subject_entity_id, "new_record.payload.subject_entity_id")
+            self._check_registry("observation_type", observation.observation_type, "new_record.payload.observation_type")
+            for index, link in enumerate(observation.related_entities):
+                self._entity(link.entity_id, f"new_record.payload.related_entities.{index}.entity_id")
 
     def _validate_structured_fact_content(
         self,
@@ -418,7 +456,10 @@ class AgentWriteFilter:
                     "expected_to_entity_type": edge_type.to_entity_type,
                 },
             )
-        self._check_registry("claim_type", payload["claim_type"], relation_field.rsplit(".", 1)[0] + ".claim_type")
+        if "claim_basis" in payload:
+            self._check_registry("claim_basis", payload["claim_basis"], relation_field.rsplit(".", 1)[0] + ".claim_basis")
+        else:
+            self._check_registry("claim_type", payload["claim_type"], relation_field.rsplit(".", 1)[0] + ".claim_type")
 
     def _normalize_edge_type(self, value: str, field: str) -> str | None:
         normalized = self._normalize_controlled_value("edge_type", value, field)

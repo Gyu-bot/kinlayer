@@ -167,11 +167,11 @@ def test_historical_sensitivity_does_not_change_retrieval_or_provisional_eligibi
         session.flush()
         assert retrieve() == high
         entity.ai_use_policy = "ask_before_use"
-        assert retrieve()["matches"][0]["surface_bucket"] == "conditional_surface"
+        assert retrieve() == high
         entity.ai_use_policy = "never_surface"
-        assert retrieve()["matches"][0]["surface_bucket"] == "blocked"
+        assert retrieve() == high
         candidate.payload = {**candidate.payload, "ai_use_policy": "never_surface"}
-        assert not CurationService(session).is_provisional_candidate(candidate, entity_id)
+        assert CurationService(session).is_provisional_candidate(candidate, entity_id)
 
 
 @pytest.mark.parametrize("candidate_type", ["observation", "new_entity"])

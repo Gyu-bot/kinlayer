@@ -36,11 +36,12 @@ kinlayer/
 | Config truth | `backend/src/kinlayer_backend/config.py`, `docker-compose.yml`, `.env.example` | Env names, defaults, ports |
 | Domain/model truth | `backend/src/kinlayer_backend/models.py` | Tables, statuses, evidence/audit rows |
 | Ontology truth | `backend/src/kinlayer_backend/services/ontology.py` | `REGISTRY_SEEDS`, allowed edge/observation types |
-| Candidate/correction truth | `backend/src/kinlayer_backend/services/candidates.py`, `services/corrections.py` | Accept/edit-accept/correction side effects |
+| Memory write truth | `backend/src/kinlayer_backend/services/memories.py` | Immediate write, source, idempotency, change history |
+| Candidate/correction compatibility | `backend/src/kinlayer_backend/services/candidates.py`, `services/corrections.py` | Retained legacy execution |
 | Web routes | `frontend/src/App.tsx`, `frontend/src/routes/` | Browser-visible surfaces |
 | Product specs | `docs/specs/` | Active contracts; update when behavior changes |
 | Agent write rules | `docs/agents/agent-write-instruction-pack.md` | Required for agent/adapter writes |
-| Execution plans | `docs/plans/` | Active implementation contracts; start with the named current plan |
+| Execution plans | `docs/plans/save-first-memory-schema.md` | Current schema and live data conversion; frontend rebuild is plan-only |
 | User roadmap | `docs/kinlayer-roadmap.md` | Korean planning guide for requesting implementation |
 | Validation | `scripts/smoke-slice0.sh`, `backend/tests/`, `frontend/package.json` | No GitHub Actions currently |
 
