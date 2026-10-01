@@ -16,6 +16,7 @@ import {
 } from "@testing-library/react";
 
 import {
+  ChangeRows,
   Changes,
   Memories,
   MemoryDetail,
@@ -89,6 +90,17 @@ const history = {
   actor: "user",
   reason: "생일 월 정정",
   created_at: "2026-10-01T03:00:00Z",
+};
+const identityMigration = {
+  ...history,
+  id: "change-migrate",
+  request_id: "migration-person-a",
+  change_kind: "migrate",
+  old_record_ref: "entities:person-a",
+  new_record_ref: "entities:person-a",
+  source_episode_id: null,
+  actor: "system",
+  reason: "기존 인물 기록 이관",
 };
 const ontology = {
   fact_types: [
@@ -339,11 +351,14 @@ describe("기억 조회와 변경 이력", () => {
     ).toHaveLength(2);
   });
 
-  it("이전·이후 기억 비교는 각 기록과 정정 발언을 독립적으로 조회한다", async () => {
-    window.history.replaceState({}, "", "/changes?change=change-a");
+  it("기본 인물 이관 이력은 기억 API를 호출하지 않고 일반 정정의 전후 기억과 출처는 보존한다", async () => {
+    window.history.replaceState({}, "", "/changes");
     fetchMock.mockImplementation(async (input: string) => {
       const path = new URL(input).pathname;
-      if (path === "/api/memory-changes") return response(page([history]));
+      if (path === "/api/memory-changes")
+        return response(page([identityMigration, history]));
+      if (path === "/api/memory-changes/change-migrate")
+        return response(identityMigration);
       if (path === "/api/memory-changes/change-a") return response(history);
       if (path === "/api/memories/entity_facts/fact-old")
         return response({ ...item, status: "superseded", is_current: false });
@@ -370,6 +385,15 @@ describe("기억 조회와 변경 이력", () => {
       throw new Error(`Unexpected request ${path}`);
     });
     render(<Changes />);
+    expect(await screen.findByText("인물 이관·변경 기록이에요. 아래 링크는 현재 인물 정보로 연결됩니다.")).toBeInTheDocument();
+    const currentPeople = screen.getAllByRole("link", { name: "현재 인물 보기" });
+    expect(currentPeople).toHaveLength(2);
+    currentPeople.forEach((link) => expect(link).toHaveAttribute("href", "/people/person-a"));
+    expect(screen.getAllByText("당시 인물 상태는 보관되어 있지 않아 전후 값을 비교할 수 없어요.")).toHaveLength(2);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => new URL(input).pathname.startsWith("/api/memories/"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: /생일 월 정정/ }));
     const before = await screen.findByRole("link", { name: "5월" });
     const after = await screen.findByRole("link", { name: "6월" });
     expect(before).toHaveAttribute(
@@ -387,6 +411,80 @@ describe("기억 조회와 변경 이력", () => {
       screen.getByRole("link", { name: "출처 자세히 보기" }),
     ).toHaveAttribute("href", "/sources/source-change");
     expect(screen.getByText("정정 전 기록")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /기존 인물 기록 이관/ }));
+    await screen.findByText("인물 이관·변경 기록이에요. 아래 링크는 현재 인물 정보로 연결됩니다.");
+    expect(screen.queryByRole("link", { name: "5월" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "6월" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => new URL(input).pathname === "/api/memories/entities/person-a")).toBe(false);
+    expect(fetchMock.mock.calls.some(([input]) => new URL(input).pathname === "/api/entities/person-a")).toBe(false);
+  });
+
+  it("인물 참조로 좁힌 이력은 현재 인물로 연결하고 동일한 참조 필터를 유지한다", async () => {
+    window.history.replaceState({}, "", "/changes?record=entities%3Aperson-a");
+    fetchMock.mockImplementation(async (input: string) => {
+      const url = new URL(input);
+      if (url.pathname === "/api/memory-changes") {
+        expect(url.searchParams.get("record_ref")).toBe("entities:person-a");
+        return response(page([identityMigration]));
+      }
+      if (url.pathname === "/api/memory-changes/change-migrate")
+        return response(identityMigration);
+      throw new Error(`Unexpected request ${url.pathname}`);
+    });
+    render(<Changes />);
+    expect(screen.getByRole("link", { name: "선택한 참조의 현재 인물 보기" })).toHaveAttribute("href", "/people/person-a");
+    await screen.findByText("인물 이관·변경 기록이에요. 아래 링크는 현재 인물 정보로 연결됩니다.");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "선택한 기억 보기" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls).toHaveLength(2);
+  });
+
+  it.each(["entity_aliases:alias-a", "legacy_records:legacy-a"])(
+    "%s 이력은 당시 값의 한계와 접힌 기술 참조만 보존한다",
+    async (reference) => {
+      window.history.replaceState({}, "", `/changes?record=${encodeURIComponent(reference)}`);
+      const unknownMigration = { ...identityMigration, old_record_ref: reference, new_record_ref: reference };
+      fetchMock.mockImplementation(async (input: string) => {
+        const path = new URL(input).pathname;
+        if (path === "/api/memory-changes") return response(page([unknownMigration]));
+        if (path === "/api/memory-changes/change-migrate") return response(unknownMigration);
+        throw new Error(`Unexpected request ${path}`);
+      });
+      render(<Changes />);
+      expect(await screen.findAllByText("당시 값은 보관되어 있지 않아 전후 값을 비교할 수 없어요.")).toHaveLength(2);
+      const references = screen.getAllByText(reference);
+      expect(references).toHaveLength(3);
+      references.forEach((element) => expect(element.closest("details")).not.toHaveAttribute("open"));
+      expect(screen.getAllByRole("link")).toHaveLength(1);
+      expect(screen.getByRole("link", { name: "전체 이력 보기" })).toHaveAttribute("href", "/changes");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(fetchMock.mock.calls).toHaveLength(2);
+    },
+  );
+
+  it("변경 목록도 기억·인물·별칭·기타 참조를 구분해 끊어진 기억 링크를 만들지 않는다", async () => {
+    fetchMock.mockImplementation(async (input: string) => {
+      expect(new URL(input).pathname).toBe("/api/memory-changes");
+      return response(page([
+        identityMigration,
+        history,
+        { ...identityMigration, id: "change-alias", old_record_ref: "entity_aliases:alias-a", new_record_ref: "legacy_records:legacy-a" },
+      ], 3, 0, 10));
+    });
+    render(<ChangeRows entityId="person-a" />);
+    expect(await screen.findByRole("link", { name: "이전 참조의 현재 인물 보기" })).toHaveAttribute("href", "/people/person-a");
+    expect(screen.getByRole("link", { name: "이후 참조의 현재 인물 보기" })).toHaveAttribute("href", "/people/person-a");
+    expect(screen.getByRole("link", { name: "이전 기억" })).toHaveAttribute("href", "/memories?record=entity_facts%3Afact-old");
+    expect(screen.getByRole("link", { name: "이후 기억" })).toHaveAttribute("href", "/memories?record=entity_facts%3Afact-new");
+    for (const reference of ["entity_aliases:alias-a", "legacy_records:legacy-a"]) {
+      expect(screen.getByText(reference).closest("details")).not.toHaveAttribute("open");
+    }
+    const memoryLinks = screen.getAllByRole("link").filter((link) => link.getAttribute("href")?.startsWith("/memories?"));
+    expect(memoryLinks).toHaveLength(2);
+    expect(fetchMock.mock.calls).toHaveLength(1);
   });
 
   it("출처 화면은 특정 출처에 연결된 모든 상태의 기억을 서버에서 조회한다", async () => {

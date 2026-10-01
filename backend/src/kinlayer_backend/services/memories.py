@@ -5,7 +5,7 @@ from hashlib import sha256
 import json
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, literal, or_, select, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,8 @@ from kinlayer_backend.models import (
     AllowedEdgeType,
     AllowedObservationType,
     EdgeEvidence,
+    Entity,
+    EntityAlias,
     EntityEdge,
     EntityFact,
     EntityFactEvidence,
@@ -65,16 +67,27 @@ class MemoryService:
         if entity_id:
             from kinlayer_backend.services.memory_reads import canonical_entity_scope, memory_index
 
+            entity_ids = canonical_entity_scope(self.session, entity_id)
             index = memory_index(
                 now=datetime.now(UTC), status="all",
-                entity_ids=canonical_entity_scope(self.session, entity_id),
+                entity_ids=entity_ids,
             )
-            refs = select(index.c.record_ref)
+            # Migration receipts also preserve identity and alias changes. Include
+            # inactive aliases and merged predecessors without inventing old values.
+            refs = union_all(
+                select(index.c.record_ref),
+                select(literal("entities:") + Entity.id).where(Entity.id.in_(entity_ids)),
+                select(literal("entity_aliases:") + EntityAlias.id).where(
+                    EntityAlias.entity_id.in_(entity_ids),
+                ),
+            )
             query = query.where(or_(MemoryChange.old_record_ref.in_(refs),
                                     MemoryChange.new_record_ref.in_(refs)))
         if record_ref is not None:
             prefix, separator, record_id = record_ref.partition(":")
-            if not separator or not record_id or prefix not in RECORD_MODELS:
+            if not separator or not record_id or (
+                prefix not in RECORD_MODELS and prefix not in {"entities", "entity_aliases"}
+            ):
                 raise api_error(422, "validation_error", "Unsupported record_ref.")
             query = query.where(
                 or_(
