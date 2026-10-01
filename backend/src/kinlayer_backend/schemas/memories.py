@@ -11,6 +11,8 @@ class MemoryModel(BaseModel):
 Identifier = Annotated[str, Field(min_length=1, max_length=160)]
 Content = Annotated[str, Field(min_length=1, max_length=4000)]
 ClaimBasis = Literal["reported", "inferred", "unknown"]
+MemoryRecordType = Literal["entity_facts", "entity_edges", "observations"]
+MemoryReadStatus = Literal["active", "history", "all"]
 
 
 class MemorySource(MemoryModel):
@@ -149,6 +151,53 @@ class MemoryChangeRead(MemoryModel):
 
 class MemoryChangeList(MemoryModel):
     items: list[MemoryChangeRead]
+    total: int
+    limit: int
+    offset: int
+
+
+class MemoryReadModel(MemoryModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
+
+
+class MemoryEntityRead(MemoryReadModel):
+    id: str
+    display_name: str
+    role: str
+
+
+class MemoryEvidenceRead(MemoryReadModel):
+    episode_id: str | None = None
+    source_type: str | None = None
+    source_ref: str | None = None
+    actor: str | None = None
+    excerpt: str | None = None
+    occurred_at: datetime | None = None
+    missing: bool = False
+
+
+class MemoryRead(MemoryReadModel):
+    record_ref: str
+    record_type: MemoryRecordType
+    id: str
+    content: str
+    claim_basis: ClaimBasis
+    confidence: float
+    status: str
+    is_current: bool
+    created_at: datetime
+    updated_at: datetime
+    valid_from: datetime | None
+    valid_to: datetime | None
+    # Preserve historical legacy values, including null typed values, without inventing data.
+    # New memory records contain exactly the corresponding MemoryRecord payload fields.
+    payload: dict[str, Any]
+    entities: list[MemoryEntityRead]
+    sources: list[MemoryEvidenceRead]
+
+
+class MemoryList(MemoryModel):
+    items: list[MemoryRead]
     total: int
     limit: int
     offset: int

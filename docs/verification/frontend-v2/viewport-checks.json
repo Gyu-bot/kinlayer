@@ -1,0 +1,194 @@
+[
+  {
+    "screen": "people",
+    "width": 320,
+    "client": 305,
+    "overflow": [],
+    "scroll": 305,
+    "title": "사람"
+  },
+  {
+    "screen": "person",
+    "width": 320,
+    "client": 305,
+    "overflow": [],
+    "scroll": 305,
+    "title": "김민지"
+  },
+  {
+    "screen": "memories",
+    "width": 320,
+    "client": 305,
+    "overflow": [],
+    "scroll": 305,
+    "title": "기억"
+  },
+  {
+    "screen": "graph",
+    "width": 320,
+    "client": 305,
+    "overflow": [],
+    "scroll": 305,
+    "title": "관계 그래프"
+  },
+  {
+    "screen": "changes",
+    "width": 320,
+    "client": 305,
+    "overflow": [],
+    "scroll": 305,
+    "title": "변경 이력"
+  },
+  {
+    "screen": "search",
+    "width": 320,
+    "client": 305,
+    "overflow": [],
+    "scroll": 305,
+    "title": "검색"
+  },
+  {
+    "screen": "settings",
+    "width": 320,
+    "client": 305,
+    "overflow": [],
+    "scroll": 305,
+    "title": "설정"
+  },
+  {
+    "screen": "legacy",
+    "width": 320,
+    "client": 305,
+    "overflow": [],
+    "scroll": 305,
+    "title": "운영 기록"
+  },
+  {
+    "screen": "people",
+    "width": 768,
+    "client": 753,
+    "overflow": [],
+    "scroll": 753,
+    "title": "사람"
+  },
+  {
+    "screen": "person",
+    "width": 768,
+    "client": 753,
+    "overflow": [],
+    "scroll": 753,
+    "title": "김민지"
+  },
+  {
+    "screen": "memories",
+    "width": 768,
+    "client": 753,
+    "overflow": [],
+    "scroll": 753,
+    "title": "기억"
+  },
+  {
+    "screen": "graph",
+    "width": 768,
+    "client": 753,
+    "overflow": [],
+    "scroll": 753,
+    "title": "관계 그래프"
+  },
+  {
+    "screen": "changes",
+    "width": 768,
+    "client": 753,
+    "overflow": [],
+    "scroll": 753,
+    "title": "변경 이력"
+  },
+  {
+    "screen": "search",
+    "width": 768,
+    "client": 768,
+    "overflow": [],
+    "scroll": 768,
+    "title": "검색"
+  },
+  {
+    "screen": "settings",
+    "width": 768,
+    "client": 753,
+    "overflow": [],
+    "scroll": 753,
+    "title": "설정"
+  },
+  {
+    "screen": "legacy",
+    "width": 768,
+    "client": 753,
+    "overflow": [],
+    "scroll": 753,
+    "title": "운영 기록"
+  },
+  {
+    "screen": "people",
+    "width": 1440,
+    "client": 1425,
+    "overflow": [],
+    "scroll": 1425,
+    "title": "사람"
+  },
+  {
+    "screen": "person",
+    "width": 1440,
+    "client": 1425,
+    "overflow": [],
+    "scroll": 1425,
+    "title": "김민지"
+  },
+  {
+    "screen": "memories",
+    "width": 1440,
+    "client": 1425,
+    "overflow": [],
+    "scroll": 1425,
+    "title": "기억"
+  },
+  {
+    "screen": "graph",
+    "width": 1440,
+    "client": 1440,
+    "overflow": [],
+    "scroll": 1440,
+    "title": "관계 그래프"
+  },
+  {
+    "screen": "changes",
+    "width": 1440,
+    "client": 1425,
+    "overflow": [],
+    "scroll": 1425,
+    "title": "변경 이력"
+  },
+  {
+    "screen": "search",
+    "width": 1440,
+    "client": 1440,
+    "overflow": [],
+    "scroll": 1440,
+    "title": "검색"
+  },
+  {
+    "screen": "settings",
+    "width": 1440,
+    "client": 1425,
+    "overflow": [],
+    "scroll": 1425,
+    "title": "설정"
+  },
+  {
+    "screen": "legacy",
+    "width": 1440,
+    "client": 1425,
+    "overflow": [],
+    "scroll": 1425,
+    "title": "운영 기록"
+  }
+]

@@ -1,11 +1,93 @@
 # Kinlayer Web UI Specification
 
-> **2026-10-01 boundary:** The default product flow is now
-> [save first, correct during conversation](../plans/save-first-memory-schema.md).
-> Candidate/curation examples below remain compatibility scenarios. The current frontend is
-> intentionally retained; its replacement is [planned separately](../plans/frontend-rebuild.md).
-> Existing approval/policy surfaces are not requirements for new memory writes.
+> **2026-10-01 replacement contract:** The user authorized replacing the old frontend with
+> the reviewed `frontend_v2` design and the save-first corrections proposed in its audit.
+> The active app is `frontend/`, implemented in `src/v2/`; `frontend_v2/` is a preserved reference.
+> This current contract takes precedence over the historical MVP sections below.
+> See the [delivery plan](../plans/frontend-rebuild.md) and
+> [verification record](../verification/frontend-v2/README.md).
 
+## Current replacement: navigation and routes
+
+The UI uses Korean labels and the mockup's system fonts, spacing, neutral surfaces and blue action
+color. Its primary navigation is 사람 / 기억 / 관계 그래프 / 변경 이력. Search, Settings and legacy
+records remain secondary. The app uses actual API responses; browser demo state is not a fallback
+when the API fails.
+
+| Route | Behavior |
+| --- | --- |
+| `/people` | Server-paginated name/alias search, relationship filter, name/recent-reference sort, list/card view, matching person preview and explicit person creation. |
+| `/people/:id` | Overview, structured profile, relationships, memory-specific sources and changes; independent name/alias editing and memory creation. |
+| `/memories` | Server-side text/person/type/basis/current-history filters, exact memory links and individual creation. |
+| `/memories?record=...` | Exact current or historical record, participants, basis, source/event/validity times and changes; correct/retract/reattribute actions where the server status permits them. |
+| `/graph?focal=...` | Actual protected-self/default or selected person, 1-hop graph, ontology relation filters, directions, zoom/pan and equivalent mobile relationship access. Nodes open people; edges open the exact memory/source. |
+| `/changes` | Paginated overall, person- or record-scoped changes and selected old/new comparison with the change's own source. `change`, `person` and `record` query parameters retain precise context. |
+| `/sources/:id` | Bounded source excerpt, author, source/ingestion time, locator and linked memories across current and historical states. |
+| `/search` | Query/situation and server-searchable paginated person selection, context retrieve/pack results, basis, uncertainty, partial dates and exact memory/source links. Diagnostic scores stay secondary. |
+| `/settings` | API address/health/database/auth, user-entered local token management and separate embedding configuration/index counts. No provider secret values or embedding mutation. |
+| `/legacy` | Read-only historical candidates and agent-operation filters/details. Official JSONL export is bounded to the first 200 filtered operations; CSV contains only the current page. |
+
+Compatibility addresses `/retrieval-debug`, `/candidates`, `/agent-operations`, `/reviews` and
+`/people/new` resolve to replacement surfaces rather than restoring the old edit/approval UI.
+New people are added through the People dialog. `/reviews` opens Changes. Unsupported or
+owner-unknown historical refs remain readable technical details instead of broken memory links;
+`entities:` refs and aliases with a known owner open person detail.
+
+## Current replacement: writes and source fidelity
+
+- Memory creation, correction, retraction and reattribution use only `POST /api/memories`. Existing
+  entity/alias APIs remain the identity-only paths for creating people or changing names/aliases.
+  The UI never bypasses `409 memory_change_required` via old record mutation endpoints.
+- Before memory writes, inspect `GET /api/system/config.memory_write`: endpoint `/api/memories`,
+  `contract_version: "2"`, `review_required: false`. Older/incompatible or unreachable servers leave
+  saving unavailable and explain the cause.
+- Correction and reattribution carry the exact old ref and `expected_updated_at`; retraction carries
+  no replacement record. Every request includes the current human input/source and a request ID.
+  A failed request preserves the draft. Unchanged retries reuse their ID; a changed body gets a new
+  ID. Success appears only after an API receipt. LAN HTTP must not depend on secure-context-only
+  `crypto.randomUUID`.
+- Show `reported`, `inferred` and `unknown` as provenance distinctions, not verification or usage
+  permission. Preserve uncertainty and future wording. An uncertain future employer is not silently
+  installed as a current organization.
+- Structured birthdays and birth dates preserve known precision. Never fill a missing year/month/day.
+  Keep speaker, experiencer, subject and other participant roles distinct. Keep source time, event
+  time, record time and validity separate; unchanged source record times retain their precision.
+- Superseded, retracted and out-of-validity records remain inspectable in history without appearing
+  as current memory. Available evidence excerpts survive a missing original source; a missing source
+  does not create a working-looking link or fabricated author/date.
+- Direction and relation type come from the live ontology; simultaneous relationships do not collapse
+  into a single edge. Graph, context and directory views use current-validity rules.
+
+The old candidate inbox has no accept/edit-accept/reject/archive mutation controls in the replacement.
+AI-use-policy, sensitivity and confirmation gates are not part of the current product flow.
+The browser stores only the user-entered API token in localStorage; people, memory, source, status
+and history are server state. Saved tokens are never re-displayed.
+
+## Current replacement: reads and verification
+
+`GET /api/people` supplies complete-set filtering, sorting, summaries and pagination.
+`GET /api/memories` supplies unified current/history inventory with exact refs, sources and role
+metadata; `GET /api/memories/{record_type}/{record_id}` exposes individual historical records.
+`GET /api/memory-changes` supports record/person scopes, and source detail combines an episode
+read with reverse memory filtering. Existing retrieval, graph, health/config and embedding status
+APIs remain the authoritative capabilities. A ready embedding configuration is not proof of indexed
+records or a successful provider call.
+
+Acceptance IDs UI01–UI09 remain in the delivery plan. Direct browser checks must cover Korean text,
+desktop/mobile layout, keyboard/focus, empty/error/loading states, exact-record changes and preserved
+history against a non-production API. Final results and limitations belong in the verification
+record. No migration, production deployment or live-data conversion is implied by the replacement
+or its disposable preview. Time-range list filters and direct conversational messaging are not
+implemented by this delivery.
+
+---
+
+## Historical MVP v0.1 contract — preserved for traceability
+
+**Everything below this boundary, including sections 1–11 and the Periodic Curation Boundary, is
+historical implementation/compatibility context.** Its approval, policy, legacy PATCH/DELETE and
+candidate merge controls are not requirements for the replacement. Backend compatibility APIs may
+remain available independently of the UI. The original wording, numbering and rationale are kept.
 
 - Status: Draft v0.1
 - Parent PRD: `prd.md`

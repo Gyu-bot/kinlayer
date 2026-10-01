@@ -1,9 +1,12 @@
+from datetime import UTC, datetime
+
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, aliased
 
 from kinlayer_backend.models import (
     AllowedEdgeType, Entity, EntityAlias, EntityEdge, Observation, ObservationEntity,
 )
+from kinlayer_backend.services.memory_reads import current_condition
 
 
 class RetrievalRepository:
@@ -19,7 +22,7 @@ class RetrievalRepository:
         return self.session.execute(statement).scalars().all()
 
     def observations(self) -> list[Observation]:
-        statement = select(Observation).where(Observation.status.in_({"active", "disputed"}))
+        statement = select(Observation).where(current_condition(Observation, datetime.now(UTC)))
         return self.session.execute(statement).scalars().all()
 
     def observation_entities(self, observation_ids: set[str]) -> list[ObservationEntity]:
@@ -41,7 +44,7 @@ class RetrievalRepository:
             .join(from_entity, from_entity.id == EntityEdge.from_entity_id)
             .join(to_entity, to_entity.id == EntityEdge.to_entity_id)
             .where(
-                EntityEdge.status == "active",
+                current_condition(EntityEdge, datetime.now(UTC)),
                 from_entity.status == "active",
                 to_entity.status == "active",
                 AllowedEdgeType.active.is_(True),

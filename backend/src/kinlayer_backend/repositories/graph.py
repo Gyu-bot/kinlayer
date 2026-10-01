@@ -1,7 +1,10 @@
+from datetime import UTC, datetime
+
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, aliased
 
 from kinlayer_backend.models import AllowedEdgeType, Entity, EntityEdge
+from kinlayer_backend.services.memory_reads import current_condition
 
 
 class GraphRepository:
@@ -19,8 +22,11 @@ class GraphRepository:
     ) -> list[EntityEdge]:
         filters = [
             or_(EntityEdge.from_entity_id == entity_id, EntityEdge.to_entity_id == entity_id),
-            EntityEdge.status == (status or "active"),
         ]
+        if status is None or status in {"active", "disputed"}:
+            filters.append(current_condition(EntityEdge, datetime.now(UTC)))
+        if status is not None:
+            filters.append(EntityEdge.status == status)
         if relation_type:
             filters.append(EntityEdge.relation_type == relation_type)
         from_entity = aliased(Entity)

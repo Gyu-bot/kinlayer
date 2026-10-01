@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
@@ -25,11 +25,29 @@ from kinlayer_backend.schemas.entities import (
     EntityRead,
     EntityResolveRequest,
     EntityResolveResponse,
+    PersonSummaryList,
 )
 from kinlayer_backend.services.entities import EntityService, FactPromotionPayload
+from kinlayer_backend.services.people import PeopleReadService
 
 router = APIRouter(tags=["entities"])
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+@router.get("/api/people", response_model=PersonSummaryList)
+def list_people(
+    session: SessionDep,
+    q: Annotated[str | None, Query(max_length=500)] = None,
+    relation_type: str | None = None,
+    sort: Literal["name", "recent_reference"] = "name",
+    exclude_self: bool = True,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    return PeopleReadService(session).list(
+        q=q, relation_type=relation_type, sort=sort, exclude_self=exclude_self,
+        limit=limit, offset=offset,
+    )
 
 
 @router.post("/api/entities", response_model=EntityRead, status_code=201)
@@ -46,6 +64,8 @@ def list_entities(
     system_role: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    relation_type: str | None = None,
+    sort: Literal["name", "recent_reference"] = "name",
 ):
     items, total = EntityRepository(session).list_entities(
         q=q,
@@ -54,6 +74,8 @@ def list_entities(
         system_role=system_role,
         limit=limit,
         offset=offset,
+        relation_type=relation_type,
+        sort=sort,
     )
     return {"items": items, "limit": limit, "offset": offset, "total": total}
 

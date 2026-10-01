@@ -1,0 +1,146 @@
+[
+  {
+    "screen": "people",
+    "size": "desktop",
+    "client": 1425,
+    "height": 1000,
+    "scroll": 1425,
+    "title": "사람",
+    "width": 1440
+  },
+  {
+    "screen": "person",
+    "size": "desktop",
+    "client": 1425,
+    "height": 1000,
+    "scroll": 1425,
+    "title": "김민지",
+    "width": 1440
+  },
+  {
+    "screen": "graph",
+    "size": "desktop",
+    "client": 1440,
+    "height": 1000,
+    "scroll": 1440,
+    "title": "관계 그래프",
+    "width": 1440
+  },
+  {
+    "screen": "reviews",
+    "size": "desktop",
+    "client": 1425,
+    "height": 1000,
+    "scroll": 1425,
+    "title": "리뷰",
+    "width": 1440
+  },
+  {
+    "screen": "people",
+    "size": "mobile",
+    "client": 375,
+    "height": 844,
+    "scroll": 375,
+    "title": "사람",
+    "width": 390
+  },
+  {
+    "screen": "person",
+    "size": "mobile",
+    "client": 375,
+    "height": 844,
+    "scroll": 375,
+    "title": "김민지",
+    "width": 390
+  },
+  {
+    "screen": "graph",
+    "size": "mobile",
+    "client": 375,
+    "height": 844,
+    "scroll": 375,
+    "title": "관계 그래프",
+    "width": 390
+  },
+  {
+    "screen": "reviews",
+    "size": "mobile",
+    "client": 375,
+    "height": 844,
+    "scroll": 375,
+    "title": "리뷰",
+    "width": 390
+  },
+  {
+    "screen": "people",
+    "size": 320,
+    "client": 305,
+    "height": 900,
+    "scroll": 305,
+    "title": "사람",
+    "width": 320
+  },
+  {
+    "screen": "person",
+    "size": 320,
+    "client": 305,
+    "height": 900,
+    "scroll": 305,
+    "title": "김민지",
+    "width": 320
+  },
+  {
+    "screen": "graph",
+    "size": 320,
+    "client": 305,
+    "height": 900,
+    "scroll": 305,
+    "title": "관계 그래프",
+    "width": 320
+  },
+  {
+    "screen": "reviews",
+    "size": 320,
+    "client": 305,
+    "height": 900,
+    "scroll": 305,
+    "title": "리뷰",
+    "width": 320
+  },
+  {
+    "screen": "people",
+    "size": 768,
+    "client": 753,
+    "height": 900,
+    "scroll": 753,
+    "title": "사람",
+    "width": 768
+  },
+  {
+    "screen": "person",
+    "size": 768,
+    "client": 753,
+    "height": 900,
+    "scroll": 753,
+    "title": "김민지",
+    "width": 768
+  },
+  {
+    "screen": "graph",
+    "size": 768,
+    "client": 753,
+    "height": 900,
+    "scroll": 753,
+    "title": "관계 그래프",
+    "width": 768
+  },
+  {
+    "screen": "reviews",
+    "size": 768,
+    "client": 753,
+    "height": 900,
+    "scroll": 753,
+    "title": "리뷰",
+    "width": 768
+  }
+]

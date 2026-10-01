@@ -172,3 +172,27 @@ class EntityFactPromoteResponse(APIModel):
 EntityList = ListResponse[EntityRead]
 AliasList = ListResponse[AliasRead]
 EntityFactList = ListResponse[EntityFactRead]
+
+
+class PersonRelationRead(APIModel):
+    relation_type: str
+    directed: bool
+    from_entity_id: str
+    to_entity_id: str
+
+
+class PersonProfileFactRead(EntityFactRead):
+    ai_use_policy: str = Field(default="cautious_use", exclude=True)
+    claim_type: str = Field(default="fact", exclude=True)
+
+
+class PersonSummaryRead(EntityRead):
+    ai_use_policy: str = Field(default="cautious_use", exclude=True)
+    confirmation_status: str = Field(default="confirmed", exclude=True)
+    aliases: list[str]
+    relations: list[PersonRelationRead]
+    profile_facts: list[PersonProfileFactRead]
+    memory_count: int
+
+
+PersonSummaryList = ListResponse[PersonSummaryRead]

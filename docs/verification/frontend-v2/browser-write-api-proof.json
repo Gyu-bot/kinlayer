@@ -1,0 +1,177 @@
+{
+  "fixture": "disposable fictional SQLite API",
+  "records": [
+    {
+      "record_ref": "observations:6928a0e5-e64b-4b67-8d4a-a3215bb2599b",
+      "status": "superseded",
+      "is_current": false,
+      "content": "브라우저 검증: 연락 전에 메시지로 시간을 확인한다.",
+      "payload": {
+        "claim_basis": "reported",
+        "confidence": 1.0,
+        "valid_from": null,
+        "valid_to": null,
+        "subject_entity_id": "d7c7da19-e066-42b6-98e2-a5325b03a25f",
+        "observation_type": "communication_preference",
+        "content": "브라우저 검증: 연락 전에 메시지로 시간을 확인한다.",
+        "occurred_at": null,
+        "related_entities": []
+      },
+      "sources": [
+        {
+          "episode_id": "a7fed41a-edf3-4b42-84db-2fcc0d33227c",
+          "source_type": "manual_entry",
+          "source_ref": null,
+          "actor": "검증 사용자",
+          "excerpt": "민지는 연락하기 전에 메시지로 시간을 확인해 주면 좋겠다고 말했다.",
+          "occurred_at": null,
+          "missing": false
+        }
+      ],
+      "changes": {
+        "items": [
+          {
+            "id": "fdda8c5e-64d0-4dd1-94e4-5900edad3ebe",
+            "request_id": "web-dabde6959eefe9e0f570d9fe79c7a12b",
+            "change_kind": "correct",
+            "old_record_ref": "observations:6928a0e5-e64b-4b67-8d4a-a3215bb2599b",
+            "new_record_ref": "observations:680a1d5e-fcf4-4082-83b7-a5048081ae1b",
+            "source_episode_id": "7e9eb80a-21ac-42e7-9fcf-598cc8b9de37",
+            "actor": "user",
+            "reason": "범위를 통화로 정정",
+            "created_at": "2026-10-01T07:01:17.114704"
+          },
+          {
+            "id": "6b9a9600-f8b1-4e57-90f9-7e638c404f65",
+            "request_id": "web-d7e6cef51f717e57d90de0c194d41e49",
+            "change_kind": "create",
+            "old_record_ref": null,
+            "new_record_ref": "observations:6928a0e5-e64b-4b67-8d4a-a3215bb2599b",
+            "source_episode_id": "a7fed41a-edf3-4b42-84db-2fcc0d33227c",
+            "actor": "user",
+            "reason": null,
+            "created_at": "2026-10-01T07:01:09.517089"
+          }
+        ],
+        "total": 2,
+        "limit": 50,
+        "offset": 0
+      }
+    },
+    {
+      "record_ref": "observations:680a1d5e-fcf4-4082-83b7-a5048081ae1b",
+      "status": "superseded",
+      "is_current": false,
+      "content": "브라우저 검증: 통화 전에 메시지로 시간을 확인한다.",
+      "payload": {
+        "claim_basis": "reported",
+        "confidence": 1.0,
+        "valid_from": null,
+        "valid_to": null,
+        "subject_entity_id": "d7c7da19-e066-42b6-98e2-a5325b03a25f",
+        "observation_type": "communication_preference",
+        "content": "브라우저 검증: 통화 전에 메시지로 시간을 확인한다.",
+        "occurred_at": null,
+        "related_entities": []
+      },
+      "sources": [
+        {
+          "episode_id": "7e9eb80a-21ac-42e7-9fcf-598cc8b9de37",
+          "source_type": "correction",
+          "source_ref": null,
+          "actor": "검증 사용자",
+          "excerpt": "모든 연락이 아니라 통화 전에 시간을 확인하는 것을 뜻했다.",
+          "occurred_at": null,
+          "missing": false
+        }
+      ],
+      "changes": {
+        "items": [
+          {
+            "id": "cd8e57bf-3f7b-4075-b812-da45a2281381",
+            "request_id": "web-3395215343c7d45af85639aacfc334e7",
+            "change_kind": "reattribute",
+            "old_record_ref": "observations:680a1d5e-fcf4-4082-83b7-a5048081ae1b",
+            "new_record_ref": "observations:b74b4b06-304c-4985-95aa-2dedada66eb1",
+            "source_episode_id": "b91d61b5-5d99-4d8d-bade-c1392e6584ba",
+            "actor": "user",
+            "reason": null,
+            "created_at": "2026-10-01T07:01:24.704717"
+          },
+          {
+            "id": "fdda8c5e-64d0-4dd1-94e4-5900edad3ebe",
+            "request_id": "web-dabde6959eefe9e0f570d9fe79c7a12b",
+            "change_kind": "correct",
+            "old_record_ref": "observations:6928a0e5-e64b-4b67-8d4a-a3215bb2599b",
+            "new_record_ref": "observations:680a1d5e-fcf4-4082-83b7-a5048081ae1b",
+            "source_episode_id": "7e9eb80a-21ac-42e7-9fcf-598cc8b9de37",
+            "actor": "user",
+            "reason": "범위를 통화로 정정",
+            "created_at": "2026-10-01T07:01:17.114704"
+          }
+        ],
+        "total": 2,
+        "limit": 50,
+        "offset": 0
+      }
+    },
+    {
+      "record_ref": "observations:b74b4b06-304c-4985-95aa-2dedada66eb1",
+      "status": "deleted",
+      "is_current": false,
+      "content": "브라우저 검증: 통화 전에 메시지로 시간을 확인한다.",
+      "payload": {
+        "claim_basis": "reported",
+        "confidence": 1.0,
+        "valid_from": null,
+        "valid_to": null,
+        "subject_entity_id": "81ffb80e-496d-4eae-a662-748722b594e4",
+        "observation_type": "communication_preference",
+        "content": "브라우저 검증: 통화 전에 메시지로 시간을 확인한다.",
+        "occurred_at": null,
+        "related_entities": []
+      },
+      "sources": [
+        {
+          "episode_id": "b91d61b5-5d99-4d8d-bade-c1392e6584ba",
+          "source_type": "correction",
+          "source_ref": null,
+          "actor": "검증 사용자",
+          "excerpt": "방금 정정한 통화 방식은 민지가 아니라 서준에 관한 내용이다.",
+          "occurred_at": null,
+          "missing": false
+        }
+      ],
+      "changes": {
+        "items": [
+          {
+            "id": "2a4aa906-d61c-42c5-8d4e-de49256f4e2f",
+            "request_id": "web-d93d15cff51610297ade87cdad59dd16",
+            "change_kind": "retract",
+            "old_record_ref": "observations:b74b4b06-304c-4985-95aa-2dedada66eb1",
+            "new_record_ref": null,
+            "source_episode_id": "48fba849-1e7e-4f0d-8b2d-434cb33422e4",
+            "actor": "user",
+            "reason": null,
+            "created_at": "2026-10-01T07:03:22.636895"
+          },
+          {
+            "id": "cd8e57bf-3f7b-4075-b812-da45a2281381",
+            "request_id": "web-3395215343c7d45af85639aacfc334e7",
+            "change_kind": "reattribute",
+            "old_record_ref": "observations:680a1d5e-fcf4-4082-83b7-a5048081ae1b",
+            "new_record_ref": "observations:b74b4b06-304c-4985-95aa-2dedada66eb1",
+            "source_episode_id": "b91d61b5-5d99-4d8d-bade-c1392e6584ba",
+            "actor": "user",
+            "reason": null,
+            "created_at": "2026-10-01T07:01:24.704717"
+          }
+        ],
+        "total": 2,
+        "limit": 50,
+        "offset": 0
+      }
+    }
+  ],
+  "current_matches": 0
+}

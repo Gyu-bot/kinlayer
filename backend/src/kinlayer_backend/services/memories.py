@@ -58,8 +58,20 @@ class MemoryService:
             raise api_error(404, "not_found", "Memory change not found.")
         return row
 
-    def list_changes(self, record_ref: str | None, limit: int, offset: int) -> dict[str, Any]:
+    def list_changes(
+        self, record_ref: str | None, limit: int, offset: int, *, entity_id: str | None = None
+    ) -> dict[str, Any]:
         query = select(MemoryChange)
+        if entity_id:
+            from kinlayer_backend.services.memory_reads import canonical_entity_scope, memory_index
+
+            index = memory_index(
+                now=datetime.now(UTC), status="all",
+                entity_ids=canonical_entity_scope(self.session, entity_id),
+            )
+            refs = select(index.c.record_ref)
+            query = query.where(or_(MemoryChange.old_record_ref.in_(refs),
+                                    MemoryChange.new_record_ref.in_(refs)))
         if record_ref is not None:
             prefix, separator, record_id = record_ref.partition(":")
             if not separator or not record_id or prefix not in RECORD_MODELS:

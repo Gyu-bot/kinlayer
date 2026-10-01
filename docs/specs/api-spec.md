@@ -13,6 +13,68 @@ candidate-bound original user evidence. Identity and context commit in one trans
 
 ---
 
+## Memory and people inspection API — 2026-10-01
+
+`GET /api/memories` returns `{items, total, limit, offset}` across all three memory record types.
+Filters are `entity_id`, `record_type` (`entity_facts|entity_edges|observations`), `claim_basis`
+(`reported|inferred|unknown`), `status` (`active|history|all`, default `active`), literal text `q`,
+and `source_episode_id`. `limit` defaults to 50 and is capped at 200; `offset` defaults to zero.
+All filters and the total apply before pagination. Ordering is creation time descending, then
+record type and ID ascending, including ties across record types.
+
+`active` includes active/disputed revisions whose validity interval contains the current time:
+`valid_from` is absent or at/before now, and `valid_to` is absent or after now. `history` is the
+complement, including future/expired validity as well as superseded, deleted and deprecated rows;
+the stored `status` remains unchanged and `is_current` expresses the combined interpretation.
+An `entity_id` matches fact ownership, either edge endpoint, observation subject, or an observation
+participant in any role. Merged IDs resolve to their canonical person and include former merged
+identities for historical inspection. Missing people return 404.
+
+Each item contains `record_ref`, `record_type`, `id`, `content`, `claim_basis`, `confidence`,
+`status`, `is_current`, `created_at`, `updated_at`, `valid_from`, `valid_to`, `payload`, `entities`,
+and `sources`. Timestamps have explicit UTC offsets. `payload` uses exactly the corresponding
+memory-write fields, preserving typed values, relationship direction/properties, observation event
+time and participant roles. Historical legacy values such as a null fact value are preserved;
+they are not fabricated into write-valid typed values. A client must explicitly normalize such
+legacy content before submitting it under the current write contract.
+
+`entities` entries are `{id, display_name, role}`: facts use `about`, edges use `from`/`to`, and
+observations use `subject` plus their stored participant roles. Each source includes `episode_id`,
+`source_type`, `source_ref`, `actor`, bounded evidence `excerpt`, statement `occurred_at`, and
+`missing`. A source-less record has one entry with `missing:true` and null source fields. A dangling
+source preserves any evidence excerpt but marks the missing Episode. No author, date or excerpt is
+inferred. Evidence excerpts fall back to the original bounded Episode excerpt when the evidence
+link has no excerpt.
+
+`GET /api/memories/{record_type}/{id}` returns the same item for any revision, including its own
+original evidence after correction/retraction. `source_episode_id` filtering works in both current
+and historical lists, providing reverse source-to-memory access. `GET /api/memory-changes` also
+accepts `entity_id`, combined with its existing `record_ref` filter. It finds changes by both old and
+new record ownership/participation, so a reattribution appears for the former and new person.
+
+`GET /api/people` returns `{items, total, limit, offset}` for active person entities, excluding
+protected self by default (`exclude_self=false` includes it). Filters are literal name/active-alias
+`q`, `relation_type` for a current relationship to actual protected self, and
+`sort=name|recent_reference` (default `name`). Recent-reference sort places nulls last; both sorts
+use name and ID as stable tie breakers. Paging is server-side with the same 50/200 limits.
+
+Each person summary contains ordinary Entity read fields except retired AI-use-policy and
+confirmation fields, plus `aliases: string[]`, current `profile_facts`, current self `relations`
+(`relation_type`, `directed`, `from_entity_id`, `to_entity_id`), and `memory_count`. The count includes
+all three current memory types and observation participation, counting one memory only once per
+person even when multiple roles refer to that person. Profile facts omit retired policy and
+claim-type fields. Future/expired profile facts and self relationships do not appear as current.
+`GET /api/entities` additionally supports the same `relation_type` and `sort` parameters while
+retaining its existing response and other filters.
+
+These read endpoints have the same optional local bearer authentication as other ordinary APIs.
+They do not mutate or migrate records, create sources, or alter the memory-write contract.
+
+Current context-card, retrieval/pack (including their provenance), and the default ego graph use
+the same validity interval rule. The default graph includes current active/disputed edges; an
+explicit active/disputed status further narrows that set. An explicit historical graph status
+remains available for compatibility and does not impose current-time validity.
+
 ## Current memory write API — 2026-10-01
 
 `POST /api/memories` is the canonical agent write contract. It stores one independently correctable
