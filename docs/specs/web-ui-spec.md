@@ -32,6 +32,10 @@ Compatibility addresses `/retrieval-debug`, `/candidates`, `/agent-operations`, 
 New people are added through the People dialog. `/reviews` opens Changes. Unsupported or
 owner-unknown historical refs remain readable technical details instead of broken memory links;
 `entities:` refs and aliases with a known owner open person detail.
+Change comparisons fetch memory details only for fact, relationship and observation refs.
+Identity migration rows link to the current person and explicitly state that the receipt has no
+historical identity snapshot. Alias or unsupported refs without a known owner show an explanation
+and collapsed technical details, without a broken memory link or an inferred owner.
 
 ## Current replacement: writes and source fidelity
 

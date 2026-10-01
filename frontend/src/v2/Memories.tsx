@@ -30,6 +30,45 @@ import {
 } from "./common";
 import { MemoryEditor } from "./MemoryEditor";
 
+function historyReference(reference: string) {
+  const match = /^([^:]+):([^:\s]+)$/.exec(reference);
+  if (match && ["entity_facts", "entity_edges", "observations"].includes(match[1])) {
+    return { kind: "memory", href: memoryUrl(reference) } as const;
+  }
+  if (match?.[1] === "entities") {
+    return { kind: "person", href: `/people/${encodeURIComponent(match[2])}` } as const;
+  }
+  return { kind: "other" } as const;
+}
+
+function HistoryReferenceLink({
+  reference,
+  memoryLabel,
+  personLabel = "현재 인물 보기",
+}: {
+  reference: string;
+  memoryLabel: string;
+  personLabel?: string;
+}) {
+  const target = historyReference(reference);
+  return target.kind === "other" ? (
+    <details className="diagnostic-details">
+      <summary>당시 값 없음 · 기술 참조</summary>
+      <code>{reference}</code>
+    </details>
+  ) : (
+    <a className="text-link" href={target.href}>
+      {target.kind === "memory" ? memoryLabel : personLabel}
+    </a>
+  );
+}
+
+function historyMemoryPath(reference?: string | null) {
+  return reference && historyReference(reference).kind === "memory"
+    ? memoryPath(reference)
+    : null;
+}
+
 export function SourceEvidence({ item }: { item: MemoryItem }) {
   return (
     <div className="stack">
@@ -107,10 +146,18 @@ export function ChangeRows({
                   <p>{change.reason || `${actorLabel(change.actor)}의 기록`}</p>
                   <div className="context-meta">
                     {change.old_record_ref && (
-                      <a href={memoryUrl(change.old_record_ref)}>이전 기억</a>
+                      <HistoryReferenceLink
+                        reference={change.old_record_ref}
+                        memoryLabel="이전 기억"
+                        personLabel="이전 참조의 현재 인물 보기"
+                      />
                     )}
                     {change.new_record_ref && (
-                      <a href={memoryUrl(change.new_record_ref)}>이후 기억</a>
+                      <HistoryReferenceLink
+                        reference={change.new_record_ref}
+                        memoryLabel="이후 기억"
+                        personLabel="이후 참조의 현재 인물 보기"
+                      />
                     )}
                     {change.source_episode_id && (
                       <a href={`/sources/${change.source_episode_id}`}>
@@ -505,10 +552,10 @@ export function Changes() {
     id ? `/api/memory-changes/${id}` : null,
   );
   const old = useResource<MemoryItem>(
-    detail.data?.old_record_ref ? memoryPath(detail.data.old_record_ref) : null,
+    historyMemoryPath(detail.data?.old_record_ref),
   );
   const next = useResource<MemoryItem>(
-    detail.data?.new_record_ref ? memoryPath(detail.data.new_record_ref) : null,
+    historyMemoryPath(detail.data?.new_record_ref),
   );
   const source = useResource<Episode>(
     detail.data?.source_episode_id
@@ -525,9 +572,11 @@ export function Changes() {
       </div>
       {record ? (
         <div className="panel content-panel">
-          <a className="text-link" href={memoryUrl(record)}>
-            선택한 기억 보기
-          </a>{" "}
+          <HistoryReferenceLink
+            reference={record}
+            memoryLabel="선택한 기억 보기"
+            personLabel="선택한 참조의 현재 인물 보기"
+          />{" "}
           ·{" "}
           <a className="text-link" href="/changes">
             전체 이력 보기
@@ -620,22 +669,48 @@ export function Changes() {
                 {detail.data.reason ||
                   `${actorLabel(detail.data.actor)}의 기록`}
               </h2>
+              {[detail.data.old_record_ref, detail.data.new_record_ref].some(
+                (reference) => reference && historyReference(reference).kind === "person",
+              ) && (
+                <p className="small muted">
+                  인물 이관·변경 기록이에요. 아래 링크는 현재 인물 정보로 연결됩니다.
+                </p>
+              )}
               <div className="compare-grid">
                 {[
                   {
-                    name: "이전 기억",
+                    name: "이전",
                     resource: old,
                     ref: detail.data.old_record_ref,
                   },
                   {
-                    name: "이후 기억",
+                    name: "이후",
                     resource: next,
                     ref: detail.data.new_record_ref,
                   },
                 ].map((side) => (
                   <div className="compare-card" key={side.name}>
-                    <span className="eyebrow">{side.name}</span>
-                    {side.resource.loading ? (
+                    <span className="eyebrow">
+                      {side.name}{" "}
+                      {!side.ref || historyReference(side.ref).kind === "memory"
+                        ? "기억"
+                        : historyReference(side.ref).kind === "person"
+                          ? "인물 기록"
+                          : "기록"}
+                    </span>
+                    {side.ref && historyReference(side.ref).kind !== "memory" ? (
+                      <div className="stack">
+                        <p>
+                          {historyReference(side.ref).kind === "person"
+                            ? "당시 인물 상태는 보관되어 있지 않아 전후 값을 비교할 수 없어요."
+                            : "당시 값은 보관되어 있지 않아 전후 값을 비교할 수 없어요."}
+                        </p>
+                        <HistoryReferenceLink
+                          reference={side.ref}
+                          memoryLabel={`${side.name} 기억`}
+                        />
+                      </div>
+                    ) : side.resource.loading ? (
                       <Loading />
                     ) : side.resource.error ? (
                       <ErrorState
@@ -648,7 +723,7 @@ export function Changes() {
                       <p>
                         {side.ref
                           ? "기록을 불러올 수 없어요."
-                          : side.name === "이후 기억"
+                          : side.name === "이후"
                             ? "현재 참조에서 제외됨"
                             : "새로 저장된 기억"}
                       </p>

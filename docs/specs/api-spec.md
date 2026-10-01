@@ -51,6 +51,11 @@ original evidence after correction/retraction. `source_episode_id` filtering wor
 and historical lists, providing reverse source-to-memory access. `GET /api/memory-changes` also
 accepts `entity_id`, combined with its existing `record_ref` filter. It finds changes by both old and
 new record ownership/participation, so a reattribution appears for the former and new person.
+Person scopes also include identity and alias migration receipts across the canonical person's
+merged predecessors, including inactive aliases. History-only `record_ref` filters accept
+`entities` and `entity_aliases` in addition to the three memory types. These identity references
+are not supported by the individual memory-read or memory-write endpoints, and a migration
+receipt does not imply that a historical identity snapshot exists.
 
 `GET /api/people` returns `{items, total, limit, offset}` for active person entities, excluding
 protected self by default (`exclude_self=false` includes it). Filters are literal name/active-alias

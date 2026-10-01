@@ -7,7 +7,15 @@ from fastapi.testclient import TestClient
 from kinlayer_backend.config import Settings
 from kinlayer_backend.database import create_session_maker
 from kinlayer_backend.main import create_app
-from kinlayer_backend.models import Entity, EntityFact, EntityFactEvidence, Episode, Observation
+from kinlayer_backend.models import (
+    Entity,
+    EntityAlias,
+    EntityFact,
+    EntityFactEvidence,
+    Episode,
+    MemoryChange,
+    Observation,
+)
 from kinlayer_backend.schemas.memories import MemoryWriteRequest
 
 
@@ -197,6 +205,107 @@ def test_merged_identity_resolves_current_and_former_record_history(client, data
         assert memories(client, entity_id=entity_id, status="all")["total"] == 3
         assert client.get("/api/memory-changes", params={"entity_id": entity_id}).json()["total"] == 3
     assert client.get("/api/people").json()["total"] == 1
+
+
+def test_person_history_includes_identity_and_inactive_alias_migration_receipts(client, database_url):
+    target, other = person(client), person(client, "Other")
+    memory = write(client, body(target, "current-memory"))
+    with session_for(database_url) as session:
+        alias = EntityAlias(entity_id=target, alias="Former name", status="deleted", created_by="user")
+        session.add(alias)
+        session.flush()
+        entity_ref, alias_ref, other_ref = (
+            "entities:" + target, "entity_aliases:" + alias.id, "entities:" + other,
+        )
+        migrations = [
+            MemoryChange(request_id="identity-migration", old_record_ref=entity_ref,
+                         new_record_ref=entity_ref),
+            MemoryChange(request_id="alias-old-migration", old_record_ref=alias_ref),
+            MemoryChange(request_id="alias-new-migration", new_record_ref=alias_ref),
+            MemoryChange(request_id="other-migration", old_record_ref=other_ref,
+                         new_record_ref=other_ref),
+        ]
+        for change in migrations:
+            change.request_sha256 = "sha256:" + "0" * 64
+            change.change_kind = "migrate"
+            change.actor = "system"
+            change.created_at = datetime(2026, 1, 1, tzinfo=UTC)
+        session.add_all(migrations)
+        session.commit()
+        expected_ids = {memory["change_id"], *(change.id for change in migrations[:3])}
+
+    whole = client.get("/api/memory-changes", params={"entity_id": target})
+    assert whole.status_code == 200, whole.text
+    assert whole.json()["total"] == 4
+    assert {item["id"] for item in whole.json()["items"]} == expected_ids
+    pages = [client.get("/api/memory-changes", params={
+        "entity_id": target, "limit": 1, "offset": offset,
+    }).json() for offset in range(4)]
+    assert all(page["total"] == 4 for page in pages)
+    assert [page["items"][0]["id"] for page in pages] == [
+        item["id"] for item in whole.json()["items"]
+    ]
+    for ref, expected_count in [(entity_ref, 1), (alias_ref, 2)]:
+        for filters in ({"record_ref": ref}, {"entity_id": target, "record_ref": ref}):
+            response = client.get("/api/memory-changes", params=filters)
+            assert response.status_code == 200, response.text
+            assert response.json()["total"] == expected_count
+            assert all(item["source_episode_id"] is None for item in response.json()["items"])
+        assert client.get("/api/memory-changes", params={
+            "entity_id": other, "record_ref": ref,
+        }).json()["total"] == 0
+    # The wider read filter does not make identities/aliases writable memories.
+    for ref in (entity_ref, alias_ref):
+        request = {"request_id": "unsupported-retract-" + ref, "action": "retract",
+                   "old_record_ref": ref, "source": body(target, "source")["source"]}
+        assert client.post("/api/memories", json=request).status_code == 422
+    assert client.get("/api/memory-changes").json()["total"] == 5
+
+
+def test_identity_and_alias_history_filter_includes_complete_merged_lineage(client, database_url):
+    oldest, previous, canonical, unrelated = [person(client, name) for name in (
+        "Oldest", "Previous", "Canonical", "Unrelated",
+    )]
+    memory = write(client, body(canonical, "canonical-memory"))
+    with session_for(database_url) as session:
+        for old_id, target_id in ((oldest, previous), (previous, canonical)):
+            entity = session.get(Entity, old_id)
+            entity.status = "merged"
+            entity.properties = {"merged_entity_ref": "entities:" + target_id}
+        expected_ids = {memory["change_id"]}
+        for entity_id in (oldest, previous, canonical, unrelated):
+            alias = EntityAlias(entity_id=entity_id, alias="Historical alias",
+                                status="deprecated", created_by="user")
+            session.add(alias)
+            session.flush()
+            for kind, record_id in (("entities", entity_id), ("entity_aliases", alias.id)):
+                change = MemoryChange(
+                    request_id=f"migrate-{kind}-{record_id}", request_sha256="sha256:" + "0" * 64,
+                    change_kind="migrate", actor="system", old_record_ref=f"{kind}:{record_id}",
+                    new_record_ref=f"{kind}:{record_id}",
+                )
+                session.add(change)
+                session.flush()
+                if entity_id != unrelated:
+                    expected_ids.add(change.id)
+        session.commit()
+    for entity_id in (oldest, previous, canonical):
+        response = client.get("/api/memory-changes", params={"entity_id": entity_id})
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == 7
+        assert {item["id"] for item in response.json()["items"]} == expected_ids
+    assert client.get("/api/memory-changes", params={"entity_id": unrelated}).json()["total"] == 2
+
+
+def test_change_reference_filter_accepts_only_known_read_kinds(client):
+    for kind in ("entities", "entity_aliases", "entity_facts", "entity_edges", "observations"):
+        response = client.get("/api/memory-changes", params={"record_ref": kind + ":missing"})
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == 0
+    for ref in ("", "entities", "entities:", "entity_aliases:", "candidates:missing", "unknown:missing"):
+        assert client.get("/api/memory-changes", params={"record_ref": ref}).status_code == 422
+    assert client.get("/api/memories/entities/missing").status_code == 422
+    assert client.get("/api/memories/entity_aliases/missing").status_code == 422
 
 
 def test_people_filter_sort_and_totals_apply_before_pagination(client, database_url):
