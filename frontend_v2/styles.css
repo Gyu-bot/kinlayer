@@ -200,3 +200,35 @@ kbd{font:11px var(--font-body);border:1px solid var(--border);padding:0 5px;bord
 .brand,.select,.search-field{min-height:44px}
 .row-open{width:44px;height:44px;min-width:44px;min-height:44px}
 a.person-name{min-height:44px}
+
+/* Browser audit: keep selection evidence and form actions available at every size. */
+.graph-node.self .node-name,.graph-node.self .node-sub{display:none}
+.edge-group.selected .graph-edge{stroke:var(--accent);stroke-width:3}
+.modal{overflow-y:auto;overscroll-behavior:contain}
+.modal-header,.modal-footer{position:sticky;background:var(--surface);z-index:2}
+.modal-header{top:0}.modal-footer{bottom:0}
+body:has(.modal[open]){overflow:hidden}
+.fact dd,.hero-description,.preview-name h2{overflow-wrap:anywhere;min-width:0}
+.breadcrumbs{min-width:0}.breadcrumbs a{white-space:nowrap}.breadcrumbs .current{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:1030px){
+  .graph-rail .relationship-preview{display:block}
+  .graph-rail .relationship-preview .panel-kicker{display:flex}
+  .graph-rail .relationship-preview .mini-facts{display:block}
+  .graph-rail .relationship-preview .preview-section{display:block}
+  .graph-rail .relationship-preview>.preview-actions{margin:0;padding:0 20px 20px}
+}
+@media(max-width:510px){
+  .breadcrumbs{gap:7px}.breadcrumbs>a:first-child{display:none}.breadcrumbs>a:first-child+svg{display:none}
+  .field input,.field select,.field textarea{font-size:16px}
+  .graph-node:not(.self) .node-sub,.edge-group rect,.edge-label{display:none}
+  .graph-node .node-name{font-size:28px}.graph-node .node-letter{font-size:28px}
+  .graph-toolbar .field-inline{flex:1 1 110px;min-width:110px}
+  .graph-mobile-list button{font-size:12px}
+  .graph-mobile-list button>span{min-width:0;overflow-wrap:anywhere}
+  .graph-mobile-list small{display:block;font-size:11px;color:var(--muted)}
+  .graph-mobile-list button[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft)}
+  .graph-rail .preview-name h2{font-size:20px}
+  .sidebar{height:calc(70px + env(safe-area-inset-bottom));padding-bottom:calc(6px + env(safe-area-inset-bottom))}
+  .main{padding-bottom:calc(92px + env(safe-area-inset-bottom))}
+  .toast{bottom:calc(90px + env(safe-area-inset-bottom))}
+}

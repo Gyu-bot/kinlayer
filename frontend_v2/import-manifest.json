@@ -1,0 +1,22 @@
+{
+  "source": "/Users/gyurin/Library/Application Support/Open Design/namespaces/release-stable/data/projects/8866051a-467e-41b0-8652-abab4ac03594/frontend_v2",
+  "base_commit": "cd020b8",
+  "files_sha256": {
+    "DESIGN.md": "f1b12a40db466c4d6b3c6a3e226513706fc233c236b0a8c3a99599f081432b95",
+    "README.md": "a3492be690f6f2343c580705609896cb4f76a7b9c242ea28f94a52c96de5521e",
+    "app.js": "c7fc823f9fccee6e7dab430806e479bd0aef38eb4602619c3dbbc7dbbae3ee39",
+    "demo-data.js": "162071cefed669823aa4a018ca9e3c363af104b5aad3e362ff38387fdfe0758b",
+    "graph.html": "f06cc1970ca6ab63b304b84ef482d706b49011a9693230a2a6f0e63a767fc4c7",
+    "graph.html.artifact.json": "d52f1f238ad31b7bb6fcb216a714233defa2956c6a95779a502b0a29131cf4be",
+    "index.html": "4dcbb910b5b9914048c809bd655247122c92c084428594d669907086e4f786c5",
+    "index.html.artifact.json": "e2e2a4ffba39b60ab5ab24059c1cdfd606d3c9ca77aa19eebc37d8c3b592be19",
+    "people.html": "e9f57b3194d41a74ae0149db251566c98631f34d0753a857e0454eec16ffe9c2",
+    "people.html.artifact.json": "7bfcdce0fcd0cad1af3dcd6404a883a7a77603a0a5230c3e40beb1984d9d2a06",
+    "person.html": "a8caf94cb276c312403e82dc9cc1fc07e9536a15a22c842e80e8b722c71edbd1",
+    "person.html.artifact.json": "e79f7498b03d8f05218bdd0e387dfe308e8e78067474f40c796b2580ec6808fd",
+    "reviews.html": "a993f8626230c3bd37935063f2d063da036ff4f9d7b0ed6f8b35e3fecfca0241",
+    "reviews.html.artifact.json": "f826c5df382b6eb00a07eafeaf37472698899f9240e00ac70fda2d502d7c7d61",
+    "styles.css": "696dfac1d041956eb7a51154c2b0e29d97ca81b7a46c49b9f513b1b8b618a2fa",
+    "verification.md": "b67e23f89d17fdcac5f6762b8b46d5a650d6dabcd5bfee5667bbc97b76c8900a"
+  }
+}
