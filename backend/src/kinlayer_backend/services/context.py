@@ -25,6 +25,7 @@ from kinlayer_backend.models import (
 from kinlayer_backend.services.retrieval import RetrievalMatch, RetrievalResult, RetrievalService
 from kinlayer_backend.services.curation import CurationService
 from kinlayer_backend.schemas.relationships import ObservationRead
+from kinlayer_backend.services.memory_reads import current_condition
 
 SURFACE_BUCKETS = ["direct_surface", "conditional_surface", "internal_only", "blocked"]
 PROVISIONAL_MAX_AGE_DAYS = 30
@@ -278,7 +279,7 @@ class ContextService:
     def _facts(self, entity_id: str) -> list[EntityFact]:
         statement = (
             select(EntityFact)
-            .where(EntityFact.entity_id == entity_id, EntityFact.status.in_({"active", "disputed"}))
+            .where(EntityFact.entity_id == entity_id, current_condition(EntityFact, datetime.now(UTC)))
             .order_by(EntityFact.created_at.desc())
         )
         return self.session.execute(statement).scalars().all()
@@ -296,7 +297,7 @@ class ContextService:
                     EntityEdge.from_entity_id == entity_id,
                     EntityEdge.to_entity_id == entity_id,
                 ),
-                EntityEdge.status.in_({"active", "disputed"}),
+                current_condition(EntityEdge, datetime.now(UTC)),
                 from_entity.status == "active",
                 to_entity.status == "active",
                 AllowedEdgeType.active.is_(True),
@@ -316,7 +317,7 @@ class ContextService:
                     Observation.subject_entity_id == entity_id,
                     ObservationEntity.entity_id == entity_id,
                 ),
-                Observation.status.in_({"active", "disputed"}),
+                current_condition(Observation, datetime.now(UTC)),
             )
             .distinct()
             .order_by(Observation.created_at.desc())
@@ -333,7 +334,7 @@ class ContextService:
         entity_ids = {match.entity_id for match in matches}
         facts = self.session.scalars(select(EntityFact).where(
             EntityFact.entity_id.in_(entity_ids),
-            EntityFact.status.in_({"active", "disputed"}),
+            current_condition(EntityFact, datetime.now(UTC)),
         )).all() if entity_ids else []
         observations = self.session.scalars(select(Observation).where(
             Observation.id.in_(observation_ids)

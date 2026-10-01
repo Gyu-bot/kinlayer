@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -102,14 +103,16 @@ def create_episode(client, excerpt: str, actor: str = "ai_agent") -> dict:
 def test_context_retrieve_returns_matches_scores_observations_and_debug(client) -> None:
     alex = create_person(client, "Alex Kim")
     create_alias(client, alex["id"], "AK")
+    valid_from = (datetime.now(UTC) - timedelta(days=1)).replace(microsecond=0).isoformat()
+    valid_to = (datetime.now(UTC) + timedelta(days=1)).replace(microsecond=0).isoformat()
     observation = create_observation(
         client,
         alex["id"],
         "Alex prefers concise Korean summaries after investor meetings.",
         recency_weight=1.0,
         occurred_at="2026-06-17T00:00:00+09:00",
-        valid_from="2026-06-18T00:00:00+09:00",
-        valid_to="2026-07-01T00:00:00+09:00",
+        valid_from=valid_from,
+        valid_to=valid_to,
     )
 
     response = client.post(
@@ -129,8 +132,8 @@ def test_context_retrieve_returns_matches_scores_observations_and_debug(client) 
     assert "alias_name" in body["matched_entities"][0]["score_breakdown"]
     assert body["observations"][0]["observation_id"] == observation["id"]
     assert body["observations"][0]["occurred_at"].startswith("2026-06-17T00:00:00")
-    assert body["observations"][0]["valid_from"].startswith("2026-06-18T00:00:00")
-    assert body["observations"][0]["valid_to"].startswith("2026-07-01T00:00:00")
+    assert body["observations"][0]["valid_from"].startswith(valid_from[:19])
+    assert body["observations"][0]["valid_to"].startswith(valid_to[:19])
     assert "score_weights" in body["debug"]
 
 

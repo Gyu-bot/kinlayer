@@ -2,16 +2,18 @@
 
 ## OVERVIEW
 
-React/Vite Web control plane for inspecting and correcting Kinlayer context.
+React/Vite Web control plane for inspecting and correcting Kinlayer context. The
+2026-10-01 user-approved replacement uses the imported `../frontend_v2/` design
+and Korean UI; the active implementation is `src/v2/`, not the static mockup.
 
 ## STRUCTURE
 
 ```text
 frontend/
-├── src/App.tsx       # route shell and navigation
-├── src/routes/       # screen components
+├── src/App.tsx       # route matching, navigation and compatibility addresses
+├── src/v2/          # replacement screens, shell, memory editor and read contracts
 ├── src/api/          # typed API client and token handling
-├── src/types/        # frontend API types
+├── src/types/        # retained supporting API types; v2/data.ts is the memory contract
 ├── src/styles.css    # app styling
 └── package.json      # npm scripts
 ```
@@ -20,11 +22,12 @@ frontend/
 
 | Task | Location | Notes |
 | --- | --- | --- |
-| Add/change route | `src/App.tsx`, `src/routes/` | Keep route visible in nav when user-facing |
-| API calls | `src/api/client.ts` | Web is a client of the canonical API |
-| Type shape | `src/types/` | Mirror backend response contracts |
-| Tests/build | `src/*.test.tsx`, `src/api/*.test.ts`, `package.json` | Vitest + TypeScript build |
-| Manual QA | `../scripts/web-smoke-checklist.md` | Use browser when feasible |
+| Add/change route | `src/App.tsx`, `src/v2/Shell.tsx` | Primary people/memories/graph/changes; secondary search/settings/legacy |
+| Memory/source/history | `src/v2/MemoryEditor.tsx`, `Memories.tsx`, `Person.tsx` | Exact record refs, actual sources and API-only memory changes |
+| API calls | `src/api/client.ts`, `src/v2/data.ts` | Canonical request/token handling and read resources |
+| Type shape | `src/v2/data.ts`, supporting `src/types/` | Mirror current backend schemas, not old policy fields |
+| Tests/build | `src/*.test.tsx`, `src/api/*.test.ts`, `src/v2/*.test.tsx`, `package.json` | Vitest + TypeScript build |
+| Manual QA | `../docs/verification/frontend-v2/README.md`, `../scripts/serve-frontend-demo.py` | Browser evidence and disposable non-production API; original checklist remains historical context |
 
 ## CONVENTIONS
 
@@ -34,7 +37,19 @@ frontend/
 - API defaults come from the current browser host plus `:8765` unless
   `VITE_KINLAYER_API_URL` is set.
 - Local API token is user-entered in Settings; secret values are not re-displayed.
+- Only that user token belongs in localStorage; people, memories, evidence and
+  changes are API state. `frontend_v2` demo storage is reference-only.
+- Create/correct/retract/reattribute memory through `POST /api/memories` after
+  checking `system/config.memory_write` contract v2. Identity/name/alias actions
+  use entity/alias APIs. Do not restore legacy fact/edge/observation mutation paths.
+- Preserve claim basis, uncertainty, partial dates, participant roles, independent
+  source/event/validity timestamps and exact old refs. Failed writes retain drafts
+  and reuse a request ID only when the body is unchanged, including on LAN HTTP.
 - Heavy admin/review details should stay secondary by default when possible.
+- Historical candidate/agent operations are read-only; no approval or AI-use-policy
+  controls. Embedding configuration readiness and indexed-record readiness differ.
+- `VITE_KINLAYER_PREVIEW_LABEL` explicitly marks disposable fixture sessions; normal
+  production builds do not set a demo label or point to the fixture API.
 
 ## ANTI-PATTERNS
 

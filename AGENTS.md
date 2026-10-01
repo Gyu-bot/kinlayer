@@ -4,6 +4,10 @@
 **Commit:** 1ff177c
 **Branch:** codex/kinlayer-curation-cycle
 
+**Frontend map update:** 2026-10-01 user-authorized replacement; the original
+snapshot above remains historical. Use `frontend/src/v2/` for current screens and
+`docs/plans/frontend-rebuild.md` for the approval delta and acceptance criteria.
+
 ## OVERVIEW
 
 Kinlayer is a local-first relationship context layer for AI agents. The stack is
@@ -16,6 +20,7 @@ Compose.
 kinlayer/
 ├── backend/        # FastAPI, CLI, DB models, migrations, tests
 ├── frontend/       # React/Vite control plane
+├── frontend_v2/    # preserved static mockup/design/audit reference, not the running app
 ├── scripts/        # smoke, fixture, deterministic agent/debug helpers
 ├── docs/
 │   ├── specs/      # active product/API/model/CLI/Web contracts
@@ -38,12 +43,13 @@ kinlayer/
 | Ontology truth | `backend/src/kinlayer_backend/services/ontology.py` | `REGISTRY_SEEDS`, allowed edge/observation types |
 | Memory write truth | `backend/src/kinlayer_backend/services/memories.py` | Immediate write, source, idempotency, change history |
 | Candidate/correction compatibility | `backend/src/kinlayer_backend/services/candidates.py`, `services/corrections.py` | Retained legacy execution |
-| Web routes | `frontend/src/App.tsx`, `frontend/src/routes/` | Browser-visible surfaces |
+| Web routes | `frontend/src/App.tsx`, `frontend/src/v2/Shell.tsx` | Replacement route matching and primary/secondary navigation |
+| Web memory flows | `frontend/src/v2/MemoryEditor.tsx`, `Memories.tsx`, `Person.tsx` | API-backed exact-record writes, sources, history and identity |
 | Product specs | `docs/specs/` | Active contracts; update when behavior changes |
 | Agent write rules | `docs/agents/agent-write-instruction-pack.md` | Required for agent/adapter writes |
-| Execution plans | `docs/plans/save-first-memory-schema.md` | Current schema and live data conversion; frontend rebuild is plan-only |
+| Execution plans | `docs/plans/save-first-memory-schema.md`, `docs/plans/frontend-rebuild.md` | Current schema plus authorized frontend replacement and unchanged UI01–UI09 |
 | User roadmap | `docs/kinlayer-roadmap.md` | Korean planning guide for requesting implementation |
-| Validation | `scripts/smoke-slice0.sh`, `backend/tests/`, `frontend/package.json` | No GitHub Actions currently |
+| Validation | `scripts/smoke-slice0.sh`, `backend/tests/`, `frontend/package.json`, `docs/verification/frontend-v2/README.md` | Local checks and browser evidence; no GitHub Actions currently |
 
 ## CODE MAP
 
@@ -56,7 +62,7 @@ kinlayer/
 | `AgentWriteFilter` | class | `backend/src/kinlayer_backend/services/agent_write_filter.py` | Deterministic gate for `created_by = ai_agent` writes |
 | `CorrectionService` | class | `backend/src/kinlayer_backend/services/corrections.py` | Explicit user correction apply path |
 | `RetrievalService` | class | `backend/src/kinlayer_backend/services/retrieval.py` | Scoring, penalties, policy buckets |
-| `App` | component | `frontend/src/App.tsx` | Route shell and visible navigation |
+| `App` / `Shell` | components | `frontend/src/App.tsx`, `frontend/src/v2/Shell.tsx` | Route matching and Korean replacement navigation |
 
 ## CONVENTIONS
 

@@ -133,16 +133,15 @@ Kinlayer MVP는 로컬에서 실행되는 단일 사용자 워크스페이스를
 - 관찰 기반 임베딩 검색
 - 선택적 로컬 bearer token 보호
 
-기존 Web UI 화면은 다음과 같습니다. 프론트엔드 재구현은 [별도 계획](docs/plans/frontend-rebuild.md)만 작성했고, 기존 승인/정책 화면은 새 제품 흐름의 기준이 아닙니다.
+2026-10-01 목업 평가 후 사용자가 기존 프론트엔드의 전체 교체를 승인했습니다.
+실행 앱은 `frontend/`의 React/Vite 구현이며, 가져온 `frontend_v2/`는 디자인·상호작용
+참고 자료로 보존합니다. 새 UI는 실제 API를 사용하고 저장 전 승인·AI 사용 정책을 요구하지 않습니다.
+[교체 계획과 결정 변경 기록](docs/plans/frontend-rebuild.md)의 UI01–UI09를 기준으로 검증합니다.
 
 ```text
-/people
-/people/new
-/people/:id
-/candidates
-/graph
-/retrieval-debug
-/settings
+주요 탐색: /people /memories /graph /changes
+상세 보기: /people/:id /memories?record=... /sources/:id
+보조 탐색: /search /settings /legacy
 ```
 
 ## 로컬 우선 설계
@@ -222,7 +221,42 @@ KINLAYER_API_TOKEN=원하는-로컬-토큰
 `KINLAYER_API_TOKEN`만으로는 접근할 수 없습니다. 토큰은 응답이나
 시스템 설정 조회에 노출되지 않습니다.
 
-토큰을 켠 경우에만 Web UI의 `/settings`에서 같은 값을 Local API token으로 저장해야 관계 데이터 화면을 볼 수 있습니다. token 값은 저장 후 다시 표시되지 않습니다.
+토큰을 켠 경우에만 Web UI의 `/settings`에서 같은 값을 API 토큰으로 저장해야 관계 데이터 화면을 볼 수 있습니다. token 값은 저장 후 다시 표시되지 않습니다.
+
+## 프론트엔드 개발과 가상 데이터 검증
+
+일반 개발은 실행 중인 API에 연결합니다. `frontend/`에서 다음 명령을 사용합니다.
+Vite 개발 서버와 빌드 프리뷰의 기본 주소는 기존과 같이 `0.0.0.0:5173`입니다.
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+```bash
+npm test
+npm run build
+npm run preview
+```
+
+운영 데이터와 분리해서 새 화면의 쓰기·출처·변경 이력을 검증하려면 저장소 루트에서
+가상 데이터용 API를 실행합니다. 실제 FastAPI 경로와 임시 SQLite DB를 사용하며,
+DB는 프로세스 종료 시 제거됩니다. 기존 DB나 서비스 설정을 대상으로 실행하지 않습니다.
+
+```bash
+PYTHONPATH=backend/src uv run python scripts/serve-frontend-demo.py --port 8785
+```
+
+다른 터미널의 `frontend/`에서 다음과 같이 화면을 연결합니다. 사용 중인 서버와 포트가
+겹치지 않는지 먼저 확인하고, 이미 5173 포트를 사용 중이면 `--port`로 빈 포트를 지정합니다.
+
+```bash
+VITE_KINLAYER_API_URL=http://127.0.0.1:8785 VITE_KINLAYER_PREVIEW_LABEL='가상 데이터 · 테스트 API' npm run dev -- --host 127.0.0.1 --strictPort
+```
+
+이 실행법은 검증용이며 운영 배포 완료를 의미하지 않습니다. 화면 증거와 테스트 결과는
+[프론트엔드 v2 검증 기록](docs/verification/frontend-v2/README.md)에 모읍니다.
 
 ## OpenAI embedding 설정
 
@@ -278,31 +312,41 @@ Kinlayer를 사용하면 다음 일을 할 수 있습니다.
 
 ## 주요 화면
 
-기존 Web UI는 이번에 재구현하지 않았습니다. 새로 저장하거나 이관한 기억의 수정·삭제는
-기존 화면의 PATCH/DELETE 경로에서 `409 memory_change_required`를 반환하므로,
-현재는 에이전트 또는 `kinlayer memory apply`로 정정·철회·재귀속합니다.
-새 프론트엔드가 이 API에 연결될 때 수정 화면도 함께 교체합니다.
+- `/people`: 이름·별칭 검색, 관계 필터, 최근 참조순·이름순 정렬, 목록/카드 전환,
+  인물 미리보기와 새 인물 추가를 제공합니다. 필터·집계·페이지 이동은 서버가 처리합니다.
+- `/people/:id`: 프로필, 관계, 기억별 출처, 변경 이력을 보고 이름·별칭을 편집합니다.
+- `/memories`: 사람·종류·근거·현재/과거 상태·본문으로 기억을 찾습니다. 각 기억의 정확한
+  참조와 출처를 확인하고 하나씩 정정·철회·다른 인물로 옮길 수 있습니다.
+- `/graph`: 선택한 사람의 직접 관계를 실제 ontology 종류와 방향에 맞춰 표시합니다.
+  모바일 관계 목록에서도 같은 기억과 출처를 열 수 있습니다.
+- `/changes`: 새 기억·정정·철회·재귀속의 전후 내용과 변경 근거를 확인합니다.
+- `/sources/:id`: 짧은 원문 발췌, 말한 사람, 출처 시점·위치와 연결된 현재·과거 기억을 봅니다.
+- `/search`: 검색 및 Context Pack을 조회하고 근거·불확실성·부분 날짜와 원래 기록을 확인합니다.
+- `/settings`: 연결·인증과 임베딩 설정 및 실제 데이터 처리 현황을 구분해 보여줍니다.
+- `/legacy`: 과거 후보와 에이전트 쓰기 기록을 읽기 전용으로 조회합니다. 적용된 필터의
+  JSONL은 처음 200건까지, CSV는 현재 페이지의 작업만 내보냅니다.
 
-- `/people`: 저장된 사람과 기본 상태를 봅니다.
-- `/people/new`: 새 사람과 초기 맥락을 추가합니다.
-- `/people/:id`: 한 사람의 별칭, 프로필 사실, 관계, 관찰, 출처를 확인합니다. 기억 수정은 위의 새 계약을 사용합니다.
-- `/candidates`: 이전 후보 기록의 호환 화면입니다. 새 기억은 이 승인을 기다리지 않습니다.
-- `/graph`: 사용자 중심의 가까운 관계망을 봅니다.
-- `/retrieval-debug`: 검색 점수와 Context Pack 구성을 확인합니다.
-- `/settings`: API 연결, 로컬 토큰, embedding provider, OpenAI-compatible embedding API 구성 상태, ontology 값을 확인합니다.
+기억 변경은 `POST /api/memories`를 사용합니다. 서버의 저장 계약 v2 지원을 확인한 뒤,
+정확한 이전 기록·갱신 시각과 이번 입력의 출처를 함께 제출합니다. 실패한 저장은 초안을
+보존하고 동일 요청을 재시도할 수 있습니다. 원래 내용과 출처는 변경 이력에서 확인합니다.
+인물 생성과 이름·별칭 편집은 기존 identity API를 사용합니다.
+
+불확실한 미래 계획을 현재 프로필로 확정하지 않으며, 알려지지 않은 날짜·발화 시점을
+채우지 않습니다. localStorage에 보관하는 것은 사용자가 입력한 API 토큰뿐입니다.
+이 교체 자체로 운영 서비스를 배포·재시작하거나 DB를 마이그레이션하지 않습니다.
 
 ## 설정에서 확인하는 것
 
-Settings 화면은 Kinlayer가 현재 어떤 방식으로 동작하는지 보여줍니다.
+설정 화면은 Kinlayer가 현재 어떤 방식으로 동작하는지 보여줍니다.
 
 - API 연결 상태와 데이터베이스 상태
 - 서버에 bearer token 보호가 켜져 있는지 여부
 - 브라우저에 로컬 API token이 저장되어 있는지 여부
 - embedding provider, model, dimension, 상태
 - OpenAI-compatible embedding API URL과 API key가 서버에 설정되어 있는지 여부
-- entity type, fact type, relationship type 같은 ontology 값. 기존 정책 표시가 남아 있어도 사용 여부를 제어하지 않습니다.
+- 관찰 임베딩의 전체·준비됨·대기·실패·갱신 필요 개수. 서버 설정의 준비 상태와 별도로 표시합니다.
 
-OpenAI embedding API key 같은 secret 값은 화면에 다시 표시하지 않습니다. Settings는 secret을 저장소나 브라우저에 노출하는 장소가 아니라, 서버가 해당 값을 갖고 있는지 확인하는 제어판입니다.
+OpenAI embedding API key 같은 secret 값은 화면에 다시 표시하지 않습니다. 임베딩 제공자 비밀 값은 서버에서 관리합니다. 연결용 API 토큰은 사용자가 이 브라우저에 저장·삭제할 수 있고 저장된 값은 다시 표시하지 않습니다.
 
 ## 에이전트와 함께 쓰는 방식
 
@@ -321,7 +365,8 @@ README는 제품 설명과 기본 설치 흐름을 다룹니다. API 계약, 데
 - `docs/README.md`: 문서 구조와 active/archive 구분
 - `docs/specs/prd.md`: 제품 요구사항과 원칙
 - `docs/plans/save-first-memory-schema.md`: 현재 즉시 저장·스키마·기존 데이터 전환 계약
-- `docs/plans/frontend-rebuild.md`: 다음 프론트엔드 전체 개편 계획
+- `docs/plans/frontend-rebuild.md`: 프론트엔드 교체 승인 변경 기록과 UI01–UI09 수용 기준
+- `docs/verification/frontend-v2/README.md`: 프론트엔드 교체의 브라우저·API·회귀 검증 근거와 적용 범위
 - `docs/plans/relationship-curation-cycle.md`: 이전 후보 curation 구현 이력과 호환 경계
 - `docs/kinlayer-roadmap.md`: 사용자가 구현 지시를 내릴 때 보는 한글 로드맵
 - `docs/specs/api-spec.md`: HTTP API 계약

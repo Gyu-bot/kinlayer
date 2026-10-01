@@ -1,81 +1,78 @@
-import {useEffect, useState} from "react";
+import { useEffect, useState, type MouseEvent } from "react";
+import { Shell } from "./v2/Shell";
+import { People } from "./v2/People";
+import { Person } from "./v2/Person";
+import { Graph } from "./v2/Graph";
+import { Changes, Memories, SourcePage } from "./v2/Memories";
+import { Diagnostics, Search, Settings } from "./v2/Support";
 
-import {apiUrl} from "./api/client";
-import {AgentOperations} from "./routes/AgentOperations";
-import {Candidates} from "./routes/Candidates";
-import {Graph} from "./routes/Graph";
-import {NewPerson} from "./routes/NewPerson";
-import {PeopleList} from "./routes/PeopleList";
-import {PersonDetail} from "./routes/PersonDetail";
-import {RetrievalDebug} from "./routes/RetrievalDebug";
-import {Settings} from "./routes/Settings";
-
-const routes = [
-  {label: "People", path: "/people"},
-  {label: "New person", path: "/people/new"},
-  {label: "Candidates", path: "/candidates"},
-  {label: "Agent operations", path: "/agent-operations"},
-  {label: "Graph", path: "/graph"},
-  {label: "Retrieval debug", path: "/retrieval-debug"},
-  {label: "Settings", path: "/settings"},
-];
-
-function App() {
-  const [path, setPath] = useState(window.location.pathname);
-
+export default function App() {
+  const [location, setLocation] = useState(
+    window.location.pathname + window.location.search,
+  );
   useEffect(() => {
-    const handler = () => setPath(window.location.pathname);
-    window.addEventListener("popstate", handler);
-    return () => window.removeEventListener("popstate", handler);
+    const changed = () =>
+      setLocation(window.location.pathname + window.location.search);
+    window.addEventListener("popstate", changed);
+    return () => window.removeEventListener("popstate", changed);
   }, []);
-
-  function navigate(nextPath: string) {
-    window.history.pushState({}, "", nextPath);
-    setPath(nextPath);
+  function navigate(path: string) {
+    if (path === location) return;
+    window.history.pushState({}, "", path);
+    setLocation(path);
+    window.scrollTo?.(0, 0);
   }
-
-  const normalizedPath = path === "/" ? "/people" : path;
-  const personMatch = normalizedPath.match(/^\/people\/([^/]+)$/);
-  let content = <PeopleList onNavigate={navigate} />;
-  if (normalizedPath === "/people/new") {
-    content = <NewPerson onNavigate={navigate} />;
-  } else if (personMatch) {
-    content = <PersonDetail id={personMatch[1]} onNavigate={navigate} />;
-  } else if (normalizedPath === "/candidates") {
-    content = <Candidates />;
-  } else if (normalizedPath === "/agent-operations") {
-    content = <AgentOperations />;
-  } else if (normalizedPath === "/graph") {
-    content = <Graph />;
-  } else if (normalizedPath === "/retrieval-debug") {
-    content = <RetrievalDebug />;
-  } else if (normalizedPath === "/settings") {
-    content = <Settings />;
+  function follow(event: MouseEvent) {
+    const link = (event.target as HTMLElement).closest("a");
+    if (
+      !link ||
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      link.target ||
+      link.hasAttribute("download")
+    )
+      return;
+    const url = new URL(link.href);
+    if (url.origin !== window.location.origin || url.hash) return;
+    event.preventDefault();
+    navigate(url.pathname + url.search);
   }
-
+  const path = location.split("?")[0];
+  const person = path.match(/^\/people\/([^/]+)$/),
+    source = path.match(/^\/sources\/([^/]+)$/);
+  let content;
+  if (path === "/" || path === "/people" || path === "/people/new")
+    content = <People onNavigate={navigate} />;
+  else if (person) content = <Person id={person[1]} onNavigate={navigate} />;
+  else if (path === "/graph") content = <Graph onNavigate={navigate} />;
+  else if (path === "/memories") content = <Memories onNavigate={navigate} />;
+  else if (path === "/changes" || path === "/reviews") content = <Changes />;
+  else if (source) content = <SourcePage id={source[1]} />;
+  else if (path === "/settings") content = <Settings onNavigate={navigate} />;
+  else if (path === "/search" || path === "/retrieval-debug")
+    content = <Search onNavigate={navigate} />;
+  else if (["/legacy", "/candidates", "/agent-operations"].includes(path))
+    content = <Diagnostics onNavigate={navigate} />;
+  else
+    content = (
+      <div className="panel empty-state">
+        <h1>페이지를 찾을 수 없어요</h1>
+        <a className="button primary" href="/people">
+          사람 목록으로
+        </a>
+      </div>
+    );
   return (
-    <main className="shell">
-      <nav className="topbar" aria-label="Primary">
-        <div className="nav-group">
-          <button type="button" className="brand" onClick={() => navigate("/people")}>
-            Kinlayer
-          </button>
-          {routes.map((route) => (
-            <button
-              type="button"
-              className={normalizedPath === route.path ? "nav-link active" : "nav-link"}
-              key={route.path}
-              onClick={() => navigate(route.path)}
-            >
-              {route.label}
-            </button>
-          ))}
+    <div onClick={follow}>
+      <Shell path={path === "/" ? "/people" : path} onNavigate={navigate}>
+        <div key={location} className="route-content">
+          {content}
         </div>
-        <span className="api-url">{apiUrl}</span>
-      </nav>
-      {content}
-    </main>
+      </Shell>
+    </div>
   );
 }
-
-export default App;
