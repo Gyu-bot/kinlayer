@@ -65,6 +65,7 @@ class RetrievalResult:
 
 class RetrievalService:
     def __init__(self, session: Session):
+        self.session = session
         self.repository = RetrievalRepository(session)
 
     def retrieve(
@@ -80,7 +81,8 @@ class RetrievalService:
         hints = set(entity_hints or [])
         entities = self.repository.entities()
         aliases = self.repository.aliases()
-        observations = self.repository.observations()
+        # Assessments provide pair context and a tie-break, never event recency or semantic evidence.
+        observations = [row for row in self.repository.observations() if row.observation_type != "relationship_assessment"]
         aliases_by_entity = self._aliases_by_entity(aliases)
         observations_by_entity = self._observations_by_entity(observations)
         participants_by_observation: dict[str, list[dict[str, Any]]] = {}
@@ -122,7 +124,11 @@ class RetrievalService:
                 if match.surface_bucket == "direct_surface":
                     match.surface_bucket = "conditional_surface"
 
-        matches.sort(key=lambda item: (-item.score, item.display_name))
+        from kinlayer_backend.services.relationship_profiles import summary_profiles
+        profiles = summary_profiles(self.session, [match.entity_id for match in matches])
+        importance = {"normal": 0, "important": 1, "very_important": 2}
+        matches.sort(key=lambda item: (-item.score,
+                     -importance.get(profiles[item.entity_id]["importance"], 0), item.display_name))
         matches = matches[:limit]
         return RetrievalResult(
             matches=matches,

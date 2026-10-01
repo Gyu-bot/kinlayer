@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from kinlayer_backend.api.errors import api_error
 from kinlayer_backend.services.relationship_ontology import validate_edge_write
+from kinlayer_backend.services.relationship_profiles import reject_compatibility_assessment, validate_profile_merge
 from kinlayer_backend.schemas.common import without_legacy_sensitivity
 from kinlayer_backend.models import (
     AllowedObservationType,
@@ -500,6 +501,7 @@ class CandidateService:
         if source.entity_type != "person" or target.entity_type != "person":
             raise api_error(422, "validation_error", "Only person entities can be merged.")
         fields_to_merge = candidate.payload.get("fields_to_merge") or DEFAULT_MERGE_FIELDS
+        validate_profile_merge(self.session, source.id, target.id, fields_to_merge)
         previous_refs = self._merge_previous_refs(source.id)
         if "aliases" in fields_to_merge:
             self._merge_aliases(source.id, target.id)
@@ -639,7 +641,7 @@ class CandidateService:
     def _repoint_merge_observations(self, source_id: str, target_id: str) -> None:
         for observation in self.session.execute(
             select(Observation).where(
-                Observation.status == "active",
+                Observation.status.in_(("active", "disputed")),
                 Observation.subject_entity_id == source_id,
             )
         ).scalars():
@@ -731,6 +733,7 @@ class CandidateService:
         validate_edge_write(self.session, payload)
 
     def _validate_observation_payload(self, payload: dict[str, Any]) -> None:
+        reject_compatibility_assessment(payload)
         self._entity(payload["subject_entity_id"])
         validate_common(payload, self.session)
         statement = select(AllowedObservationType).where(

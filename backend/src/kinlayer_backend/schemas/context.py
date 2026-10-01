@@ -6,6 +6,7 @@ from pydantic import ConfigDict, Field
 from kinlayer_backend.schemas.common import APIModel
 from kinlayer_backend.schemas.entities import AliasRead, EntityFactRead, EntityRead
 from kinlayer_backend.schemas.relationships import EdgeRead, ObservationRead
+from kinlayer_backend.schemas.relationship_profiles import RelationshipProfileRead
 
 
 class ContextRequestModel(APIModel):
@@ -65,6 +66,7 @@ class RetrievedObservationRead(APIModel):
 
 
 class MatchedEntityRead(APIModel):
+    relationship_profile: RelationshipProfileRead
     entity_id: str
     display_name: str
     entity_type: str
@@ -154,6 +156,7 @@ class RetrievalHints(APIModel):
 
 
 class ContextCardResponse(APIModel):
+    relationship_profile: RelationshipProfileRead
     entity: ContextEntityRead
     aliases: list[AliasRead]
     profile_facts: list[ContextEntityFactRead]

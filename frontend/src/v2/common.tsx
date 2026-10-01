@@ -230,6 +230,7 @@ export function MemoryCard({
       >
         {memoryText(item)}
       </a>
+      {item.payload.perspective_entity_id && <a className="small text-link" href={`/people/${encodeURIComponent(item.payload.perspective_entity_id)}`}>기록의 관점: 나</a>}
       <div className="context-meta">
         {item.entities.map((p) => (
           <a key={`${p.id}:${p.role}`} href={`/people/${p.id}`}>

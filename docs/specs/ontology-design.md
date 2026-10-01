@@ -480,3 +480,23 @@ symmetric 썸, canonical directed predicates and strict optional properties are 
 The registry is server-owned; this revision does not add Web editing of ontology definitions.
 Pair-level context, generic relationship timelines, dispute workflows, and observation regrouping
 remain separate proposals, not implied deliverables of this relationship-type change.
+
+## 13. Self-perspective relationship profile
+
+`ontology.relationship_profile` has its own `version: relationship-profile-v1` and an `axes`
+object. Each axis supplies `label`, `description`, and `values: [{value,label,description}]`.
+The canonical runtime registry owns values; clients fetch it instead of cloning an enum.
+
+Four independent axes describe the protected user's perspective toward another person:
+`closeness`, `importance`, `interaction_frequency`, and `connection_state`. They are source-backed
+`relationship_assessment` observations, not edges, global person facts, feelings attributed to the
+other person, or properties repeated across family/friend/coworker edges. Every axis requires an
+explicit user statement/selection (`reported`). No missing-log decay, frequency-based closeness,
+family-based importance or inferred disconnection is allowed.
+
+An unset axis has no current assertion and projects as null; it is distinct from all enum values.
+Each stored axis is independently corrected/retracted with source/history through `/api/memories`.
+The current profile has at most one active assertion per self/target/axis, rejects future claims
+and any `valid_to`, and does not implement generic timelines or meetings. See the
+[write contract](../agents/agent-write-instruction-pack.md#self-perspective-relationship-assessments)
+and [approval delta](../plans/relationship-ontology.md#d09d10-승인-변경분--네-축과-프런트-수정).

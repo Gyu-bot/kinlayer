@@ -29,6 +29,8 @@ from kinlayer_backend.schemas.entities import (
 )
 from kinlayer_backend.services.entities import EntityService, FactPromotionPayload
 from kinlayer_backend.services.people import PeopleReadService
+from kinlayer_backend.services.relationship_profiles import RelationshipProfileService
+from kinlayer_backend.schemas.relationship_profiles import RelationshipProfileRead
 
 router = APIRouter(tags=["entities"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -39,6 +41,10 @@ def list_people(
     session: SessionDep,
     q: Annotated[str | None, Query(max_length=500)] = None,
     relation_type: str | None = None,
+    closeness: str | None = None,
+    importance: str | None = None,
+    interaction_frequency: str | None = None,
+    connection_state: str | None = None,
     sort: Literal["name", "recent_reference"] = "name",
     exclude_self: bool = True,
     limit: int = Query(default=50, ge=1, le=200),
@@ -46,6 +52,8 @@ def list_people(
 ):
     return PeopleReadService(session).list(
         q=q, relation_type=relation_type, sort=sort, exclude_self=exclude_self,
+        profile_filters={"closeness": closeness, "importance": importance,
+                         "interaction_frequency": interaction_frequency, "connection_state": connection_state},
         limit=limit, offset=offset,
     )
 
@@ -216,3 +224,8 @@ def delete_fact(fact_id: str, session: SessionDep):
     if not fact:
         raise api_error(404, "not_found", "Entity fact not found.")
     return EntityService(session).delete_fact(fact)
+
+
+@router.get("/api/entities/{entity_id}/relationship-profile", response_model=RelationshipProfileRead)
+def relationship_profile(entity_id: str, session: SessionDep):
+    return RelationshipProfileService(session).get(entity_id)

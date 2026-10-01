@@ -59,9 +59,20 @@ function FactLines({
   );
 }
 
+function ProfileChips({ person, ontology }: { person: PersonSummary; ontology: Ontology | null }) {
+  if (person.system_role === "self" || !ontology?.relationship_profile) return null;
+  return <div className="row wrap small profile-chips" aria-label={`${person.display_name}의 나와의 관계`}>
+    {Object.entries(ontology.relationship_profile.axes).map(([axis, definition]) => {
+      const value = person.relationship_profile?.[axis];
+      return <span className="pill" key={axis}>{definition.label}: {definition.values.find((v) => v.value === value)?.label || value || "미설정"}</span>;
+    })}
+  </div>;
+}
+
 export function People({ onNavigate }: { onNavigate: (path: string) => void }) {
   const [query, setQuery] = useState("");
   const [relation, setRelation] = useState("");
+  const [profileFilters, setProfileFilters] = useState<Record<string, string>>({});
   const [sort, setSort] = useState("recent_reference");
   const [offset, setOffset] = useState(0);
   const [view, setView] = useState("list");
@@ -105,6 +116,7 @@ export function People({ onNavigate }: { onNavigate: (path: string) => void }) {
       offset: String(offset),
     });
     if (relation) params.set("relation_type", relation);
+    Object.entries(profileFilters).forEach(([axis, value]) => { if (value) params.set(axis, value); });
     api<Page<PersonSummary>>(`/api/people?${params}`, {
       signal: controller.signal,
     })
@@ -127,7 +139,7 @@ export function People({ onNavigate }: { onNavigate: (path: string) => void }) {
       active = false;
       controller.abort();
     };
-  }, [query, relation, sort, offset, retry]);
+  }, [query, relation, profileFilters, sort, offset, retry]);
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if (
@@ -216,6 +228,23 @@ export function People({ onNavigate }: { onNavigate: (path: string) => void }) {
               ))}
             </select>
           </div>
+          {ontology?.relationship_profile && (
+            <details className="panel content-panel">
+              <summary>나와의 관계로 좁히기{Object.values(profileFilters).some(Boolean) ? " · 선택됨" : ""}</summary>
+              <div className="field-grid">
+                {Object.entries(ontology.relationship_profile.axes).map(([axis, definition]) => (
+                  <label className="field" key={axis}>{definition.label} 필터
+                    <select value={profileFilters[axis] || ""}
+                      onChange={(event) => { setProfileFilters((current) => ({ ...current, [axis]: event.target.value })); setOffset(0); }}>
+                      <option value="">모든 값</option>
+                      <option value="unset">미설정</option>
+                      {definition.values.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </details>
+          )}
           {ontologyError && (
             <p className="status-line" role="status">
               관계 유형을 불러오지 못했어요.{" "}
@@ -350,6 +379,7 @@ export function People({ onNavigate }: { onNavigate: (path: string) => void }) {
                             <div className="person-alias">
                               {item.aliases.join(" · ") || "등록된 별칭 없음"}
                             </div>
+                            <ProfileChips person={item} ontology={ontology} />
                           </div>
                         </div>
                         <div className="relation-tags">
@@ -485,6 +515,7 @@ export function People({ onNavigate }: { onNavigate: (path: string) => void }) {
                     .map((item) => relationLabel(item.relation_type, ontology, item.directed && item.to_entity_id === person.id))
                     .join(" · ") || "아직 등록된 관계 없음"}
                 </p>
+                <ProfileChips person={person} ontology={ontology} />
                 <dl className="mini-facts">
                   <div>
                     <dt>별칭</dt>

@@ -9,6 +9,8 @@ from kinlayer_backend.models import EntityAlias, EntityEdge, EntityFact, Observa
 from kinlayer_backend.repositories.entities import EntityRepository
 from kinlayer_backend.schemas.entities import EntityRead
 from kinlayer_backend.services.memory_reads import current_condition
+from kinlayer_backend.services.relationship_profiles import AXES, summary_profiles
+from kinlayer_backend.api.errors import api_error
 
 
 class PeopleReadService:
@@ -17,10 +19,13 @@ class PeopleReadService:
         self.repository = EntityRepository(session)
 
     def list(self, *, q=None, relation_type=None, sort="name", exclude_self=True,
-             limit=50, offset=0):
+             limit=50, offset=0, profile_filters=None):
+        for axis, value in (profile_filters or {}).items():
+            if axis not in AXES or (value is not None and value not in {"unset", *(item["value"] for item in AXES[axis]["values"])}):
+                raise api_error(422, "validation_error", "Invalid relationship profile filter.")
         people, total = self.repository.list_entities(
             q=q, entity_type="person", status="active", relation_type=relation_type,
-            sort=sort, exclude_self=exclude_self, limit=limit, offset=offset,
+            sort=sort, exclude_self=exclude_self, limit=limit, offset=offset, profile_filters=profile_filters,
         )
         ids = [person.id for person in people]
         if not ids:
@@ -71,10 +76,12 @@ class PeopleReadService:
         counts = dict(self.session.execute(select(
             memberships.c.entity_id, func.count(),
         ).group_by(memberships.c.entity_id)).all())
+        profiles = summary_profiles(self.session, ids)
         items = []
         for person in people:
             item = EntityRead.model_validate(person).model_dump()
             item.update(aliases=aliases[person.id], profile_facts=facts[person.id],
-                        relations=relations[person.id], memory_count=counts.get(person.id, 0))
+                        relations=relations[person.id], memory_count=counts.get(person.id, 0),
+                        relationship_profile=profiles[person.id])
             items.append(item)
         return {"items": items, "total": total, "limit": limit, "offset": offset}

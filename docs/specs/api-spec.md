@@ -1173,6 +1173,29 @@ Rules:
 - Uses confidence + surface bucket mapping.
 - High confidence may be downgraded by ambiguity guard.
 
+### `GET /api/entities/{id}/relationship-profile`
+
+Returns `{version, entity_id, perspective_entity_id, axes}`. The independent version is
+`relationship-profile-v1`. Each server-defined axis maps to `{value, label, record}` where all
+three are null when unset, otherwise `record` is the full `MemoryRead` with exact ref, payload,
+update time and sources. The protected self is the perspective; self→self or a missing protected
+self returns all axes unset (missing self gives null perspective). Missing target entities return 404.
+
+Axis writes use `POST /api/memories` with record type `observations`,
+`observation_type: relationship_assessment`, `subject_entity_id` for the other person,
+`perspective_entity_id` for self, and registry values `relationship_axis` / `relationship_value`.
+All four axes require `claim_basis: reported` and genuine source; extra related participants,
+future `valid_from` / `occurred_at`, and any `valid_to` are rejected. Generic observation/candidate
+write routes cannot bypass this contract. Correct preserves axis and perspective; reattribute may
+move the target subject, subject to the same uniqueness checks. An existing active axis conflicts
+with create: HTTP 409 `relationship_axis_conflict`, `details.current_record_ref`. Exact correction
+uses `old_record_ref` and the read `expected_updated_at`. Retract restores unset without writing
+an unknown enum. No automatic conflict resolution or meeting/calendar storage is provided.
+
+`GET /api/entities` exposes compact `relationship_profile: {axis: value|null}` summaries and accepts
+`closeness`, `importance`, `interaction_frequency`, and `connection_state` filters using registry
+values or `unset`. Filtering applies before count and pagination.
+
 ### `GET /api/entities/{id}/context-card`
 
 Purpose: agent/UI shared curated person card.
@@ -1184,6 +1207,7 @@ entity
 aliases
 profile_facts
 relationship_edges
+relationship_profile
 stable_context
 recent_context
 communication_context
@@ -1191,6 +1215,11 @@ cautions
 provenance_summary
 retrieval_hints
 ```
+
+The relationship profile preserves complete source-backed current axis records; it does not
+duplicate them as generic stable context. Matched entities in retrieval/context packs carry the
+same profile. Importance only breaks ties among already relevant matches, without changing
+confidence or creating matches.
 
 Default limits apply; full data via paginated resources.
 

@@ -12,6 +12,8 @@ import {
   type MemoryWrite,
   type Ontology,
   type Participant,
+  type Page,
+  type Person,
   type Receipt,
   type RecordType,
 } from "./data";
@@ -60,12 +62,16 @@ export function MemoryEditor({
   item,
   personId = "",
   action = "create",
+  relationshipAxis,
+  perspectiveEntityId,
   onClose,
   onSaved,
 }: {
   item?: MemoryItem;
   personId?: string;
   action?: Action;
+  relationshipAxis?: string;
+  perspectiveEntityId?: string;
   onClose: () => void;
   onSaved: (receipt: Receipt) => void;
 }) {
@@ -89,12 +95,21 @@ export function MemoryEditor({
     p?.fact_type ||
       p?.relation_type ||
       p?.observation_type ||
-      "recent_interaction",
+      (relationshipAxis ? "relationship_assessment" : "recent_interaction"),
   );
   const [target, setTarget] = useState(
     p?.entity_id || p?.subject_entity_id || p?.from_entity_id || personId,
   );
   const [other, setOther] = useState(p?.to_entity_id || "");
+  const [axis, setAxis] = useState(p?.relationship_axis || relationshipAxis || "");
+  const [assessmentValue, setAssessmentValue] = useState(p?.relationship_value || "");
+  const isAssessment = kind === "observations" && type === "relationship_assessment";
+  const protectedSelf = useResource<Page<Person>>(isAssessment && !perspectiveEntityId && !p?.perspective_entity_id
+    ? "/api/entities?entity_type=person&system_role=self&limit=1" : null);
+  const perspective = p?.perspective_entity_id || perspectiveEntityId || protectedSelf.data?.items[0]?.id;
+  const axisDefinition = o.data?.relationship_profile?.axes[axis];
+  const fixedAssessment = Boolean(relationshipAxis || p?.observation_type === "relationship_assessment");
+  const unchangedAssessmentValue = isAssessment && assessmentValue === p?.relationship_value;
   const [edgeProperties, setEdgeProperties] = useState<Record<string, unknown>>(p?.properties || {});
   const [content, setContent] = useState(item?.content || "");
   const [basis, setBasis] = useState<MemoryPayload["claim_basis"]>(
@@ -137,7 +152,7 @@ export function MemoryEditor({
             .filter((t) => t.active && t.write_supported === true)
             .map((t) => t.relation_type)
         : o.data?.observation_types
-            .filter((t) => t.active)
+            .filter((t) => t.active && (!item || fixedAssessment || t.observation_type !== "relationship_assessment"))
             .map((t) => t.observation_type);
   const edgeDefinition = o.data?.edge_types.find((t) => t.relation_type === type);
   const legacyEdge =
@@ -174,6 +189,12 @@ export function MemoryEditor({
         throw new Error(
           "연결된 서버가 현재 기억 저장 방식을 지원하는지 확인해 주세요.",
         );
+      if (isAssessment && !retract) {
+        if (move) throw new Error("관계 평가는 인물을 옮길 수 없어요. 원래 기록을 철회하고 해당 인물에게 새로 기록해 주세요.");
+        if (target === perspective) throw new Error("나와의 관계는 본인이 아닌 다른 사람을 대상으로 기록해 주세요.");
+        if (!perspective || !axisDefinition?.values.some((v) => v.value === assessmentValue))
+          throw new Error("나의 관점과 관계 속성·값을 확인해 주세요.");
+      }
       let payload: MemoryPayload | undefined;
       if (!retract) {
         if (move && legacyEdge)
@@ -192,10 +213,10 @@ export function MemoryEditor({
           }
         } else {
           payload = {
-            claim_basis: basis,
+            claim_basis: isAssessment ? "reported" : basis,
             confidence: Number(confidence),
-            valid_from: editedTime(from, item?.valid_from),
-            valid_to: editedTime(to, item?.valid_to),
+            valid_from: isAssessment ? (unchangedAssessmentValue ? p?.valid_from ?? null : null) : editedTime(from, item?.valid_from),
+            valid_to: isAssessment ? null : editedTime(to, item?.valid_to),
           };
           if (kind === "entity_facts")
             Object.assign(payload, {
@@ -225,8 +246,13 @@ export function MemoryEditor({
               subject_entity_id: target,
               observation_type: type,
               content: content.trim(),
-              occurred_at: editedTime(occurred, p?.occurred_at),
-              related_entities: participants,
+              occurred_at: isAssessment ? (unchangedAssessmentValue ? p?.occurred_at ?? null : null) : editedTime(occurred, p?.occurred_at),
+              related_entities: isAssessment ? [] : participants,
+              ...(isAssessment ? {
+                perspective_entity_id: perspective,
+                relationship_axis: axis,
+                relationship_value: assessmentValue,
+              } : {}),
             });
         }
       }
@@ -308,7 +334,7 @@ export function MemoryEditor({
                     <label htmlFor="memory-kind">기억 구분</label>
                     <select
                       id="memory-kind"
-                      disabled={item?.record_type === "entity_edges"}
+                      disabled={item?.record_type === "entity_edges" || fixedAssessment}
                       value={kind}
                       onChange={(e) => changeKind(e.target.value as RecordType)}
                     >
@@ -328,6 +354,7 @@ export function MemoryEditor({
                     <label htmlFor="memory-type">종류</label>
                     <select
                       id="memory-type"
+                      disabled={fixedAssessment}
                       value={type}
                       onChange={(e) => setType(e.target.value)}
                     >
@@ -352,7 +379,7 @@ export function MemoryEditor({
                 initialName={
                   item?.entities.find((e) => e.id === target)?.display_name
                 }
-                disabled={action === "correct"}
+                disabled={action === "correct" || Boolean(relationshipAxis)}
               />
               {kind === "entity_edges" && (
                 <>
@@ -363,7 +390,7 @@ export function MemoryEditor({
                     initialName={
                       item?.entities.find((e) => e.id === other)?.display_name
                     }
-                    disabled={action === "correct"}
+                    disabled={action === "correct" || Boolean(relationshipAxis)}
                   />
                   <p className="small muted">
                     {edgeDefinition?.description}
@@ -422,6 +449,40 @@ export function MemoryEditor({
                   )}
                 </>
               )}
+              {isAssessment && (
+                <section className="stack" aria-label="나와의 관계 속성">
+                  <p className="small muted">나의 관점에서 기록합니다. 각 속성은 서로 독립적이며, 미설정은 낮은 값이나 연락 없음과 다릅니다.</p>
+                  {protectedSelf.error ? <ErrorState error={protectedSelf.error} retry={protectedSelf.reload} /> : null}
+                  <div className="field-grid">
+                    <div className="field">
+                      <label htmlFor="relationship-axis">관계 속성</label>
+                      <select id="relationship-axis" value={axis} disabled={fixedAssessment || move} required
+                        onChange={(event) => { setAxis(event.target.value); setAssessmentValue(""); setContent(""); }}>
+                        <option value="">속성을 선택하세요</option>
+                        {Object.entries(o.data?.relationship_profile?.axes || {}).map(([key, definition]) => (
+                          <option key={key} value={key}>{definition.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label htmlFor="relationship-value">관계 속성값</label>
+                      <select id="relationship-value" value={assessmentValue} disabled={move || !axisDefinition} required
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          const nextLabel = axisDefinition?.values.find((v) => v.value === next)?.label;
+                          setContent(nextLabel ? `${axisDefinition?.label}: ${nextLabel}` : "");
+                          setAssessmentValue(next);
+                        }}>
+                        <option value="">미설정 · 값을 선택하세요</option>
+                        {axisDefinition?.values.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <p className="small muted">{axisDefinition?.description}</p>
+                  <p className="small muted">{axisDefinition?.values.find((v) => v.value === assessmentValue)?.description}</p>
+                  {item && <p className="small muted">미설정으로 돌리려면 이 기억의 철회를 사용하세요. 이전 값과 출처는 이력에 남습니다.</p>}
+                </section>
+              )}
               {!move && (
                 <>
                   {isDate ? (
@@ -479,7 +540,8 @@ export function MemoryEditor({
                       <label htmlFor="memory-basis">근거 구분</label>
                       <select
                         id="memory-basis"
-                        value={basis}
+                        value={isAssessment ? "reported" : basis}
+                        disabled={isAssessment}
                         onChange={(e) =>
                           setBasis(
                             e.target.value as MemoryPayload["claim_basis"],
@@ -513,7 +575,7 @@ export function MemoryEditor({
                     전해 들었다는 표시는 사실 검증을 뜻하지 않아요. 미래 계획과
                     불확실한 표현을 내용에 그대로 남겨 주세요.
                   </p>
-                  <details>
+                  {!isAssessment && <details>
                     <summary>시점과 관련 인물</summary>
                     <div className="stack">
                       <div className="field-grid">
@@ -626,7 +688,7 @@ export function MemoryEditor({
                         </>
                       )}
                     </div>
-                  </details>
+                  </details>}
                 </>
               )}
             </>

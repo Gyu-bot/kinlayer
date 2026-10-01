@@ -187,6 +187,7 @@ class PersonProfileFactRead(EntityFactRead):
 
 
 class PersonSummaryRead(EntityRead):
+    relationship_profile: dict[str, str | None]
     ai_use_policy: str = Field(default="cautious_use", exclude=True)
     confirmation_status: str = Field(default="confirmed", exclude=True)
     aliases: list[str]

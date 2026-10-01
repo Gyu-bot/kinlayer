@@ -93,6 +93,9 @@ class ObservationPatch(APIModel):
 
 
 class ObservationRead(ObservationCreate):
+    perspective_entity_id: str | None = None
+    relationship_axis: str | None = None
+    relationship_value: str | None = None
     id: str
     related_entities: list[RelatedEntityRead] = Field(default_factory=list)
     embedding: str | None = None

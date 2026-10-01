@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
-from kinlayer_backend.models import Entity, EntityAlias, EntityEdge, EntityFact
+from kinlayer_backend.models import Entity, EntityAlias, EntityEdge, EntityFact, Observation
 from kinlayer_backend.services.memory_reads import current_condition, literal_search
 from kinlayer_backend.services.ontology import normalize_name
 
@@ -56,6 +56,7 @@ class EntityRepository:
         relation_type: str | None = None,
         sort: str = "name",
         exclude_self: bool = False,
+        profile_filters: dict[str, str] | None = None,
     ) -> tuple[list[Entity], int]:
         filters = []
         if q:
@@ -91,6 +92,28 @@ class EntityRepository:
                     (EntityEdge.to_entity_id == self_id) & (EntityEdge.from_entity_id == Entity.id),
                 ),
             ).correlate(Entity).exists())
+        if profile_filters:
+            # Correlated EXISTS filters apply to the full directory before count/paging.
+            from kinlayer_backend.models import Entity as SelfEntity
+            from sqlalchemy.orm import aliased
+            perspective = aliased(SelfEntity)
+            self_id = select(perspective.id).where(perspective.system_role == "self", perspective.status == "active").scalar_subquery()
+            for axis, value in profile_filters.items():
+                if value is None:
+                    continue
+                match = select(Observation.id).where(
+                    Observation.subject_entity_id == Entity.id,
+                    Observation.perspective_entity_id == self_id,
+                    Observation.observation_type == "relationship_assessment",
+                    Observation.relationship_axis == axis,
+                    current_condition(Observation, datetime.now(UTC)),
+                    Observation.valid_to.is_(None),
+                    or_(Observation.occurred_at.is_(None), Observation.occurred_at <= datetime.now(UTC)),
+                )
+                if value != "unset":
+                    match = match.where(Observation.relationship_value == value)
+                predicate = match.correlate(Entity).exists()
+                filters.append(~predicate if value == "unset" else predicate)
         statement = select(Entity).where(*filters)
         total = self.session.scalar(select(func.count()).select_from(statement.subquery())) or 0
         ordering = [Entity.display_name, Entity.id]

@@ -426,3 +426,38 @@ If bearer-token protection is enabled, use the adapter's existing secure authent
 do not paste credentials into documentation or logs. Resolve referenced component schemas from
 `components.schemas`. Examples here illustrate semantics; deployment validation and generated
 OpenAPI own exact accepted types and optional fields.
+
+## Self-perspective relationship assessments
+
+Fetch `ontology.relationship_profile` and its independent `version` (`relationship-profile-v1`)
+at session start and before unfamiliar axes/values; invalidate cached axis meanings when that
+version changes. The structured type is `observations` / `relationship_assessment`, with target
+person `subject_entity_id`, protected self `perspective_entity_id`, and registry-owned
+`relationship_axis` / `relationship_value`. All four axes require `claim_basis: reported`: use
+only the user's explicit assessment or UI selection, never an inference from interaction frequency,
+missing logs, family, a relationship type, or another person's feelings. Importance and disconnection
+must be explicitly stated. Unknown/unset means no active assertion, not a stored lowest enum value.
+
+Use one independently correctable memory per axis and the normal genuine human source. Do not
+supply additional observation participants. This is a current profile: do not write future
+`valid_from` / `occurred_at`, any `valid_to`, calendar entries, or inferred decay. The current
+projection is read through `GET /api/entities/{id}/relationship-profile`; each axis includes its
+full source-backed record or null. Self itself has no self→self assessment, and no configured self
+means writes are unavailable.
+
+Before a new current-axis statement, resolve the target and protected self, read the profile, and
+validate its entity, perspective, version and axis. A successful null row permits `create`. An
+existing row requires its exact record, then `correct` with `old_record_ref` and
+`expected_updated_at`; preserve the axis and perspective. An explicit unset request retracts the
+exact axis record; an already-unset axis is a no-op. When the value changes, do not inherit the old
+value's `valid_from` or `occurred_at`: send explicit null unless the new source supplies that time.
+Same-value wording corrections may preserve known times. Source statement time stays independent.
+Do not interpret a timeout, HTTP error, malformed row or stale record as empty.
+A duplicate axis returns HTTP 409 `relationship_axis_conflict` with `details.current_record_ref`;
+this is not permission to silently change targets and retry. Immutable prepared requests and
+receipts retain their original request IDs and bodies on transport replay. Correcting source or
+wording is still a source-backed operation, not a user approval queue.
+
+Read back the exact record and the corresponding axis on the person's profile/context card.
+Context packs keep the perspective, value, source and time. Importance can only break ties among
+already relevant people; it must not create relevance, increase factual confidence or hide people.

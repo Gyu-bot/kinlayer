@@ -159,6 +159,8 @@ class MemoryReadService:
                     entity_ids.update((row.from_entity_id, row.to_entity_id))
                 else:
                     entity_ids.add(row.subject_entity_id)
+                    if row.perspective_entity_id:
+                        entity_ids.add(row.perspective_entity_id)
             evidence, record_id = EVIDENCE_MODELS[kind]
             for link, episode in self.session.execute(select(evidence, Episode).outerjoin(
                 Episode, Episode.id == evidence.episode_id,
@@ -203,7 +205,13 @@ class MemoryReadService:
                                    "confidence": float(link.confidence)
                                    if link.confidence is not None else None,
                                } for link in links[row.id]])
+                if row.observation_type == "relationship_assessment":
+                    payload.update(perspective_entity_id=row.perspective_entity_id,
+                                   relationship_axis=row.relationship_axis,
+                                   relationship_value=row.relationship_value)
                 participants = [(row.subject_entity_id, "subject")]
+                if row.perspective_entity_id:
+                    participants.append((row.perspective_entity_id, "perspective"))
                 participants += [(link.entity_id, link.role) for link in links[row.id]]
             result.append({
                 "record_ref": f"{kind}:{row.id}", "record_type": kind, "id": row.id,

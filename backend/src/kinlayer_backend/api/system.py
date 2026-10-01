@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 
 from kinlayer_backend.config import Settings
 from kinlayer_backend.services.relationship_ontology import ONTOLOGY_VERSION
+from kinlayer_backend.services.relationship_profiles import PROFILE_VERSION
 from kinlayer_backend.database import check_database
 from kinlayer_backend.services.embeddings import DEFAULT_LOCAL_MODEL
 
@@ -36,7 +37,7 @@ def config(request: Request) -> dict[str, Any]:
             "policy_version": settings.curation_policy_version,
         },
         "embedding": _embedding_config(settings),
-        "ontology": {"version": ONTOLOGY_VERSION, "endpoint": "/api/ontology", "edge_types_endpoint": "/api/ontology/edge-types"},
+        "ontology": {"version": ONTOLOGY_VERSION, "relationship_profile_version": PROFILE_VERSION, "endpoint": "/api/ontology", "edge_types_endpoint": "/api/ontology/edge-types"},
         "memory_write": {
             "endpoint": "/api/memories",
             "review_required": False,

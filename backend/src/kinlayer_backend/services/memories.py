@@ -28,6 +28,7 @@ from kinlayer_backend.schemas.memories import MemoryWriteRequest
 from kinlayer_backend.services.entity_guards import lock_active_entities
 from kinlayer_backend.services.ontology import is_allowed_registry_value
 from kinlayer_backend.services.relationship_ontology import validate_edge_write
+from kinlayer_backend.services.relationship_profiles import ASSESSMENT_TYPE, validate_assessment_change, validate_assessment_write
 
 RECORD_MODELS = {
     "entity_facts": EntityFact,
@@ -146,6 +147,11 @@ class MemoryService:
             )
             if old is not None and body.record is not None:
                 self._validate_targets(old, body)
+            # Release a current assessment's unique axis slot inside this same atomic
+            # transaction; a rejected replacement restores the original via rollback.
+            if old is not None and isinstance(old, Observation) and old.observation_type == ASSESSMENT_TYPE and body.record is not None:
+                old.status = "superseded"
+                self.session.flush()
             episode = self._create_episode(body)
             change.source_episode_id = episode.id
             if body.record is not None:
@@ -173,6 +179,17 @@ class MemoryService:
             existing = self._existing(body.request_id, fingerprint)
             if existing is not None:
                 return self._receipt(existing)
+            if body.record is not None and body.record.record_type == "observations" and body.record.payload.observation_type == ASSESSMENT_TYPE:
+                from kinlayer_backend.services.relationship_profiles import axis_conflict
+                payload = body.record.payload
+                current = self.session.scalar(select(Observation).where(
+                    Observation.subject_entity_id == payload.subject_entity_id,
+                    Observation.perspective_entity_id == payload.perspective_entity_id,
+                    Observation.relationship_axis == payload.relationship_axis,
+                    Observation.status.in_(("active", "disputed")),
+                ))
+                if current is not None:
+                    axis_conflict(current)
             raise
         except Exception:
             self.session.rollback()
@@ -211,6 +228,7 @@ class MemoryService:
         return (payload["entity_id" if record_type == "entity_facts" else "subject_entity_id"],)
 
     def _validate_targets(self, old, body: MemoryWriteRequest) -> None:
+        validate_assessment_change(old, body.record.record_type, body.record.payload.model_dump())
         old_type = body.old_record_ref.split(":", 1)[0]
         old_targets = self._targets(old_type, vars(old))
         new_targets = self._targets(body.record.record_type, body.record.payload.model_dump())
@@ -277,6 +295,7 @@ class MemoryService:
             validate_edge_write(self.session, payload, previous=previous)
             row = EntityEdge(**payload)
         else:
+            validate_assessment_write(self.session, payload)
             related = payload.pop("related_entities")
             lock_active_entities(
                 self.session,
