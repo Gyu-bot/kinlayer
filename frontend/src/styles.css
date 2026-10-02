@@ -383,3 +383,4 @@ body:has(.modal[open]){overflow:hidden}
 
 .profile-chips{gap:4px;margin:6px 0}
 .profile-chips .pill{white-space:normal;overflow-wrap:anywhere;max-width:100%}
+@media(max-width:510px){.person-hero .hero-actions>.button{flex:1 1 calc(50% - 9px);white-space:nowrap}}

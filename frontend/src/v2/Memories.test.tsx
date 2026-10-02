@@ -139,6 +139,25 @@ afterEach(() => {
 });
 
 describe("기억 조회와 변경 이력", () => {
+  it("이전 형식의 직업과 추가 속성을 상세의 전체 필드에서 읽을 수 있다", async () => {
+    const legacy = { ...item, status: "superseded", is_current: false,
+      payload: { ...item.payload, fact_type: "job", value: { job: "디자이너", schedule: "야간", extra: { location: "작업실" } } },
+    };
+    fetchMock.mockImplementation(async (input: string) => {
+      const path = new URL(input).pathname;
+      if (path === "/api/ontology") return response(ontology);
+      if (path === "/api/memories/entity_facts/fact-old") return response(legacy);
+      if (path === "/api/memory-changes") return response(page([]));
+      throw new Error(`Unexpected request ${path}`);
+    });
+    render(<MemoryDetail recordRef={item.record_ref} onNavigate={() => {}} />);
+    const disclosure = (await screen.findByText("저장된 전체 필드")).closest("details")!;
+    fireEvent.click(screen.getByText("저장된 전체 필드"));
+    expect(JSON.parse(disclosure.querySelector("pre")!.textContent!)).toEqual(legacy.payload);
+    expect(screen.getByText("새 기록으로 정정된 이전 기억")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "이 기억 정정" })).not.toBeInTheDocument();
+  });
+
   it("원본 출처가 없어도 남아 있는 발췌를 표시하고 끊어진 출처 링크는 만들지 않는다", () => {
     render(
       <SourceEvidence

@@ -290,6 +290,11 @@ export function MemoryDetail({
                     {dateTime(r.data.updated_at)}
                   </p>
                 </details>
+                <details className="diagnostic-details">
+                  <summary>저장된 전체 필드</summary>
+                  <p className="small muted">이전 형식의 프로필 값과 추가 속성도 원래 저장된 형태로 확인할 수 있어요.</p>
+                  <pre>{JSON.stringify(r.data.payload, null, 2)}</pre>
+                </details>
               </div>
               <section className="stack">
                 <h2>이 기억의 출처</h2>

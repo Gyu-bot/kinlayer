@@ -17,7 +17,7 @@ when the API fails.
 | Route | Behavior |
 | --- | --- |
 | `/people` | Server-paginated name/alias search, relationship filter, name/recent-reference sort, list/card view, matching person preview and explicit person creation. |
-| `/people/:id` | Overview, structured profile, relationships, memory-specific sources and changes; independent name/alias editing and memory creation. |
+| `/people/:id` | Overview with paginated profile facts, all-information inventory, structured profile, relationships, sources and changes; direct profile/relationship entry and independent name/alias editing. |
 | `/memories` | Server-side text/person/type/basis/current-history filters, exact memory links and individual creation. |
 | `/memories?record=...` | Exact current or historical record, participants, basis, source/event/validity times and changes; correct/retract/reattribute actions where the server status permits them. |
 | `/graph?focal=...` | Actual protected-self/default or selected person, 1-hop graph, ontology relation filters, directions, zoom/pan and equivalent mobile relationship access. Nodes open people; edges open the exact memory/source. |
@@ -42,6 +42,14 @@ and collapsed technical details, without a broken memory link or an inferred own
 - Memory creation, correction, retraction and reattribution use only `POST /api/memories`. Existing
   entity/alias APIs remain the identity-only paths for creating people or changing names/aliases.
   The UI never bypasses `409 memory_change_required` via old record mutation endpoints.
+- Direct profile entry requires the actual value or known date components, without a separate
+  memory narrative. Relationships require both people and an ontology-supported type; description
+  is optional, and an empty description uses the selected relation's direction and label.
+  For profile/relationship creation and correction, a blank source excerpt uses the visible direct
+  input summary, including entered relationship properties; a blank actor means `나` (the user).
+  Both defaults are explained before saving. Optional explicit source text/actor take precedence.
+  These remain `manual_entry` evidence, never a fabricated conversation or inferred source time.
+  Observation, retraction and reattribution flows still require explicit human source input.
 - Before memory writes, inspect `GET /api/system/config.memory_write`: endpoint `/api/memories`,
   `contract_version: "2"`, `review_required: false`. Older/incompatible or unreachable servers leave
   saving unavailable and explain the cause.
@@ -76,6 +84,14 @@ metadata; `GET /api/memories/{record_type}/{record_id}` exposes individual histo
 read with reverse memory filtering. Existing retrieval, graph, health/config and embedding status
 APIs remain the authoritative capabilities. A ready embedding configuration is not proof of indexed
 records or a successful provider call.
+
+The person overview puts basic profile information before relationship assessments. It does not
+truncate profile facts to six or whitelist fact types. It pages all
+current facts, including `job`, `birthday` and `birth_date`, independently from the context list.
+The `전체 정보` tab pages facts, relationships and observations together and exposes current,
+historical/future/retracted and all-record filters. Existing entity properties remain readable in
+a secondary section. Record detail exposes the full saved payload, including older structured
+fact values and unknown additional fields, without treating historical records as current.
 
 Acceptance IDs UI01–UI09 remain in the delivery plan. Direct browser checks must cover Korean text,
 desktop/mobile layout, keyboard/focus, empty/error/loading states, exact-record changes and preserved
