@@ -18,6 +18,11 @@ and candidate examples below preserve compatibility/history and do not reintrodu
 | Legacy controls | AI-use-policy and entity confirmation columns are retained for compatibility, not decisions. |
 | Embeddings | Keep observation embeddings, provider/model/dimension/status and backfill; changed/split content must be reindexed. |
 
+Authorized material import V2 reuses `material_imports.manifest` and `candidate_links` JSON
+(the latter keyed by canonical ref in V2), source Episodes, fact/observation evidence and
+MemoryChange rows. It creates no candidates or new tables; V1 ledgers and historical digests
+are untouched. See [typed source import and exact wire example](authorized-material-imports.md#v2-typed-source-import).
+
 Structural migration is distinct from the live-data conversion. Conversion preserves old rows and
 available source links, records lineage and does not fabricate evidence for old unsourced data.
 

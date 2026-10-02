@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_serializer
 
 from kinlayer_backend.schemas.common import APIModel
 from kinlayer_backend.schemas.entities import AliasRead, EntityFactRead, EntityRead
@@ -116,10 +116,18 @@ class ProvenanceItem(APIModel):
     actor: str | None = None
     source_type: str | None = None
     source_ref: str | None = None
+    material_provenance: dict[str, Any] | None = None
     source_occurred_at: datetime | None = None
     excerpt: str | None = None
     confidence: float | None = None
     created_at: datetime | None = None
+
+    @model_serializer(mode="wrap")
+    def omit_absent_material_provenance(self, handler):
+        result = handler(self)
+        if self.material_provenance is None:
+            result.pop("material_provenance", None)
+        return result
 
 
 class ContextPack(APIModel):

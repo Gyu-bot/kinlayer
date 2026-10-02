@@ -38,6 +38,11 @@ def config(request: Request) -> dict[str, Any]:
         },
         "embedding": _embedding_config(settings),
         "ontology": {"version": ONTOLOGY_VERSION, "relationship_profile_version": PROFILE_VERSION, "endpoint": "/api/ontology", "edge_types_endpoint": "/api/ontology/edge-types"},
+        "material_import": {
+            "contract_versions": ["1", "2"],
+            "record_types": ["entity_facts", "observations"],
+            "immediate": True,
+        },
         "memory_write": {
             "endpoint": "/api/memories",
             "review_required": False,

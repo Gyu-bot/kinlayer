@@ -107,26 +107,54 @@ def _read_json_file(path: Path) -> dict[str, Any]:
 @app.command("material-import")
 def material_import(
     file: Annotated[Path, typer.Option("--file", exists=True, dir_okay=False)],
-    submit: Annotated[bool, typer.Option("--submit", help="Persist pending candidates; default validates with rollback.")] = False,
+    submit: Annotated[bool, typer.Option("--submit", help="Save authorized memories; default validates with rollback.")] = False,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    """Validate pending candidates only, not autoaccept eligibility. Never canonicalizes.
-
-    Submit only explicitly; warnings, undated material and planner limits need review.
-    """
+    """Validate V1/V2 authorized material; submit explicitly and verify its receipt."""
     if file.stat().st_size > 100_000:
         raise typer.BadParameter("Import manifest exceeds 100000 bytes.")
+    from pydantic import ValidationError
+    from kinlayer_backend.schemas.material_imports import MaterialImportV2Request, material_import_adapter
+    from kinlayer_backend.services.material_imports import request_fingerprint
+
     payload = _read_json_file(file)
+    try:
+        envelope = material_import_adapter.validate_python(payload)
+    except ValidationError as exc:
+        raise typer.BadParameter(f"Invalid material import: {exc}") from exc
     response = _request("POST", "/api/material-imports/" + ("submit" if submit else "validate"), payload=payload)
     _raise_for_api(response)
     result = response.json()
+    if result.get("request_sha256") != request_fingerprint(envelope):
+        raise typer.BadParameter("Import receipt has a different request hash; do not re-key.")
     if submit:
         from urllib.parse import quote
+
+        if result.get("import_id") != envelope.idempotency_key:
+            raise typer.BadParameter("Import receipt has a different import ID; do not re-key.")
+        if isinstance(envelope, MaterialImportV2Request):
+            refs = result.get("canonical_record_refs", [])
+            episodes = result.get("episode_ids", [])
+            if (
+                result.get("validation_scope") != "immediate_memories"
+                or result.get("candidate_ids") != []
+                or len(set(refs)) != len(envelope.records)
+                or sorted(ref.split(":", 1)[0] for ref in refs)
+                != sorted(item.record.record_type for item in envelope.records)
+                or len(set(episodes)) != len(envelope.sources)
+            ):
+                raise typer.BadParameter("Server did not return a V2 receipt; do not downgrade or re-key.")
 
         readback = _request("GET", "/api/material-imports/" + quote(result["import_id"], safe=""))
         _raise_for_api(readback)
         actual = readback.json()
-        if any(actual.get(key) != result.get(key) for key in ("request_sha256", "candidate_ids", "episode_ids")):
+        if (
+            any(actual.get(key) != result.get(key) for key in (
+                "import_id", "request_sha256", "candidate_ids", "canonical_record_refs",
+                "episode_ids", "validation_scope",
+            ))
+            or actual.get("manifest") != envelope.model_dump(mode="json", exclude={"idempotency_key"})
+        ):
             raise typer.BadParameter("Import committed but receipt readback did not match; do not re-key.")
     _emit(result, json_output)
 

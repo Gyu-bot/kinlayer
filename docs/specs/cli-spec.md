@@ -37,8 +37,10 @@ ops + people bootstrap + candidate/correction workflows + context/debug/graph/em
 The CLI should be implemented with Typer.
 
 `kinlayer material-import --file manifest.json --json` validates a bounded, explicitly
-authorized source manifest without persistent writes. Add `--submit` only to create
-pending candidates; the command verifies receipt readback. It uses the separate
+authorized V1/V2 source manifest without persistent writes. Add `--submit` only to save
+canonical memories immediately; V2 creates no candidates. The command validates either envelope
+locally and verifies receipt readback including canonical refs/request hash; unsupported versions
+never downgrade. It uses the separate
 `KINLAYER_MATERIAL_IMPORT_TOKEN`, never automatic post-turn evidence. See
 [authorized material imports](authorized-material-imports.md) for scope and activation.
 

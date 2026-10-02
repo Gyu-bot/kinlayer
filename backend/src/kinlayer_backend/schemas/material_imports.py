@@ -2,9 +2,12 @@
 
 import hashlib
 import json
+from datetime import date
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter, model_validator, field_validator
+
+from kinlayer_backend.schemas.memories import MemoryFact, MemoryObservation
 
 Text = Annotated[str, Field(min_length=1, max_length=500)]
 Identifier = Annotated[str, Field(min_length=1, max_length=120, pattern=r"^\S(?:.*\S)?$")]
@@ -84,14 +87,16 @@ class MaterialClaim(ImportModel):
     )
 
 
-class MaterialImportRequest(ImportModel):
+class MaterialImportScope(ImportModel):
     idempotency_key: Annotated[
         str, Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9._:-]+$")
     ]
     target_entity_id: Identifier
     sources: list[MaterialSource] = Field(min_length=1, max_length=20)
     authorization: MaterialAuthorization
-    claims: list[MaterialClaim] = Field(min_length=1, max_length=20)
+
+    def linked_source_ids(self):
+        raise NotImplementedError
 
     @field_validator("idempotency_key")
     @classmethod
@@ -119,14 +124,12 @@ class MaterialImportRequest(ImportModel):
         if json_digest(manifest) != auth.manifest_sha256:
             raise ValueError("Authorization manifest hash mismatch.")
         used = set()
-        for claim in self.claims:
-            if len(set(claim.source_ids)) != len(claim.source_ids) or not set(
-                claim.source_ids
+        for source_ids in self.linked_source_ids():
+            if len(set(source_ids)) != len(source_ids) or not set(
+                source_ids
             ) <= set(sources):
                 raise ValueError("Claim source linkage is out of scope.")
-            used.update(claim.source_ids)
-            if not claim.summary.strip():
-                raise ValueError("Empty synthesis.")
+            used.update(source_ids)
         if used != set(sources):
             raise ValueError("Every bounded source must support a claim.")
         if any(s.occurred_at is not None and s.occurred_at > auth.occurred_at for s in self.sources):
@@ -136,6 +139,55 @@ class MaterialImportRequest(ImportModel):
         if auth.source_ref in {s.source_ref for s in self.sources}:
             raise ValueError("Source material cannot authorize its own import.")
         return self
+
+
+class MaterialImportRequest(MaterialImportScope):
+    """Unversioned V1: retain its exact normalized manifest and digest."""
+
+    claims: list[MaterialClaim] = Field(min_length=1, max_length=20)
+
+    def linked_source_ids(self):
+        for claim in self.claims:
+            if not claim.summary.strip():
+                raise ValueError("Empty synthesis.")
+            yield claim.source_ids
+
+
+class MaterialRecord(ImportModel):
+    source_ids: list[Identifier] = Field(min_length=1, max_length=5)
+    record: Annotated[MemoryFact | MemoryObservation, Field(discriminator="record_type")]
+
+
+class MaterialImportV2Request(MaterialImportScope):
+    contract_version: Literal["2"]
+    records: list[MaterialRecord] = Field(min_length=1, max_length=20)
+
+    def linked_source_ids(self):
+        return (item.source_ids for item in self.records)
+
+    @model_validator(mode="after")
+    def check_records(self):
+        from kinlayer_backend.services.structured_facts import normalize_profile_fact
+
+        for item in self.records:
+            record = item.record
+            target = record.payload.entity_id if isinstance(record, MemoryFact) else record.payload.subject_entity_id
+            if target != self.target_entity_id:
+                raise ValueError("Record target must equal the authorized target.")
+            # Authorization bounds source statements, not described event times or
+            # applicability. A current source may explicitly describe a future period.
+            if isinstance(record, MemoryFact):
+                _, value = normalize_profile_fact(record.payload.fact_type, record.payload.content, record.payload.value)
+                # Compare only known precision; never invent a birthday's year.
+                if value.get("year") is not None and date(
+                    value["year"], value.get("month") or 1, value.get("day") or 1,
+                ) > self.authorization.occurred_at.date():
+                    raise ValueError("Profile date exceeds the authorization time.")
+        return self
+
+
+MaterialImportEnvelope = MaterialImportV2Request | MaterialImportRequest
+material_import_adapter = TypeAdapter(MaterialImportEnvelope)
 
 
 class MaterialImportRead(ImportModel):

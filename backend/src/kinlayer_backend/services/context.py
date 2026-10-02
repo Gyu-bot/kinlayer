@@ -393,7 +393,12 @@ class ContextService:
     def _provenance_item(
         self, record_type: str, record_id: str, row: Any, episode: Episode | None
     ) -> dict[str, Any]:
+        from kinlayer_backend.services.material_provenance import canonical_material_provenance
+
+        kind = {"fact": "entity_facts", "observation": "observations", "edge": "entity_edges"}[record_type]
+        provenance = canonical_material_provenance(self.session, f"{kind}:{record_id}", row, episode)
         return {
+            **({"material_provenance": provenance} if provenance else {}),
             "record_type": record_type,
             "record_id": record_id,
             "episode_id": row.episode_id,

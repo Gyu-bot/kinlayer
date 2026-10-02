@@ -14,10 +14,12 @@ user-supplied chat export, document, transcript, or explicitly designated extern
 human source. A generic tool response, retrieved memory, assistant report, or the
 words “approved” in a source description do not authorize anything.
 
-The supported import saves **observations immediately for one existing active, non-self person**.
-It does not create/merge people, change aliases, promote profile fields, create edges or correct
-existing records. Those operations use their relevant APIs. `scripts/kinlayer_client.py` remains
-read-only. Person confirmation/AI-use policy does not gate a new authorized import.
+The unversioned V1 `claims` envelope saves **observations immediately for one existing active,
+non-self person**. Explicit `contract_version: "2"` instead accepts typed `entity_facts` and
+`observations` for one exact existing active person, including protected self. Neither version
+creates/merges people, changes aliases, creates edges or corrects old records. Those operations
+use their relevant APIs. `scripts/kinlayer_client.py` remains read-only. Person confirmation/AI-use
+policy does not gate a new authorized import.
 
 “Save this analysis” allows an attributable synthesis linked to the actual human sources. The
 assistant synthesis is the claim, never a relabeled human original. `sourced_report` maps to
@@ -26,8 +28,9 @@ correctable claim. Reports are attributed statements, not externally verified as
 
 Canonical `content` is the submitted semantic summary. Author/date/locator metadata stays in the
 manifest and Episode/evidence and is exposed in provenance; it is not prepended to every claim.
-The manifest carries source statement dates, not event dates. This input has no separate event-date
-field, so new imported observations have `occurred_at=null`, even if every source is dated. Known
+The manifest carries source statement dates, not event dates. V1 has no separate event-date
+field, so new V1 observations have `occurred_at=null`, even if every source is dated. V2 event and
+validity fields are explicit typed payload fields; omitted event time remains null. Known
 source dates and explicit nulls remain in Episodes. No import invents validity bounds or changes an
 old source report into a current fact.
 
@@ -56,11 +59,12 @@ All three routes use the dedicated bearer token:
 
 - `POST /api/material-imports/validate`: run the same deterministic canonical-write validation as
   submit in a rollback-only transaction. No receipts, Episodes, candidates, observations, evidence
-  or changes remain. It may take transient database locks. Returns `status=validated`, payload
-  previews and the request hash, with empty persisted-ID/reference arrays.
+  or changes remain. It may take transient database locks. Returns `status=validated`, V1 candidate
+  previews and the request hash, with empty persisted-ID/reference arrays. V2 has no candidates.
 - `POST /api/material-imports/submit`: atomically save the receipt, source Episodes, immediately
-  active observations/evidence and MemoryChange rows. Accepted candidate rows are retained as
-  internal provenance/compatibility ledger entries, never as pending approval tasks. The response
+  active canonical records/evidence and MemoryChange rows. V1 retains accepted candidate rows as
+  internal provenance/compatibility ledger entries, never pending approval tasks. V2 creates no
+  candidate rows and returns `candidate_ids: []` (and `candidates: []`). The response
   includes `canonical_record_refs`, existing `candidate_ids`/`episode_ids`, request hash and
   `trust_boundary=authenticated_caller_attestation`.
 - `GET /api/material-imports/{import_id}`: exact durable receipt and bounded manifest for readback;
@@ -80,11 +84,13 @@ uv run kinlayer material-import --file /path/to/bounded-manifest.json --submit -
 ```
 
 CLI defaults to validation, limits its input file to 100000 bytes, and verifies
-submit's receipt with a separate GET. `KINLAYER_API_URL` chooses the API. Keep the
+both envelopes locally and submit's receipt with a separate GET, including canonical refs and the
+request hash. Unsupported versions fail closed; the CLI never downgrades to V1. `KINLAYER_API_URL`
+chooses the API. Keep the
 import token in the approved environment/secret store, never in the payload or
 command line. This path needs no ad-hoc per-person submit script.
 
-## Manifest schema
+## V1 manifest schema (unchanged)
 
 See `MaterialImportRequest` in `schemas/material_imports.py` and the fully
 executable synthetic fixture `material_request()` in
@@ -131,6 +137,157 @@ drops tzinfo); claim event timestamps are not inferred from them. Provenance com
 instants/nulls, never local wall-clock approximations. The manifest is not silently
 rehash-normalized to UTC. Full raw source bodies are never sent or stored.
 
+## V2 typed source import
+
+`GET /api/system/config` advertises the independent capability:
+
+```json
+{"material_import":{"contract_versions":["1","2"],"record_types":["entity_facts","observations"],"immediate":true}}
+```
+
+`memory_write` is unchanged. Version `1` denotes the existing **unversioned** `claims`
+envelope; do not add a version field to old signed manifests. V2 requires the literal string
+`"2"`, `records` instead of `claims`, and the same idempotency, source and authorization fields.
+Unknown/mixed versions or record types fail closed, without a downgrade or automatic conversion.
+
+Each of 1–20 `records` is `{source_ids, record: {record_type, payload}}`, with 1–5 distinct linked
+source IDs. Every source must support at least one record. `record_type` is `entity_facts` or
+`observations`; payloads reuse `MemoryFactPayload` / `MemoryObservationPayload` exactly. Typed
+profile content/value validation, partial date precision, registry validation, claim basis,
+confidence, observation roles and relationship-assessment rules are shared with `/api/memories`.
+Contextual notes and preferences remain observations, not generic profile fields.
+
+The fact's `entity_id` or observation's `subject_entity_id` **must equal the authorized target**.
+An explicitly named active protected self is allowed. Other related/perspective IDs must already
+exist and pass the ordinary active-entity/assessment validators; names are never resolved and
+participants are never created or merged. All participant locks use stable ID order.
+
+Source timestamps/null, exact authors/excerpts/locators/hashes and authorization scope remain in
+the bounded manifest and source Episodes. Source timestamps cannot exceed the actual user
+ authorization timestamp. Explicitly supported event/validity times remain independent and may
+ describe a future applicability period; record-specific validation still applies. A year-bearing profile date cannot be later than its
+calendar date at the supplied precision; an annual birthday never gains an invented year. Source
+time is **never** copied into event time. A caller must preserve the real authorization timestamp,
+not replace it with extraction or ingestion time. This remains an authenticated caller attestation,
+not independently verified consent or semantic entailment.
+
+V2 creates one MemoryChange per canonical record and links **all** cited Episodes through the
+existing evidence tables. The existing receipt JSON `candidate_links` stores entries keyed by
+canonical record ref with record index, semantic payload hash and Episode-to-source mapping;
+its physical name is historical, not a candidate requirement. **No migration is needed.** V1
+receipt JSON, normalized manifests, digests, candidate IDs and historical replay stay unchanged.
+
+`GET /api/memories/{record_type}/{id}` and context-card/context provenance expose verified
+`material_provenance` on every valid V2 source link, including exact original source time/offset
+or null, locator, author, both hashes and authorization scope. Missing or altered bindings never
+produce verified provenance. Later exact-record corrections retain the old record, import
+receipt, source links and creation/change history. Content contains the semantic assertion only,
+not an author/locator prefix.
+
+### Exact fictional wire example
+
+This is executable synthetic test data, not a real person or authorization. The test creates the
+existing fixture ID `synthetic-person-1` before submitting; a real caller must use its resolved
+existing ID and recompute the manifest hash if target or sources change. The two hashes cover
+the entire fictional one-paragraph original, which is also the bounded excerpt.
+
+```json
+{
+  "contract_version": "2",
+  "idempotency_key": "synthetic-profile-import-v2",
+  "target_entity_id": "synthetic-person-1",
+  "sources": [
+    {
+      "source_id": "note-1",
+      "kind": "user_supplied_document",
+      "source_ref": "synthetic://profile-note",
+      "message_id": "paragraph-1",
+      "author": "Synthetic Rowan",
+      "author_kind": "human",
+      "occurred_at": null,
+      "original_sha256": "sha256:8c9610896b0244565f5a2c1ace80f7a3869b6a63460c5a94800f3d73da2dee3b",
+      "excerpt": "I work as a cartographer. I was born in 1990. Please message before calling.",
+      "excerpt_sha256": "sha256:8c9610896b0244565f5a2c1ace80f7a3869b6a63460c5a94800f3d73da2dee3b"
+    }
+  ],
+  "authorization": {
+    "actor": "user",
+    "user_explicit": true,
+    "source_ref": "synthetic://authorization-turn",
+    "message_id": "user-message-1",
+    "occurred_at": "2026-09-30T01:00:00Z",
+    "excerpt": "Save the profile facts and communication preference in this note about Synthetic Rowan.",
+    "target_entity_id": "synthetic-person-1",
+    "source_ids": [
+      "note-1"
+    ],
+    "manifest_sha256": "sha256:2d4e34c03a9c422c516cc974163eecc83cae9cba510db6926314d85ad635665d"
+  },
+  "records": [
+    {
+      "source_ids": [
+        "note-1"
+      ],
+      "record": {
+        "record_type": "entity_facts",
+        "payload": {
+          "entity_id": "synthetic-person-1",
+          "fact_type": "job",
+          "content": "Cartographer",
+          "value": {
+            "text": "Cartographer"
+          },
+          "claim_basis": "reported",
+          "confidence": 0.9
+        }
+      }
+    },
+    {
+      "source_ids": [
+        "note-1"
+      ],
+      "record": {
+        "record_type": "entity_facts",
+        "payload": {
+          "entity_id": "synthetic-person-1",
+          "fact_type": "birth_date",
+          "content": "1990",
+          "value": {
+            "year": 1990,
+            "precision": "year"
+          },
+          "claim_basis": "reported",
+          "confidence": 0.9
+        }
+      }
+    },
+    {
+      "source_ids": [
+        "note-1"
+      ],
+      "record": {
+        "record_type": "observations",
+        "payload": {
+          "subject_entity_id": "synthetic-person-1",
+          "observation_type": "communication_preference",
+          "content": "Prefers a message before calls.",
+          "claim_basis": "reported",
+          "confidence": 0.9,
+          "occurred_at": null,
+          "related_entities": []
+        }
+      }
+    }
+  ]
+}
+```
+
+The normalizer supplies omitted optional payload fields when computing the **request** hash.
+Use `MaterialImportV2Request.model_validate(body)` and `request_fingerprint` for receipt checks;
+never hash the raw JSON file as the normalized request. Object-key order does not matter; array
+order remains bound, including sources, records and source IDs. Reordering those arrays is a
+changed request, not a silent normalization of an existing operation.
+
 ## Replay, provenance, and retrieval
 
 - Same key and normalized request return original IDs/references without new rows. Different
@@ -141,8 +298,8 @@ rehash-normalized to UTC. Full raw source bodies are never sent or stored.
   claimed.
 - Receipt uniqueness, request-hash uniqueness and one transaction protect concurrent submits.
   Failure in canonical validation rolls back the entire batch, including Episodes and the receipt.
-- `candidate_ids`, `episode_ids` and `canonical_record_refs` support exact readback. Accepted
-  candidates are internal lineage and preserve source-import compatibility validation.
+- `episode_ids` and `canonical_record_refs` support exact readback. V1 `candidate_ids` retain
+  internal lineage; V2 always returns an empty candidate list.
 - The actual human source actor, locator and source timestamp/null are preserved in the manifest
   and Episode. They appear in structured context provenance. A source author's statement and the
   agent's inference remain distinct.
@@ -165,7 +322,7 @@ bodies or hashes to pretend they used the new protocol.
 
 ## Deployment and previous migration history
 
-The current schema adds `20261001_0012` on top of the original import migration. Apply it with the
+V2 adds no schema migration. The save-first schema added `20261001_0012` on top of the original import migration. Apply it with the
 [save-first conversion procedure](../plans/save-first-memory-schema.md), a verified backup/restore
 and bounded conversion manifest. Replaying legacy receipts does not itself convert pending rows.
 
@@ -211,7 +368,7 @@ Set `PCR_PLUGIN_PATH` to the isolated coordinated PCR package, then run:
 
 ```sh
 PCR_PLUGIN_PATH=/path/to/personal-context-router \
-  uv run pytest backend/tests/test_material_imports.py \
+  uv run pytest backend/tests/test_material_imports_v2.py backend/tests/test_material_imports.py \
   backend/tests/test_material_import_review.py \
   backend/tests/test_material_import_migration.py -q -s
 ```

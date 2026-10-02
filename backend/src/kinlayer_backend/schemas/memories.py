@@ -193,6 +193,14 @@ class MemoryEvidenceRead(MemoryReadModel):
     excerpt: str | None = None
     occurred_at: datetime | None = None
     missing: bool = False
+    material_provenance: dict[str, Any] | None = None
+
+    @model_serializer(mode="wrap")
+    def omit_absent_material_provenance(self, handler):
+        result = handler(self)
+        if self.material_provenance is None:
+            result.pop("material_provenance", None)
+        return result
 
 
 class MemoryRead(MemoryReadModel):
