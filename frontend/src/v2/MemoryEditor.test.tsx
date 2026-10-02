@@ -169,6 +169,8 @@ async function ready() {
   );
 }
 function source() {
+  const details = screen.getByLabelText("근거가 되는 발언·직접 입력").closest("details")!;
+  if (!details.open) fireEvent.click(details.querySelector("summary")!);
   fireEvent.change(screen.getByLabelText("말한 사람"), {
     target: { value: "나" },
   });
@@ -178,6 +180,43 @@ function source() {
 }
 
 describe("기억 쓰기 계약", () => {
+  it("기억 내용만 입력해도 직접 입력 출처를 남기며 출처 보완은 접힌 선택 항목이다", async () => {
+    const saved = vi.fn();
+    render(<MemoryEditor personId="person-a" onClose={() => {}} onSaved={saved} />);
+    await ready();
+    const actor = screen.getByLabelText("말한 사람");
+    const excerpt = screen.getByLabelText("근거가 되는 발언·직접 입력");
+    expect(actor).not.toBeRequired();
+    expect(excerpt).not.toBeRequired();
+    expect(excerpt.closest("details")).not.toHaveAttribute("open");
+    fireEvent.change(screen.getByLabelText("기억 내용"), { target: { value: "  오늘 함께 산책했다  " } });
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    expect(writes()[0]).toMatchObject({
+      action: "create", created_by: "user",
+      source: { source_type: "manual_entry", actor: "나", excerpt: "오늘 함께 산책했다", occurred_at: null },
+      record: { record_type: "observations", payload: { subject_entity_id: "person-a", content: "오늘 함께 산책했다" } },
+    });
+    expect(writes()[0]).not.toHaveProperty("old_record_ref");
+  });
+
+  it("출처를 다시 적지 않고 기억을 정정해도 원본 출처와 역할·시간·갱신 시각을 보존한다", async () => {
+    const original = structuredClone(item);
+    const saved = vi.fn();
+    render(<MemoryEditor item={item} action="correct" onClose={() => {}} onSaved={saved} />);
+    await ready();
+    fireEvent.change(screen.getByLabelText("기억 내용"), { target: { value: "직접 수정한 내용" } });
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    expect(writes()[0]).toEqual({
+      request_id: expect.any(String), action: "correct", created_by: "user",
+      old_record_ref: item.record_ref, expected_updated_at: item.updated_at,
+      source: { source_type: "manual_entry", actor: "나", excerpt: "직접 수정한 내용", occurred_at: null },
+      record: { record_type: "observations", payload: { ...item.payload, content: "직접 수정한 내용" } },
+    });
+    expect(item).toEqual(original);
+  });
+
   it("직업 값만 입력하면 별도 기억이나 근거 문장 없이 직접 입력 출처와 함께 저장한다", async () => {
     const saved = vi.fn();
     render(<MemoryEditor initialKind="entity_facts" personId="person-a" onClose={() => {}} onSaved={saved} />);
@@ -443,7 +482,8 @@ describe("기억 쓰기 계약", () => {
       target: { value: "이번에 정정한 내용" },
     });
     source();
-    fireEvent.change(screen.getByLabelText("출처의 발화 시점 (선택)"), {
+    fireEvent.change(screen.getByLabelText("말한 사람"), { target: { value: "서준" } });
+    fireEvent.change(screen.getByLabelText("별도 출처의 시점 (선택)"), {
       target: { value: "2026-10-01T14:30:20.123" },
     });
     fireEvent.change(screen.getByLabelText("변경 이유 (선택)"), {
@@ -464,7 +504,7 @@ describe("기억 쓰기 계약", () => {
       },
       source: {
         source_type: "manual_entry",
-        actor: "나",
+        actor: "서준",
         excerpt: "직접 확인한 정정 근거",
         occurred_at: new Date("2026-10-01T14:30:20.123").toISOString(),
       },
@@ -478,7 +518,7 @@ describe("기억 쓰기 계약", () => {
     expect(saved).toHaveBeenCalledWith(receipt);
   });
 
-  it("409에서 초안을 유지하고 같은 요청 재시도는 같은 ID, 수정된 초안은 새 ID를 보낸다", async () => {
+  it("자동 출처도 409에서 초안을 유지하고 같은 재시도는 같은 ID, 수정된 초안은 새 ID를 보낸다", async () => {
     let attempt = 0;
     fetchMock.mockImplementation(async (input: string) => {
       const path = new URL(input).pathname;
@@ -508,7 +548,6 @@ describe("기억 쓰기 계약", () => {
       />,
     );
     await ready();
-    source();
     fireEvent.change(screen.getByLabelText("기억 내용"), {
       target: { value: "실패해도 남길 초안" },
     });
@@ -518,8 +557,9 @@ describe("기억 쓰기 계약", () => {
       "실패해도 남길 초안",
     );
     expect(screen.getByLabelText("근거가 되는 발언·직접 입력")).toHaveValue(
-      "직접 확인한 정정 근거",
+      "",
     );
+    expect(writes()[0].source).toMatchObject({ source_type: "manual_entry", actor: "나", excerpt: "실패해도 남길 초안" });
     expect(
       screen.getByRole("link", { name: "변경 이력을 새 창에서 확인" }),
     ).toHaveAttribute("href", "/changes?record=observations%3Amemory-a");
@@ -534,6 +574,7 @@ describe("기억 쓰기 계약", () => {
     await waitFor(() => expect(saved).toHaveBeenCalledOnce());
     expect(writes()[2].request_id).not.toBe(writes()[0].request_id);
     expect(writes()[2].record?.payload.content).toBe("다시 수정한 초안");
+    expect(writes()[2].source.excerpt).toBe("다시 수정한 초안");
     expect(writes()[2].expected_updated_at).toBe(item.updated_at);
   });
 
@@ -580,7 +621,7 @@ describe("기억 쓰기 계약", () => {
     expect(getRandomValues.mock.calls[0][0]).toHaveLength(16);
   });
 
-  it("철회는 교체 record 없이 이전 참조와 새 근거만 전송한다", async () => {
+  it("기억 삭제는 출처 입력 없이 이전 참조와 자동 삭제 근거만 전송한다", async () => {
     const saved = vi.fn();
     render(
       <MemoryEditor
@@ -592,11 +633,12 @@ describe("기억 쓰기 계약", () => {
     );
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "철회 기록 저장" }),
+        screen.getByRole("button", { name: "삭제" }),
       ).not.toBeDisabled(),
     );
-    source();
-    fireEvent.click(screen.getByRole("button", { name: "철회 기록 저장" }));
+    expect(screen.getByRole("heading", { name: "기억 삭제" })).toBeInTheDocument();
+    expect(screen.getByLabelText("근거가 되는 발언·직접 입력")).not.toBeRequired();
+    fireEvent.click(screen.getByRole("button", { name: "삭제" }));
     await waitFor(() => expect(saved).toHaveBeenCalledOnce());
     expect(writes()[0]).toEqual({
       request_id: expect.any(String),
@@ -607,14 +649,40 @@ describe("기억 쓰기 계약", () => {
       source: {
         source_type: "manual_entry",
         actor: "나",
-        excerpt: "직접 확인한 정정 근거",
+        excerpt: expect.stringContaining(item.content),
         occurred_at: null,
       },
     });
+    expect(writes()[0].source.excerpt).toContain("삭제");
     expect(screen.queryByLabelText("기억 내용")).not.toBeInTheDocument();
   });
 
-  it("맥락을 다른 인물로 옮길 때 대상만 바꾸며 역할·확신도·시간을 그대로 유지한다", async () => {
+  it("관계 삭제는 두 인물을 바꾸지 않고 정확한 관계 기록만 삭제한다", async () => {
+    const edge: MemoryItem = {
+      ...item, id: "edge-delete", record_ref: "entity_edges:edge-delete", record_type: "entity_edges",
+      content: "두 사람의 관계: 친구",
+      payload: { from_entity_id: "person-a", to_entity_id: "person-b", relation_type: "friend", directed: false,
+        claim_text: "두 사람의 관계: 친구", properties: { context: "동창회" }, claim_basis: "reported", confidence: 1,
+        valid_from: null, valid_to: null },
+    };
+    const original = structuredClone(edge);
+    const saved = vi.fn();
+    render(<MemoryEditor item={edge} action="retract" onClose={() => {}} onSaved={saved} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "삭제" })).not.toBeDisabled());
+    expect(screen.getByRole("heading", { name: "관계 삭제" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("관계 시작 인물")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("관계 대상 인물")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "삭제" }));
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    expect(writes()[0]).toEqual({ request_id: expect.any(String), action: "retract", created_by: "user",
+      old_record_ref: edge.record_ref, expected_updated_at: edge.updated_at,
+      source: { source_type: "manual_entry", actor: "나", excerpt: expect.stringContaining(edge.content), occurred_at: null },
+    });
+    expect(edge).toEqual(original);
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method && init.method !== "GET")).toHaveLength(1);
+  });
+
+  it("맥락을 출처 입력 없이 다른 인물로 옮길 때 대상만 바꾸며 역할·확신도·시간을 유지한다", async () => {
     const saved = vi.fn();
     render(
       <MemoryEditor
@@ -626,7 +694,6 @@ describe("기억 쓰기 계약", () => {
     );
     await ready();
     await screen.findByRole("option", { name: /지호/ });
-    source();
     fireEvent.change(screen.getByLabelText("기억의 대상"), {
       target: { value: "person-c" },
     });
@@ -639,6 +706,9 @@ describe("기억 쓰기 계약", () => {
     });
     expect(writes()[0].old_record_ref).toBe(item.record_ref);
     expect(writes()[0].expected_updated_at).toBe(item.updated_at);
+    expect(writes()[0].source).toMatchObject({ source_type: "manual_entry", actor: "나", excerpt: expect.stringContaining(item.content), occurred_at: null });
+    expect(writes()[0].source.excerpt).toContain("대상 인물");
+    expect(writes()[0].source.excerpt).toContain("변경");
     expect(screen.queryByLabelText("기억 내용")).not.toBeInTheDocument();
   });
 

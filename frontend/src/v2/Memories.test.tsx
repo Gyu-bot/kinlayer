@@ -293,7 +293,7 @@ describe("기억 조회와 변경 이력", () => {
     expect(document.body.textContent).not.toMatch(/AI 사용|확인됨|승인/);
   });
 
-  it("철회 후 서버 상태를 다시 읽고 변경 버튼을 숨기며 원문 출처는 유지한다", async () => {
+  it("프로필 삭제는 출처 입력 없이 처리하고 서버 상태를 다시 읽으며 원문 출처를 유지한다", async () => {
     let retracted = false;
     fetchMock.mockImplementation(async (input: string, init: RequestInit) => {
       const url = new URL(input);
@@ -329,21 +329,15 @@ describe("기억 조회와 변경 이력", () => {
     });
     const navigate = vi.fn();
     render(<MemoryDetail recordRef={item.record_ref} onNavigate={navigate} />);
-    fireEvent.click(await screen.findByRole("button", { name: "철회" }));
+    fireEvent.click(await screen.findByRole("button", { name: "프로필 삭제" }));
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "철회 기록 저장" }),
+        screen.getByRole("button", { name: "삭제" }),
       ).not.toBeDisabled(),
     );
-    fireEvent.change(screen.getByLabelText("말한 사람"), {
-      target: { value: "나" },
-    });
-    fireEvent.change(screen.getByLabelText("근거가 되는 발언·직접 입력"), {
-      target: { value: "이전 생일 정보는 잘못 들었어요" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "철회 기록 저장" }));
+    fireEvent.click(screen.getByRole("button", { name: "삭제" }));
     await waitFor(() =>
-      expect(screen.getByText("철회된 기억")).toBeInTheDocument(),
+      expect(screen.getByText("삭제된 기억")).toBeInTheDocument(),
     );
     expect(
       screen.queryByRole("button", { name: "이 기억 정정" }),
@@ -351,6 +345,7 @@ describe("기억 조회와 변경 이력", () => {
     expect(
       screen.queryByRole("button", { name: "다른 인물로 옮기기" }),
     ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "프로필 삭제" })).not.toBeInTheDocument();
     expect(screen.getByText("생일은 5월이에요")).toBeInTheDocument();
     expect(navigate).not.toHaveBeenCalled();
     const write = fetchMock.mock.calls.find(
@@ -360,6 +355,7 @@ describe("기억 조회와 변경 이력", () => {
       action: "retract",
       old_record_ref: item.record_ref,
       expected_updated_at: item.updated_at,
+      source: { source_type: "manual_entry", actor: "나", excerpt: expect.stringContaining("삭제"), occurred_at: null },
     });
     expect(JSON.parse(write[1].body)).not.toHaveProperty("record");
     expect(

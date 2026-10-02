@@ -194,7 +194,7 @@ export function MemoryDetail({
   const [notice, setNotice] = useState("");
   function saved(receipt: Receipt) {
     setAction(undefined);
-    setNotice("변경이 저장됐어요.");
+    setNotice(receipt.action === "retract" ? "삭제했어요. 원래 내용과 출처는 이력에 남습니다." : "변경이 저장됐어요.");
     onChanged?.();
     if (receipt.new_record_ref) onNavigate(memoryUrl(receipt.new_record_ref));
     else r.reload();
@@ -239,7 +239,7 @@ export function MemoryDetail({
                       : r.data.status === "superseded"
                         ? "새 기록으로 정정된 이전 기억"
                         : ["deleted", "retracted"].includes(r.data.status)
-                          ? "철회된 기억"
+                          ? "삭제된 기억"
                           : r.data.status}
                 </p>
                 <dl className="mini-facts">
@@ -278,7 +278,7 @@ export function MemoryDetail({
                       className="button ghost"
                       onClick={() => setAction("retract")}
                     >
-                      철회
+                      {r.data.record_type === "entity_edges" ? "관계 삭제" : r.data.record_type === "entity_facts" ? "프로필 삭제" : "기억 삭제"}
                     </button>
                   </div>
                 )}
@@ -417,7 +417,7 @@ export function Memories({
                 onChange={(e) => filter(setStatus, e.target.value)}
               >
                 <option value="active">현재 기억</option>
-                <option value="history">과거·철회·예정</option>
+                <option value="history">과거·삭제·예정</option>
                 <option value="all">모든 기록</option>
               </select>
             </div>

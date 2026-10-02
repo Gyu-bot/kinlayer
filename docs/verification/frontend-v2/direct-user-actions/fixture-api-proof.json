@@ -1,0 +1,11 @@
+{
+  "observation_create_correct_delete_without_source": true,
+  "old_content_and_sources_preserved": true,
+  "fact_and_relationship_delete": true,
+  "deleted_records_not_current": true,
+  "delete_operation_actor_is_user_no_fabricated_source_time": true,
+  "entity_deleted_not_in_people": true,
+  "entity_linked_memories_and_aliases_unchanged": true,
+  "record_deletions": 3,
+  "person_deletions": 1
+}

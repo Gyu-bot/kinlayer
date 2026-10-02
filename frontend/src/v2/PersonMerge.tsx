@@ -181,7 +181,7 @@ export function PersonMerge({ person, onClose, onMerged }: {
           <label className="row"><input type="checkbox" checked={confirmed} disabled={locked || busy} onChange={(e) => setConfirmed(e.target.checked)} />두 기록이 같은 사람이며, 위 방향으로 병합할 것을 확인했어요.</label>
         </>}
         {!!error && <div className="error-state" role="alert">
-          <p>{profileConflict ? "두 인물의 같은 관계 평가 항목이 겹쳐 병합하지 못했어요. 각 인물에서 해당 평가를 확인하고 하나를 정정하거나 철회한 뒤 다시 시도해 주세요." : errorText(error)}</p>
+          <p>{profileConflict ? "두 인물의 같은 관계 평가 항목이 겹쳐 병합하지 못했어요. 각 인물에서 해당 평가를 확인하고 하나를 정정하거나 삭제한 뒤 다시 시도해 주세요." : errorText(error)}</p>
           {profileConflict && ["source_record_ref", "target_record_ref"].map((key, index) => {
             const ref = error.details[key];
             return typeof ref === "string" ? <a className="text-link" key={key} href={memoryUrl(ref)} target="_blank" rel="noreferrer">{index ? "유지할 인물" : "합쳐질 인물"}의 관계 평가 확인</a> : null;
