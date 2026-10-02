@@ -152,3 +152,32 @@ API/Web을 함께 배포했다. 배포 전 DB 백업과 이전 이미지를 보�
 [모바일 비교](person-merge/merge-mobile-top.png), [모바일 확인](person-merge/merge-mobile-confirm.png).
 백엔드 및 DB 스키마는 변경하지 않았다. 위 결과는 임시 환경의 기능 검증이며 라이브
 반영 여부는 별도 배포 검증으로 확인한다.
+
+
+## 2026-10-02 직접 변경과 삭제
+
+사용자 후속 요청에 따라 기억 추가·정정·삭제·인물 이동, 관계 평가 설정·초기화도
+별도 발화자·근거 문장 없이 저장한다. `나`의 직접 입력 또는 명시한 작업을 새 출처로
+기록하며, 선택 입력한 출처와 원래 기록의 출처·시점은 보존한다. 위의 사실 입력 절에서
+철회·인물 이동에 명시적 출처가 필요하다고 쓴 내용은 이 후속 변경으로 대체된다.
+
+기억·프로필·관계 상세의 삭제는 기존 `retract` API를 사용한다. 인물 상세의 삭제는
+기존 엔티티 DELETE API로 목록에서 제외하며, 연결된 기억·프로필·관계·별칭은 유지한다.
+확인창에서 기억 목록과 그래프에 연결 기록이 남을 수 있음과 복구 UI가 없음을 설명한다.
+
+- 프론트엔드 110개 / 10개 파일, TypeScript·프로덕션 빌드 통과. 관련 API 73개 통과.
+- 임시 SQLite API의 가상 인물로 출처 없이 기억 추가→정정→삭제, 프로필·관계 삭제,
+  인물 삭제까지 브라우저에서 실행했다. 독립 API 조회로 이전 내용·출처 보존, 삭제 기록의
+  현재 조회 제외, 인물 삭제 전후 연결 기록·별칭 일치를 확인했다.
+- 390px·320px 모바일에서 입력창과 인물 삭제창의 가로 넘침·오류 알림·실행 오류 0건.
+  삭제된 인물 페이지는 상태를 표시하고 이름 편집·새 정보 추가를 비활성화한다.
+- 불확실한 삭제 응답의 동일 인물 조회 복구, 중복 제출, 보호 인물, 기존 요청 ID와
+  정확한 참조 보존은 회귀 테스트로 검증했다. 실제 사용자 데이터를 삭제하지 않았다.
+
+[API 검증](direct-user-actions/fixture-api-proof.json),
+[모바일 검증](direct-user-actions/mobile-verification.json),
+[기억 삭제](direct-user-actions/memory-delete-desktop.png),
+[인물 삭제](direct-user-actions/person-delete-desktop.png),
+[삭제된 인물](direct-user-actions/deleted-person-desktop.png),
+[320px 입력](direct-user-actions/memory-create-mobile-320.png),
+[390px 삭제 확인](direct-user-actions/person-delete-mobile-390.png).

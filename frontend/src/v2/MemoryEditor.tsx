@@ -139,11 +139,11 @@ export function MemoryEditor({
     kind === "entity_facts" && ["birthday", "birth_date"].includes(type);
   const retract = action === "retract",
     move = action === "reattribute";
-  const directFact = !retract && !move && (kind === "entity_facts" || kind === "entity_edges");
+  const recordLabel = kind === "entity_edges" ? "관계" : kind === "entity_facts" ? "프로필" : "기억";
   const title = {
     create: kind === "entity_facts" ? "프로필 추가" : kind === "entity_edges" ? "관계 추가" : "기억 추가",
     correct: "기억 정정",
-    retract: "기억 철회",
+    retract: `${recordLabel} 삭제`,
     reattribute: "다른 인물로 옮기기",
   }[action];
   const choices =
@@ -186,11 +186,15 @@ export function MemoryEditor({
     : isDate
       ? year || month || day ? factText({ fact_type: type, ...dateValue(year, month, day) }) : ""
       : content.trim();
-  const directExcerpt = [
+  const directExcerpt = (retract
+    ? `프론트엔드에서 사용자가 직접 ${recordLabel} 삭제를 요청했습니다.\n${item?.content || ""}`
+    : move
+      ? `프론트엔드에서 사용자가 직접 이 ${recordLabel}의 대상 인물을 변경했습니다.\n${item?.content || ""}`
+      : [
     directContent,
     ...(kind === "entity_edges" ? Object.entries(edgeProperties).map(([key, value]) =>
       `${edgePropertyFields.find(([name]) => name === key)?.[1] || key}: ${typeof value === "string" ? value : JSON.stringify(value)}`) : []),
-  ].filter(Boolean).join("\n").slice(0, 4000);
+  ].filter(Boolean).join("\n")).slice(0, 4000);
   function changeKind(next: RecordType) {
     setKind(next);
     if (!item) setContent("");
@@ -283,8 +287,8 @@ export function MemoryEditor({
         created_by: "user",
         source: {
           source_type: "manual_entry",
-          actor: actor.trim() || (directFact ? "나" : ""),
-          excerpt: excerpt.trim() || (directFact ? directExcerpt : ""),
+          actor: actor.trim() || "나",
+          excerpt: excerpt.trim() || directExcerpt,
           occurred_at: iso(sourceTime),
         },
         ...(reason.trim() ? { reason: reason.trim() } : {}),
@@ -345,8 +349,8 @@ export function MemoryEditor({
           ) : null}
           {retract ? (
             <p>
-              이 기억을 현재 참조 대상에서 제외합니다. 원래 내용과 출처는 변경
-              이력에 남습니다.
+              이 {recordLabel === "관계" ? "관계를" : `${recordLabel}을`} 삭제할까요? 현재 목록과 참조 대상에서 제외되며,
+              원래 내용과 출처는 변경 이력에 남습니다.
             </p>
           ) : (
             <>
@@ -508,7 +512,7 @@ export function MemoryEditor({
                   </div>
                   <p className="small muted">{axisDefinition?.description}</p>
                   <p className="small muted">{axisDefinition?.values.find((v) => v.value === assessmentValue)?.description}</p>
-                  {item && <p className="small muted">미설정으로 돌리려면 이 기억의 철회를 사용하세요. 이전 값과 출처는 이력에 남습니다.</p>}
+                  {item && <p className="small muted">미설정으로 돌리려면 이 기억을 삭제하세요. 이전 값과 출처는 이력에 남습니다.</p>}
                 </section>
               )}
               {!move && (
@@ -729,22 +733,21 @@ export function MemoryEditor({
               )}
             </>
           )}
-          {directFact && <section className="evidence-card stack" aria-label="직접 입력 출처">
-            <h3>입력한 정보가 출처로 함께 저장돼요</h3>
-            <p className="small muted">기본 출처는 나의 직접 입력입니다. 별도의 기억 문장 없이 저장할 수 있으며, 다른 사람의 발언이나 원문이 있으면 아래에서 출처를 보완하세요.</p>
-            <p className="small">{directExcerpt || "값을 입력하면 저장할 내용이 표시됩니다."}</p>
-          </section>}
-          <details open={directFact ? undefined : true}>
-            <summary>{directFact ? "출처 보완·변경 이유 (선택)" : "이번 입력의 출처"}</summary>
+          <p className="small muted">이 화면에서 직접 {retract ? "삭제한 작업" : move ? "옮긴 작업" : "입력한 내용"}을 나의 직접 입력으로 기록합니다. 출처나 발언을 따로 적지 않아도 됩니다.</p>
+          <details>
+            <summary>출처 보완·변경 이유 (선택)</summary>
             <div className="stack">
+            <section className="evidence-card stack" aria-label="직접 입력 출처">
+              <h3>자동으로 기록할 출처</h3>
+              <p className="small">{directExcerpt || "내용을 입력하면 직접 입력 출처가 함께 기록됩니다."}</p>
+            </section>
             <div className="field">
               <label htmlFor="source-actor">말한 사람</label>
               <input
                 id="source-actor"
                 value={actor}
                 onChange={(e) => setActor(e.target.value)}
-                placeholder={directFact ? "미입력 시 나" : "예: 나, 김민지"}
-                required={!directFact}
+                placeholder="미입력 시 나"
                 maxLength={80}
               />
             </div>
@@ -754,14 +757,13 @@ export function MemoryEditor({
                 id="source-excerpt"
                 value={excerpt}
                 onChange={(e) => setExcerpt(e.target.value)}
-                required={!directFact}
                 maxLength={4000}
                 rows={3}
-                placeholder={directFact ? "미입력 시 위의 직접 입력 내용을 출처로 저장합니다." : "기억을 남기거나 바꾸는 근거를 적어 주세요."}
+                placeholder="미입력 시 직접 입력한 내용이나 작업을 출처로 기록합니다."
               />
             </div>
             <div className="field">
-              <label htmlFor="source-time">출처의 발화 시점 (선택)</label>
+              <label htmlFor="source-time">별도 출처의 시점 (선택)</label>
               <input
                 id="source-time"
                 type="datetime-local"
@@ -811,7 +813,7 @@ export function MemoryEditor({
             type="submit"
             disabled={saving || o.loading || Boolean(o.error) || !writable}
           >
-            {saving ? "저장 중…" : retract ? "철회 기록 저장" : "저장"}
+            {saving ? (retract ? "삭제 중…" : "저장 중…") : retract ? "삭제" : "저장"}
           </button>
         </footer>
       </form>

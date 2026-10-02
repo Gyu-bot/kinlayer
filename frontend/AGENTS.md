@@ -45,6 +45,9 @@ frontend/
 - Preserve claim basis, uncertainty, partial dates, participant roles, independent
   source/event/validity timestamps and exact old refs. Failed writes retain drafts
   and reuse a request ID only when the body is unchanged, including on LAN HTTP.
+- Manual frontend memory operations generate honest user/direct-entry provenance. Explicit
+  source overrides stay optional; agent/API source requirements remain unchanged. Memory deletion
+  uses retract; entity deletion is non-cascading through the entity API.
 - Heavy admin/review details should stay secondary by default when possible.
 - Historical candidate/agent operations are read-only; no approval or AI-use-policy
   controls. Embedding configuration readiness and indexed-record readiness differ.

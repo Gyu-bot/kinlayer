@@ -273,7 +273,7 @@ export const kindLabels: Record<RecordType, string> = {
 export const actionLabels: Record<string, string> = {
   create: "새 기억",
   correct: "정정",
-  retract: "철회",
+  retract: "삭제",
   reattribute: "인물 변경",
   migration: "이전 기록 변환",
   migrate: "이전 기록 변환",

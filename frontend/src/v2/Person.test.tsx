@@ -155,4 +155,38 @@ describe("인물 전체 정보", () => {
     expect(screen.getByText("0", { exact: true })).toBeVisible();
     expect(screen.queryByText("entities:technical-reference")).not.toBeInTheDocument();
   });
+  it("일반 활성 인물의 삭제 확인창을 열고 취소하면 쓰지 않는다", async () => {
+    render(<Person id="person-a" onNavigate={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "인물 삭제" }));
+    const dialog = await screen.findByRole("dialog", { name: "인물 삭제" });
+    expect(within(dialog).getByText(/연결된 기억·프로필·관계/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "취소" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true);
+  });
+
+  it.each([
+    ["self", "active", "self", true],
+    ["system", "active", null, true],
+    ["deleted", "deleted", null, false],
+  ])("%s 인물은 삭제할 수 없고 삭제된 인물의 정보는 읽기 전용으로 보인다", async (_, status, system_role, is_system) => {
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (new URL(input).pathname === "/api/entities/person-a") return response({
+        id: "person-a", display_name: "민지", status, system_role, is_system, properties: {},
+      });
+      return original(input, init);
+    });
+    render(<Person id="person-a" onNavigate={() => {}} />);
+    await screen.findByRole("heading", { name: "민지" });
+    expect(screen.queryByRole("button", { name: "인물 삭제" })).not.toBeInTheDocument();
+    if (status === "deleted") {
+      expect(screen.getByText("삭제된 인물", { exact: true })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "이름·별칭 편집" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "기억 추가" })).toBeDisabled();
+      await within(screen.getByRole("region", { name: "기본 정보" })).findByText("소프트웨어 엔지니어");
+      expect(screen.getByText("최근 함께 점심을 먹음")).toBeInTheDocument();
+    }
+  });
+
 });
