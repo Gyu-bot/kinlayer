@@ -1,0 +1,14 @@
+{
+  "environment": "disposable SQLite; fictional fixture people only",
+  "target_name_preserved": true,
+  "source_merged_with_redirect": true,
+  "source_properties_preserved": true,
+  "all_four_source_record_refs_preserved": true,
+  "all_four_original_sources_unchanged": true,
+  "conflicting_organizations_readable": true,
+  "job_alias_observation_relationship_repointed": true,
+  "exactly_one_accepted_candidate": true,
+  "source_id": "1592ae22-d013-4e30-876b-194e70e1415b",
+  "target_id": "f252bbba-70ef-40ef-a70d-36965d8151e2",
+  "candidate_id": "ed7f8c7a-42ae-4f0d-a326-ca6d931f72f4"
+}

@@ -20,6 +20,7 @@ import {
 import { Empty, ErrorState, Loading, MemoryCard, Modal, Pager } from "./common";
 import { MemoryEditor } from "./MemoryEditor";
 import { RelationshipProfile } from "./RelationshipProfile";
+import { PersonMerge } from "./PersonMerge";
 import { ChangeRows, SourceEvidence } from "./Memories";
 
 type Alias = { id: string; alias: string; status: string };
@@ -38,6 +39,7 @@ export function Person({
     [version, setVersion] = useState(0),
     [adding, setAdding] = useState<RecordType | null>(null),
     [editing, setEditing] = useState(false),
+    [merging, setMerging] = useState(false),
     [notice, setNotice] = useState("");
   const entity = useResource<PersonRecord>(
     `/api/entities/${encodeURIComponent(id)}`,
@@ -95,6 +97,7 @@ export function Person({
         <a className="text-link" href={`/changes?person=${p.id}`}>
           이전 변경 이력
         </a>
+        <PersonProperties properties={p.properties} />
       </div>
     );
   return (
@@ -130,6 +133,9 @@ export function Person({
           <button className="button" onClick={() => setEditing(true)}>
             이름·별칭 편집
           </button>
+          {p.status === "active" && !p.is_system && !p.system_role && (
+            <button className="button" onClick={() => setMerging(true)}>인물 병합</button>
+          )}
           <button
             className="button"
             onClick={() => setAdding("entity_facts")}
@@ -365,6 +371,12 @@ export function Person({
           onSaved={saved}
         />
       )}{" "}
+      {merging && <PersonMerge person={p} onClose={() => setMerging(false)} onMerged={(targetId) => {
+        setMerging(false);
+        setNotice("인물을 병합했어요. 기존 기록과 출처는 함께 보존됩니다.");
+        setVersion((v) => v + 1);
+        onNavigate(`/people/${encodeURIComponent(targetId)}`);
+      }} />}
       {editing && (
         <IdentityEditor
           person={p}
