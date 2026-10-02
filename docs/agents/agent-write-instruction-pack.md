@@ -372,9 +372,13 @@ belong in `source`/Episode evidence, not pasted as a repeated prefix into every 
 
 Explicitly authorized source material remains a separate operation:
 `POST /api/material-imports/validate`, then `/submit`, with the bounded manifest, actual author,
-source locator, and required authorization. A new authorized import immediately saves its
-observations and returns `canonical_record_refs`; accepted candidate IDs are an internal provenance
-ledger, not an approval queue. Source dates stay in Episodes rather than becoming event dates.
+source locator, and required authorization. V2 `contract_version: "2"` imports typed `entity_facts`
+and `observations` with the same memory payload validators and returns `canonical_record_refs`,
+`episode_ids` and empty `candidate_ids`; it creates no candidates. V1 observations and historical
+receipts stay unchanged. Check `system/config.material_import`, do not downgrade an unsupported V2
+request, and use exact existing targets (explicit active self allowed in V2) and participant IDs.
+Source dates stay in Episodes rather than becoming event dates. Preserve the actual authorization
+time, exact source author/locator/hash/nulls and partial-date precision.
 Save-first does not remove source authorization or
 allow arbitrary tool output to become human evidence. Follow that endpoint's dedicated contract.
 

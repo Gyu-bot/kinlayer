@@ -143,7 +143,11 @@ Kinlayer's HTTP API is the canonical capability layer.
 
 Explicit user-authorized source imports use `POST /api/material-imports/validate`,
 `POST /api/material-imports/submit`, and `GET /api/material-imports/{import_id}`.
-They require a separate token and bounded manifest; see the
+They accept the unchanged unversioned V1 `claims` envelope or explicit `contract_version: "2"`
+with typed `records` (`entity_facts` / `observations`). V2 permits an explicitly authorized active
+self target and creates canonical records without candidate rows. `/api/system/config.material_import`
+advertises `contract_versions: ["1", "2"]`, `record_types: ["entity_facts", "observations"]`, and
+`immediate: true`; `memory_write` is unchanged. They require a separate token and bounded manifest; see the
 [authorized material import contract](authorized-material-imports.md).
 Ordinary post-turn source admission and retained correction/reconciliation identity guards remain;
 immediate storage does not grant arbitrary material-import authorization.

@@ -166,6 +166,8 @@ class MemoryReadService:
                 Episode, Episode.id == evidence.episode_id,
             ).where(record_id.in_(record_ids)).order_by(evidence.created_at, evidence.id)):
                 record_key = getattr(link, record_id.key)
+                from kinlayer_backend.services.material_provenance import canonical_material_provenance
+
                 evidence_by_ref[(kind, record_key)].append({
                     "episode_id": link.episode_id,
                     "source_type": episode.source_type if episode else None,
@@ -176,6 +178,9 @@ class MemoryReadService:
                     "occurred_at": utc(episode.occurred_at)
                     if episode and episode.occurred_at else None,
                     "missing": episode is None,
+                    "material_provenance": canonical_material_provenance(
+                        self.session, f"{kind}:{record_key}", link, episode,
+                    ),
                 })
         names = dict(self.session.execute(select(Entity.id, Entity.display_name).where(
             Entity.id.in_(entity_ids),
