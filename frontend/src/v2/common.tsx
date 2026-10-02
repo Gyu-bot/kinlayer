@@ -32,7 +32,7 @@ export function ErrorState({
     <div className="error-state" role="alert">
       <p>{errorText(error)}</p>
       {retry && (
-        <button className="button" onClick={retry}>
+        <button type="button" className="button" onClick={retry}>
           다시 시도
         </button>
       )}
@@ -72,6 +72,7 @@ export function Pager({
       </span>
       <div className="row">
         <button
+          type="button"
           className="button ghost"
           disabled={!page.offset}
           onClick={() => onPage(Math.max(0, page.offset - page.limit))}
@@ -79,6 +80,7 @@ export function Pager({
           이전
         </button>
         <button
+          type="button"
           className="button ghost"
           disabled={page.offset + page.limit >= page.total}
           onClick={() => onPage(page.offset + page.limit)}
@@ -135,12 +137,16 @@ export function PersonPicker({
   title = "인물",
   initialName,
   disabled = false,
+  excludeIds = [],
+  excludeSystem = false,
 }: {
   value: string;
   onChange: (id: string) => void;
   title?: string;
   initialName?: string;
   disabled?: boolean;
+  excludeIds?: string[];
+  excludeSystem?: boolean;
 }) {
   const [q, setQ] = useState(""),
     [offset, setOffset] = useState(0),
@@ -154,6 +160,9 @@ export function PersonPicker({
       <input
         id={`${id}-search`}
         value={q}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.preventDefault();
+        }}
         onChange={(e) => {
           setQ(e.target.value);
           setOffset(0);
@@ -173,7 +182,8 @@ export function PersonPicker({
         {value && !r.data?.items.some((p) => p.id === value) && (
           <option value={value}>{initialName || "선택된 인물"}</option>
         )}
-        {r.data?.items.map((p) => (
+        {r.data?.items.filter((p) => !excludeIds.includes(p.id) &&
+          (!excludeSystem || (!p.is_system && !p.system_role))).map((p) => (
           <option key={p.id} value={p.id}>
             {p.display_name}
             {p.system_role === "self" ? " (나)" : ""} · {p.id.slice(0, 6)}

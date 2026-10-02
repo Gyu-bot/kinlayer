@@ -17,7 +17,7 @@ when the API fails.
 | Route | Behavior |
 | --- | --- |
 | `/people` | Server-paginated name/alias search, relationship filter, name/recent-reference sort, list/card view, matching person preview and explicit person creation. |
-| `/people/:id` | Overview with paginated profile facts, all-information inventory, structured profile, relationships, sources and changes; direct profile/relationship entry and independent name/alias editing. |
+| `/people/:id` | Overview with paginated profile facts, all-information inventory, structured profile, relationships, sources and changes; direct profile/relationship entry, name/alias editing and explicit duplicate-person merge. |
 | `/memories` | Server-side text/person/type/basis/current-history filters, exact memory links and individual creation. |
 | `/memories?record=...` | Exact current or historical record, participants, basis, source/event/validity times and changes; correct/retract/reattribute actions where the server status permits them. |
 | `/graph?focal=...` | Actual protected-self/default or selected person, 1-hop graph, ontology relation filters, directions, zoom/pan and equivalent mobile relationship access. Nodes open people; edges open the exact memory/source. |
@@ -71,6 +71,7 @@ and collapsed technical details, without a broken memory link or an inferred own
   into a single edge. Graph, context and directory views use current-validity rules.
 
 The old candidate inbox has no accept/edit-accept/reject/archive mutation controls in the replacement.
+The dedicated identity merge flow below uses existing canonical merge APIs independently of that inbox.
 AI-use-policy, sensitivity and confirmation gates are not part of the current product flow.
 The browser stores only the user-entered API token in localStorage; people, memory, source, status
 and history are server state. Saved tokens are never re-displayed.
@@ -101,6 +102,32 @@ or its disposable preview. Time-range list filters and direct conversational mes
 implemented by this delivery.
 
 ---
+
+## Current replacement: explicit person merge
+
+Active non-system person detail exposes `인물 병합`. The current person is retained by default;
+the user searches for the duplicate, compares names, aliases and current profile facts, and may swap
+the source/target direction. Search excludes the current person and protected system identities.
+Both records must load successfully and the user must confirm the exact pair and direction before
+any write. Selecting, comparing or closing without confirmation performs no mutation.
+
+On confirmation, the UI creates a user-authored `merge` through `POST /api/candidates`, using the
+canonical fields `aliases`, `profile_facts`, `edges`, `observations`, and accepts that exact candidate
+through `POST /api/candidates/{id}/accept` with `resolved_by: user` and the explicit confirmation note.
+This is identity maintenance, not a return to candidate review for memory writes. It does not forge
+conversation evidence or use the signed agent reconciliation endpoint.
+
+The target name/properties remain. Source identity/properties and the redirect remain inspectable;
+the source name is not automatically added as an alias. Different profile values are not overwritten
+and remain available through merged-lineage memory reads. Duplicate records and self-edges are
+deprecated. Original evidence and history remain, and no automatic undo is offered. Conflicting
+relationship assessments are rejected by the API; the dialog links both exact records for correction
+or retraction and never chooses a value silently.
+
+Retries retain the candidate ID and read its status before another accept. An uncertain creation
+response is recovered by its unique `merge_plan.web_intent_id`, source and target, without issuing
+another create. An unknown result remains explicit. Completion requires an accepted candidate with
+the exact target canonical ref, then refreshes/navigates to the retained person's information.
 
 ## Historical MVP v0.1 contract — preserved for traceability
 

@@ -1,0 +1,12 @@
+{
+  "viewport": 390,
+  "pageWidth": 390,
+  "dialogWidth": 354,
+  "dialogScrollWidth": 354,
+  "panels": 2,
+  "alerts": 0,
+  "submitDisabled": true,
+  "confirmationEnablesSubmit": true,
+  "directionChangeResetsConfirmation": true,
+  "runtimeErrors": 0
+}

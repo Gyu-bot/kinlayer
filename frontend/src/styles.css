@@ -384,3 +384,5 @@ body:has(.modal[open]){overflow:hidden}
 .profile-chips{gap:4px;margin:6px 0}
 .profile-chips .pill{white-space:normal;overflow-wrap:anywhere;max-width:100%}
 @media(max-width:510px){.person-hero .hero-actions>.button{flex:1 1 calc(50% - 9px);white-space:nowrap}}
+.merge-comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.merge-person{min-width:0;padding:14px;border:1px solid var(--border);border-radius:8px;overflow-wrap:anywhere}.merge-person h3{margin:6px 0}.merge-person .text-link{white-space:normal}.modal:has(.merge-comparison){width:min(720px,calc(100vw - 32px))}
+@media(max-width:510px){.merge-comparison{grid-template-columns:minmax(0,1fr)}}
