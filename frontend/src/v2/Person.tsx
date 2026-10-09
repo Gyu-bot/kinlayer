@@ -21,6 +21,7 @@ import { Empty, ErrorState, Loading, MemoryCard, Modal, Pager } from "./common";
 import { MemoryEditor } from "./MemoryEditor";
 import { RelationshipProfile } from "./RelationshipProfile";
 import { PersonMerge } from "./PersonMerge";
+import { PersonDelete } from "./PersonDelete";
 import { ChangeRows, SourceEvidence } from "./Memories";
 
 type Alias = { id: string; alias: string; status: string };
@@ -40,6 +41,7 @@ export function Person({
     [adding, setAdding] = useState<RecordType | null>(null),
     [editing, setEditing] = useState(false),
     [merging, setMerging] = useState(false),
+    [deleting, setDeleting] = useState(false),
     [notice, setNotice] = useState("");
   const entity = useResource<PersonRecord>(
     `/api/entities/${encodeURIComponent(id)}`,
@@ -108,7 +110,7 @@ export function Person({
           <div className="hero-name">
             <h1>{p.display_name}</h1>
             {p.system_role === "self" && <span className="pill">나</span>}
-            {p.status !== "active" && <span className="pill">{p.status}</span>}
+            {p.status !== "active" && <span className="pill">{p.status === "deleted" ? "삭제된 인물" : p.status}</span>}
           </div>
           <p className="hero-description">
             {facts.data?.items
@@ -130,11 +132,14 @@ export function Person({
           <a className="button ghost" href={`/graph?focal=${p.id}`}>
             관계 보기
           </a>
-          <button className="button" onClick={() => setEditing(true)}>
+          <button className="button" disabled={p.status !== "active"} onClick={() => setEditing(true)}>
             이름·별칭 편집
           </button>
           {p.status === "active" && !p.is_system && !p.system_role && (
-            <button className="button" onClick={() => setMerging(true)}>인물 병합</button>
+            <>
+              <button className="button" onClick={() => setMerging(true)}>인물 병합</button>
+              <button className="button danger" onClick={() => setDeleting(true)}>인물 삭제</button>
+            </>
           )}
           <button
             className="button"
@@ -159,6 +164,7 @@ export function Person({
           </button>
         </div>
       </section>
+      {p.status === "deleted" && <p className="notice" role="status">사람 목록에서 삭제된 인물입니다. 연결된 기억·프로필·관계와 원본은 보존되어 계속 조회할 수 있어요.</p>}
       {notice && (
         <p className="notice" role="status">
           {notice}
@@ -239,7 +245,7 @@ export function Person({
               )}
             </section>
           )}
-          {["overview", "relations"].includes(tab) && p.system_role !== "self" && (
+          {["overview", "relations"].includes(tab) && p.status === "active" && p.system_role !== "self" && (
             <RelationshipProfile personId={p.id} ontology={ontology.data} version={version}
               editable={p.status === "active"} onChanged={() => setVersion((v) => v + 1)} />
           )}
@@ -268,7 +274,7 @@ export function Person({
               </div>
               {tab === "all" && (
                 <>
-                  <p className="small muted">프로필·관계·맥락을 모두 보여드려요. 이전·철회된 정보는 상태를 바꾸어 확인할 수 있어요.</p>
+                  <p className="small muted">프로필·관계·맥락을 모두 보여드려요. 이전·삭제된 정보는 상태를 바꾸어 확인할 수 있어요.</p>
                   <div className="field-inline">
                     <label htmlFor="person-record-status">정보 상태</label>
                     <select id="person-record-status" className="select" value={status} onChange={(event) => {
@@ -276,7 +282,7 @@ export function Person({
                       setOffset(0);
                     }}>
                       <option value="active">현재 정보</option>
-                      <option value="history">이전·철회된 정보</option>
+                      <option value="history">이전·삭제된 정보</option>
                       <option value="all">모든 상태</option>
                     </select>
                   </div>
@@ -284,7 +290,7 @@ export function Person({
               )}
               {tab === "sources" && (
                 <p className="small muted">
-                  이전·철회된 기억의 출처도 포함해 기억별로 보여드려요.
+                  이전·삭제된 기억의 출처도 포함해 기억별로 보여드려요.
                 </p>
               )}
               {records.loading ? (
@@ -376,6 +382,11 @@ export function Person({
         setNotice("인물을 병합했어요. 기존 기록과 출처는 함께 보존됩니다.");
         setVersion((v) => v + 1);
         onNavigate(`/people/${encodeURIComponent(targetId)}`);
+      }} />}
+      {deleting && <PersonDelete person={p} onClose={() => setDeleting(false)} onDeleted={() => {
+        setDeleting(false);
+        setVersion((v) => v + 1);
+        onNavigate("/people");
       }} />}
       {editing && (
         <IdentityEditor

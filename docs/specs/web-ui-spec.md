@@ -45,11 +45,13 @@ and collapsed technical details, without a broken memory link or an inferred own
 - Direct profile entry requires the actual value or known date components, without a separate
   memory narrative. Relationships require both people and an ontology-supported type; description
   is optional, and an empty description uses the selected relation's direction and label.
-  For profile/relationship creation and correction, a blank source excerpt uses the visible direct
-  input summary, including entered relationship properties; a blank actor means `나` (the user).
-  Both defaults are explained before saving. Optional explicit source text/actor take precedence.
-  These remain `manual_entry` evidence, never a fabricated conversation or inferred source time.
-  Observation, retraction and reattribution flows still require explicit human source input.
+  All manual memory operations, including observations, correction, deletion and reattribution,
+  automatically use `manual_entry` evidence and actor `나` (the user). Creation/correction uses the
+  entered content, including relationship properties. Deletion/reattribution records the explicit
+  user operation and original content. No separate actor, excerpt or source time is required.
+  An optional collapsed source section accepts explicit overrides; supplied text/actor take
+  precedence. Source time is never inferred from an event date or current time. Agent/API evidence
+  requirements are unchanged.
 - Before memory writes, inspect `GET /api/system/config.memory_write`: endpoint `/api/memories`,
   `contract_version: "2"`, `review_required: false`. Older/incompatible or unreachable servers leave
   saving unavailable and explain the cause.
@@ -128,6 +130,23 @@ Retries retain the candidate ID and read its status before another accept. An un
 response is recovered by its unique `merge_plan.web_intent_id`, source and target, without issuing
 another create. An unknown result remains explicit. Completion requires an accepted candidate with
 the exact target canonical ref, then refreshes/navigates to the retained person's information.
+
+## Current replacement: direct deletion
+
+Record detail exposes `기억 삭제`, `프로필 삭제` or `관계 삭제`. Confirmation uses the existing
+memory `retract` action with the exact old ref and version, generated user-operation evidence,
+and no replacement record. Deleted records leave current lists and retrieval while original
+content, evidence and change history remain inspectable. Relationship assessment reset follows
+the same path. UI labels call this deletion; the API action remains `retract`.
+
+Active non-system person detail exposes `인물 삭제` through `DELETE /api/entities/{id}`.
+The confirmation explains that only the person is excluded from the directory; linked memories,
+profile facts, relationships, aliases and original identity remain stored and inspectable, and
+linked records may still appear in memory lists and graphs. There is no cascade or restore UI.
+This existing identity API does not create a memory-source episode or a memory-change receipt.
+A lost response is checked with GET for the same entity ID and deleted status before reporting
+success. The dialog blocks duplicate submissions and closure while submitting. Deleted person
+details clearly show the status and disable identity editing and new memory creation.
 
 ## Historical MVP v0.1 contract — preserved for traceability
 

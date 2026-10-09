@@ -1,0 +1,49 @@
+{
+  "checks": [
+    {
+      "name": "memory-create-mobile",
+      "width": 390,
+      "viewport": 390,
+      "pageWidth": 390,
+      "dialogWidth": 354,
+      "dialogScrollWidth": 354,
+      "alerts": 0,
+      "sourceRequired": false,
+      "sourceCollapsed": true
+    },
+    {
+      "name": "person-delete-mobile",
+      "width": 390,
+      "viewport": 390,
+      "pageWidth": 390,
+      "dialogWidth": 354,
+      "dialogScrollWidth": 354,
+      "alerts": 0,
+      "sourceRequired": false,
+      "sourceCollapsed": false
+    },
+    {
+      "name": "memory-create-mobile",
+      "width": 320,
+      "viewport": 320,
+      "pageWidth": 320,
+      "dialogWidth": 284,
+      "dialogScrollWidth": 284,
+      "alerts": 0,
+      "sourceRequired": false,
+      "sourceCollapsed": true
+    },
+    {
+      "name": "person-delete-mobile",
+      "width": 320,
+      "viewport": 320,
+      "pageWidth": 320,
+      "dialogWidth": 284,
+      "dialogScrollWidth": 284,
+      "alerts": 0,
+      "sourceRequired": false,
+      "sourceCollapsed": false
+    }
+  ],
+  "runtimeErrors": []
+}

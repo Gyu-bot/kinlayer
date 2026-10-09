@@ -257,7 +257,7 @@ export function MemoryCard({
               : item.status === "superseded"
                 ? "정정 전 기록"
                 : ["deleted", "retracted"].includes(item.status)
-                  ? "철회됨"
+                  ? "삭제됨"
                   : item.status}
         </span>
         <span>{item.sources.filter((s) => !s.missing).length}개 출처</span>
