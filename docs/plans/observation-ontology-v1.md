@@ -5,6 +5,8 @@
   정밀도·기존 데이터 전환)를 포함한 전체 개편 계획 작성을 요청했다. 구현·라이브 배포·라이브
   데이터 전환은 각각 별도 승인 단계다.
 - 순서: [임베딩 자동 생성](embedding-auto-index.md) 다음 구현 대상.
+- 선행 구조 개선: [데이터 모델·온톨로지 근본 개선](data-model-integrity.md). 기록 생애주기·근거·
+  정의 저장소 규칙을 그 계획이 정하고, 관계 평가 분리(M8)는 이 계획 2단계와 같은 배포 창에서 한다.
 - 선행 계약: [즉시 저장 메모리](save-first-memory-schema.md),
   [관계 온톨로지 relationship-v1](relationship-ontology.md), [온톨로지 정의](../specs/ontology-design.md)
 
