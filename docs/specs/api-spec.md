@@ -115,7 +115,9 @@ values are HTTP 422. Active/disputed old records can be changed; superseded/dele
 
 Episode hashing, evidence linkage, old-record status change, replacement and common change history
 are one transaction. Replacement observation embeddings remain reindexable; provider absence must
-not prevent storage. AI-use-policy and confirmation values retained on old APIs are inert
+not prevent storage. Currently `/api/memories` and material imports store new observations with
+`embedding_status=pending` and do not call the provider; `POST /api/embeddings/backfill` indexes
+them. Automatic post-write indexing is the next plan: [embedding-auto-index](../plans/embedding-auto-index.md). AI-use-policy and confirmation values retained on old APIs are inert
 compatibility metadata. A fact/edge/observation referenced by `memory_changes`, including migrated
 records, rejects legacy PATCH/DELETE with HTTP 409 `memory_change_required`. Its changes must use
 `/api/memories` correct/retract/reattribute. Legacy GET remains valid, and untracked historical data
@@ -133,7 +135,8 @@ Change rows expose `id`, `request_id`, `change_kind`, `old_record_ref`, `new_rec
 internal request hashes. Original source details are read through the linked Episode.
 
 The running `/openapi.json` is the machine-readable contract. Do not infer new endpoint support from
-older Markdown examples. Frontend replacement is [planned separately](../plans/frontend-rebuild.md).
+older Markdown examples. The replacement frontend ([rebuild plan](../plans/frontend-rebuild.md)) uses
+these same APIs.
 
 ---
 

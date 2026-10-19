@@ -14,7 +14,12 @@ This directory keeps project documentation that should not live at the repositor
 - `specs/candidate-lifecycle-and-payload.md`: legacy candidate API compatibility rules.
 - `specs/ontology-design.md`: ontology registry and relationship boundary design.
 - `plans/save-first-memory-schema.md`: current immediate-write/schema/live-conversion contract.
-- `plans/frontend-rebuild.md`: planned frontend replacement; implementation deferred.
+- `plans/frontend-rebuild.md`: approved frontend replacement (implemented in `frontend/src/v2/`) and UI01–UI09.
+- `plans/relationship-ontology.md`: `relationship-v1` types and relationship profile axes (implemented, live).
+- `plans/embedding-auto-index.md`: **next implementation plan** — automatic observation embedding after writes.
+- `specs/authorized-material-imports.md`: separately authorized material import contract.
+- `specs/sensitivity-retirement.md`: retired sensitivity metadata compatibility contract.
+- `verification/frontend-v2/README.md`: frontend replacement verification evidence.
 - `plans/relationship-curation-cycle.md`: previous curation requirements and compatibility history.
 - `plans/relationship-reconciliation-cycle.md`: previous reconciliation requirements and compatibility history.
 - `kinlayer-roadmap.md`: Korean user-facing roadmap for directing implementation.
@@ -44,5 +49,6 @@ The repository root intentionally keeps only the high-signal entry points:
 - `README.md`: product overview, setup, and local operation.
 - `AGENTS.md`: local agent operating instructions.
 
-Active implementation planning lives under `plans/`. The current plan is
-`plans/save-first-memory-schema.md`.
+Active implementation planning lives under `plans/`. The current write contract is
+`plans/save-first-memory-schema.md`; the next implementation plan is
+`plans/embedding-auto-index.md`.

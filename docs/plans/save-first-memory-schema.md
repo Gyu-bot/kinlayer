@@ -1,8 +1,8 @@
 # Save-first Memory Schema
 
 **Decision:** 2026-10-01, user authorized implementation and conversion of existing live records.
-**Scope:** backend, agent input contract, existing data conversion, live verification. Frontend is
-planning only in [frontend-rebuild.md](frontend-rebuild.md).
+**Scope:** backend, agent input contract, existing data conversion, live verification. Frontend was
+planning only at decision time; its later approved replacement is in [frontend-rebuild.md](frontend-rebuild.md).
 
 ## Decision and prior-plan boundary
 

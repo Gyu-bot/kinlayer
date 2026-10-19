@@ -23,8 +23,10 @@ docs/
 | Product/API/model contract | `specs/` | More specific specs win over PRD prose |
 | Agent write behavior | `agents/agent-write-instruction-pack.md` | Operational instruction pack |
 | Integration ideas | `agents/agent-integration-notes.md` | Adapter/runtime planning, not core extraction |
-| Active implementation | `plans/save-first-memory-schema.md` | Immediate writes, schema and live data conversion |
-| Frontend plan | `plans/frontend-rebuild.md` | Planning only; implementation deferred |
+| Active write contract | `plans/save-first-memory-schema.md` | Immediate writes, schema and live data conversion |
+| Next implementation | `plans/embedding-auto-index.md` | Automatic observation embedding after writes |
+| Frontend | `plans/frontend-rebuild.md` | Approved replacement, implemented in `frontend/src/v2/` |
+| Relationship ontology | `plans/relationship-ontology.md` | `relationship-v1` and relationship profile axes |
 | User-facing roadmap | `kinlayer-roadmap.md` | Korean guide for directing future implementation |
 | Documentation map | `README.md` | Active/archive boundaries |
 | Historical context | `archive/` | Reference only; never active SSOT |

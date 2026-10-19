@@ -3,7 +3,7 @@
 > Current decisions: [save-first memory schema](../plans/save-first-memory-schema.md).
 > Immediate canonical storage replaces candidate-first approval and AI-use-policy gating.
 > Embeddings remain in scope. Existing CLI/Web/candidate descriptions below also document deployed
-> compatibility surfaces; frontend replacement is [planning only](../plans/frontend-rebuild.md).
+> compatibility surfaces; the frontend was replaced per the [approved rebuild](../plans/frontend-rebuild.md).
 
 
 - Status: save-first revision, 2026-10-01
@@ -581,8 +581,8 @@ physical purge -> out of MVP / later admin-only
 
 ## 13. Minimal Web UI Scope
 
-Existing screen behavior is specified in `web-ui-spec.md`. This is the compatibility UI; the
-replacement is planned in `../plans/frontend-rebuild.md` and is not implemented in this change.
+Screen behavior is specified in `web-ui-spec.md`. The replacement UI approved in
+`../plans/frontend-rebuild.md` is implemented in `frontend/src/v2/` and deployed.
 
 MVP UI optimizes for:
 
@@ -714,8 +714,9 @@ Minimum verification artifacts:
 ## 18. Implementation Plan
 
 The current implementation plan lives in
-`../plans/save-first-memory-schema.md`, with frontend implementation deferred to
-`../plans/frontend-rebuild.md`. The archived vertical-slice baseline is preserved at
+`../plans/save-first-memory-schema.md`; the frontend replacement is recorded in
+`../plans/frontend-rebuild.md`, and the next planned implementation is
+`../plans/embedding-auto-index.md`. The archived vertical-slice baseline is preserved at
 `../archive/planning/implementation-plan-2026-06-27.md` for historical context
 only.
 
@@ -747,7 +748,8 @@ Each slice must leave the product runnable and verify at least one real workflow
 - `web-ui-spec.md` — minimal Web UI screens and behavior.
 - `acceptance-scenarios.md` — journey-level MVP acceptance scenarios and exit bar.
 - `../plans/save-first-memory-schema.md` — current schema, agent-write and live-conversion contract.
-- `../plans/frontend-rebuild.md` — frontend plan only.
+- `../plans/frontend-rebuild.md` — approved frontend replacement and UI01–UI09.
+- `../plans/embedding-auto-index.md` — next plan: automatic observation embedding after writes.
 - `../plans/relationship-curation-cycle.md` — superseded curation requirements and compatibility history.
 - `../archive/planning/implementation-plan-2026-06-27.md` — historical vertical implementation baseline.
 - `../agents/agent-integration-notes.md` — future skill/plugin/tool/MCP/runtime-hook integration notes; non-blocking for MVP.

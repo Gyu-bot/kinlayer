@@ -2,8 +2,8 @@
 
 > **2026-10-01 boundary:** The default product flow is now
 > [save first, correct during conversation](../plans/save-first-memory-schema.md).
-> Candidate/curation examples below remain compatibility scenarios. The current frontend is
-> intentionally retained; its replacement is [planned separately](../plans/frontend-rebuild.md).
+> Candidate/curation examples below remain compatibility scenarios. The frontend was replaced
+> on 2026-10-01 by the [approved rebuild](../plans/frontend-rebuild.md) (`frontend/src/v2/`).
 > Existing approval/policy surfaces are not requirements for new memory writes.
 
 
