@@ -25,6 +25,7 @@ docs/
 | Integration ideas | `agents/agent-integration-notes.md` | Adapter/runtime planning, not core extraction |
 | Active write contract | `plans/save-first-memory-schema.md` | Immediate writes, schema and live data conversion |
 | Next implementation | `plans/embedding-auto-index.md` | Automatic observation embedding after writes |
+| Observation ontology | `plans/observation-ontology-v1.md` | Planned `observation-v1` overhaul after embeddings |
 | Frontend | `plans/frontend-rebuild.md` | Approved replacement, implemented in `frontend/src/v2/` |
 | Relationship ontology | `plans/relationship-ontology.md` | `relationship-v1` and relationship profile axes |
 | User-facing roadmap | `kinlayer-roadmap.md` | Korean guide for directing future implementation |
