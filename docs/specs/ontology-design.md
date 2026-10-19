@@ -478,8 +478,9 @@ Saving immediately does not broaden the edge ontology or imply verified truth.
 The [approved plan](../plans/relationship-ontology.md) records the decision history. Family detail,
 symmetric 썸, canonical directed predicates and strict optional properties are now decided.
 The registry is server-owned; this revision does not add Web editing of ontology definitions.
-Pair-level context, generic relationship timelines, dispute workflows, and observation regrouping
-remain separate proposals, not implied deliverables of this relationship-type change.
+Pair-level context, generic relationship timelines and dispute workflows remain separate proposals,
+not implied deliverables of this relationship-type change. Observation regrouping, participant roles,
+assertion mode and date precision are planned in [observation-v1](../plans/observation-ontology-v1.md).
 
 ## 13. Self-perspective relationship profile
 

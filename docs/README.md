@@ -17,6 +17,7 @@ This directory keeps project documentation that should not live at the repositor
 - `plans/frontend-rebuild.md`: approved frontend replacement (implemented in `frontend/src/v2/`) and UI01–UI09.
 - `plans/relationship-ontology.md`: `relationship-v1` types and relationship profile axes (implemented, live).
 - `plans/embedding-auto-index.md`: **next implementation plan** — automatic observation embedding after writes.
+- `plans/observation-ontology-v1.md`: following plan — observation vocabulary, participant roles, assertion mode, date precision and record conversion.
 - `specs/authorized-material-imports.md`: separately authorized material import contract.
 - `specs/sensitivity-retirement.md`: retired sensitivity metadata compatibility contract.
 - `verification/frontend-v2/README.md`: frontend replacement verification evidence.
