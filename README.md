@@ -276,6 +276,13 @@ docker compose up -d --build
 
 설정이 반영되면 `/settings`에서 embedding provider, model, dimension, API URL configured, API key configured 상태를 확인할 수 있습니다. API key 실제 값은 화면에 표시하지 않습니다.
 
+현재 `/api/memories`와 자료 가져오기로 저장한 관찰은 임베딩 `pending` 상태로 저장되며, 아래 백필을 실행해야 의미 검색에 반영됩니다. 저장 후 자동 임베딩은 [다음 구현 계획](docs/plans/embedding-auto-index.md)입니다.
+
+```bash
+kinlayer embedding status
+kinlayer embedding backfill --limit 500
+```
+
 ## 업데이트
 
 새 버전으로 업데이트할 때는 최신 코드를 받은 뒤 앱 컨테이너만 다시 빌드합니다. 필요한 DB 마이그레이션은 API 컨테이너 시작 시 자동 적용됩니다.

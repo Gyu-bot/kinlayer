@@ -1,12 +1,10 @@
 # PROJECT KNOWLEDGE BASE
 
-**Snapshot:** 2026-08-24
-**Commit:** 1ff177c
-**Branch:** codex/kinlayer-curation-cycle
+**Snapshot:** 2026-10-19 (`main`; first snapshot 2026-08-24 at 1ff177c)
 
-**Frontend map update:** 2026-10-01 user-authorized replacement; the original
-snapshot above remains historical. Use `frontend/src/v2/` for current screens and
-`docs/plans/frontend-rebuild.md` for the approval delta and acceptance criteria.
+Live service: Docker Compose on the `casa` host, deployed from `main`. Current
+screens live in `frontend/src/v2/` (see `docs/plans/frontend-rebuild.md`). The next
+implementation plan is `docs/plans/embedding-auto-index.md`.
 
 ## OVERVIEW
 
@@ -47,7 +45,7 @@ kinlayer/
 | Web memory flows | `frontend/src/v2/MemoryEditor.tsx`, `Memories.tsx`, `Person.tsx` | API-backed exact-record writes, sources, history and identity |
 | Product specs | `docs/specs/` | Active contracts; update when behavior changes |
 | Agent write rules | `docs/agents/agent-write-instruction-pack.md` | Required for agent/adapter writes |
-| Execution plans | `docs/plans/save-first-memory-schema.md`, `docs/plans/frontend-rebuild.md` | Current schema plus authorized frontend replacement and unchanged UI01–UI09 |
+| Execution plans | `docs/plans/save-first-memory-schema.md`, `docs/plans/frontend-rebuild.md`, `docs/plans/relationship-ontology.md`, `docs/plans/embedding-auto-index.md` | Current write contract, implemented frontend/ontology plans, and the next plan (automatic embeddings) |
 | User roadmap | `docs/kinlayer-roadmap.md` | Korean planning guide for requesting implementation |
 | Validation | `scripts/smoke-slice0.sh`, `backend/tests/`, `frontend/package.json`, `docs/verification/frontend-v2/README.md` | Local checks and browser evidence; no GitHub Actions currently |
 
