@@ -4,7 +4,8 @@
 
 Live service: Docker Compose on the `casa` host, deployed from `main`. Current
 screens live in `frontend/src/v2/` (see `docs/plans/frontend-rebuild.md`). The next
-implementation plan is `docs/plans/embedding-auto-index.md`.
+implementation plan is `docs/plans/embedding-auto-index.md`; the data model/ontology integrity plan in
+`docs/plans/data-model-integrity.md` is independent and can go first.
 
 ## OVERVIEW
 
@@ -45,7 +46,7 @@ kinlayer/
 | Web memory flows | `frontend/src/v2/MemoryEditor.tsx`, `Memories.tsx`, `Person.tsx` | API-backed exact-record writes, sources, history and identity |
 | Product specs | `docs/specs/` | Active contracts; update when behavior changes |
 | Agent write rules | `docs/agents/agent-write-instruction-pack.md` | Required for agent/adapter writes |
-| Execution plans | `docs/plans/save-first-memory-schema.md`, `docs/plans/frontend-rebuild.md`, `docs/plans/relationship-ontology.md`, `docs/plans/embedding-auto-index.md`, `docs/plans/observation-ontology-v1.md` | Current write contract, implemented frontend/ontology plans, the next plan (automatic embeddings) and the planned observation ontology overhaul |
+| Execution plans | `docs/plans/save-first-memory-schema.md`, `docs/plans/frontend-rebuild.md`, `docs/plans/relationship-ontology.md`, `docs/plans/embedding-auto-index.md`, `docs/plans/observation-ontology-v1.md`, `docs/plans/data-model-integrity.md` | Current write contract, implemented frontend/ontology plans, the next plan (automatic embeddings), the planned observation ontology overhaul and the data model/ontology integrity redesign (relationship identity, lifecycle, evidence, single write path) |
 | User roadmap | `docs/kinlayer-roadmap.md` | Korean planning guide for requesting implementation |
 | Validation | `scripts/smoke-slice0.sh`, `backend/tests/`, `frontend/package.json`, `docs/verification/frontend-v2/README.md` | Local checks and browser evidence; no GitHub Actions currently |
 
