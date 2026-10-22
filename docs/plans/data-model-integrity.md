@@ -1,14 +1,28 @@
 # 데이터 모델·온톨로지 근본 개선 — `model-integrity-v1`
 
-- 기준일: 2026-10-19
+- 최초 기준일: 2026-10-19. 설계 보완: 2026-10-22.
 - 상태: **계획, 미구현.** 라이브에서 같은 관계가 두 번 기록된 것을 계기로, 사용자가 개별 값을
   고치지 말고 그런 데이터가 생길 수 있는 DB·온톨로지 구조를 찾아 근본적으로 고치는 계획을
   요청했다. 구현, 배포, 기존 데이터 전환은 각각 별도 승인 단계다.
-- 순서: [임베딩 자동 생성](embedding-auto-index.md)과 독립적이다. [관찰 온톨로지 개편
-  `observation-v1`](observation-ontology-v1.md)보다 먼저 한다. 그 계획의 전환은 여기서 만드는
-  생애주기·근거·정체성 규칙을 전제로 한다.
+- 순서: [실행 오류 수정](runtime-correctness.md)의 선행 안전 수정 후 공통 계보·쓰기 기반부터
+  구현한다. [임베딩 자동 생성](embedding-auto-index.md)은 이 기반의 commit 경계를 사용한다.
+  [관찰 개편](observation-ontology-v1.md)은 공통 기반에 의존하며 M8은 그 2단계와 함께 전환한다.
 - 선행 계약: [즉시 저장 메모리](save-first-memory-schema.md),
   [관계 온톨로지 relationship-v1](relationship-ontology.md)
+
+## 2026-10-22 검토 반영
+
+[검토 증거](../verification/schema-logic-review-2026-10-22.md)와
+[공통 기록 계약](record-lifecycle-contract.md)을 반영했다. S1–S12와 MI01–MI12의 식별자는
+유지하되, 아래 M1/M2/M5/M6/M7/M8의 충돌하던 설계를 고치고 MI13–MI20을 추가한다.
+이 문서는 목표 설계다. 구현·배포·기존 자료 전환은 별도 작업이며, 10월 19일 라이브 수치를
+10월 22일 현재 데이터로 재확인한 것으로 읽지 않는다.
+
+- 단일 `superseded_by_id` 제안은 교차 유형·1:N/N:1 계보로 대체한다.
+- status만으로 정한 현재 유일성은 revision 상태와 유효기간을 구분하는 제약으로 보완한다.
+- 병합의 원본 변경·import 증명 파손, 후보 상태 경합, Self 보호, FK 검사 누락은 runtime 계획과
+  함께 해결한다. 일반 CRUD 종료만으로 공통 writer가 완성됐다고 판단하지 않는다.
+- 공통 불변식의 세부 설계는 record-lifecycle 계약이 소유한다. 각 M 항목은 그 계약의 적용 범위다.
 
 ## 0. 문제의 성격
 
@@ -21,7 +35,8 @@
 2. **불변식은 DB가 지킨다:** "현재 기록은 하나", "현재 기록에는 근거가 있다" 같은 규칙은 서비스 검사와
    DB 제약을 함께 둔다. 서비스 검사는 친절한 오류를, DB 제약은 최종 보장을 맡는다.
 3. **정의는 한 곳:** 같은 어휘를 코드·테이블·레지스트리에 따로 두지 않는다.
-4. **쓰기 경로는 하나:** 근거·변경 이력을 남기는 `/api/memories` 계약만 현재 기록을 만든다.
+4. **canonical writer는 하나:** `/api/memories`와 허용된 import·호환 실행 경로가 같은
+   근거·변경 이력 트랜잭션 서비스를 사용한다. 여러 HTTP 진입점이 별도 불변식을 만들지 않는다.
 
 범위 경계: 관찰 유형·참여자 역할·주장 형태·시간 정밀도·프로필 사실 유형 정의는
 [observation-v1](observation-ontology-v1.md)이 다룬다. 이 계획은 그 아래의 공통 구조(기록의 정체성,
@@ -54,17 +69,21 @@
 
 ### M1 관계의 정체성 (S1, S2)
 
-- **무방향 관계는 정규 순서로 저장한다:** `directed=false`이면 `from_entity_id < to_entity_id`.
-  서비스가 저장 전에 정렬하고, CHECK 제약으로 보장한다. 표시용 `label`은 대칭이므로 순서는 의미가
-  없다.
-- **현재 관계 유일성:** 부분 유니크 인덱스 `(from_entity_id, to_entity_id, relation_type) WHERE
-  status IN ('active','disputed')`. 정규 순서 덕분에 무방향·방향 관계 모두 같은 인덱스로 막힌다.
-  식 인덱스가 필요 없어 SQLite 테스트와도 같다.
-- **`directed`는 유형에서 파생한다:** 행의 `directed`는 `(relation_type, directed)` 복합 FK로
-  관계 유형 정의를 참조해 어긋날 수 없게 한다. 쓰기 API는 `directed`를 받지 않는다.
+- **무방향 관계의 현재 키는 정규 순서로 저장한다:** `directed=false`이면 canonical from < canonical to.
+  서비스가 정렬하고 CHECK로 보장한다. 새 payload도 같은 순서로 만들되 과거 원본 FK는 보존한다.
+  단순 병합은 canonical 키를 갱신하며 의미 정정이 필요한 경우에만 새 revision을 만든다.
+- **관계 유일성:** canonical 인물 쌍과 유형이 같고 revision 상태가 active/disputed인 기록의
+  유효기간 중복을 막는다. 끝난 기간과 새 기간은 공존할 수 있다. 정규 키·PostgreSQL 기간 겹침
+  제약은 공통 계약 5절을 따르며, status만 보는 부분 유니크 인덱스 제안은 대체한다.
+  SQLite 서비스 테스트와 실제 PostgreSQL 제약 테스트를 구분한다.
+- **canonical `directed`는 유형에서 파생한다:** 현재 제약에 쓰는 projection의
+  `(relation_type, directed)`가 정의를 복합 FK로 참조한다. 과거 원본 payload의 directed에는
+  최신 정의 FK를 소급 적용하지 않는다. 새 쓰기는 방향을 정의에서 도출하며, 기존 구조를 그대로
+  보존하는 정정의 호환 어댑터는 원본 표현과 검증된 canonical 키를 구별한다. 과거 방향을 현재
+  키로 해석할 근거가 모호하면 전환을 중단하고 manifest 검토 대상으로 남긴다.
 - **충돌 응답:** 위반은 HTTP 409 `relationship_edge_conflict` + `details.current_record_ref`로
-  돌려준다. 관계 평가 축 충돌과 같은 형태다. 병합은 같은 규칙으로 판정해 중복을 `superseded`로
-  남긴다.
+  돌려준다. 부분 날짜 때문에 겹침을 배제할 수 없는 경우 그 이유·정밀도도 제공한다.
+  병합은 같은 canonical 키로 검사하고 검증된 중복만 원본·import 증명을 보존하며 통합한다.
 
 ### M2 관계 슬롯과 상호 배타성 (S4)
 
@@ -72,17 +91,19 @@
   예: `romance`(`situationship`, `romantic_partner`, `former_partner`), `marriage`(`spouse`,
   `former_spouse`), `employment`(`coworker`, `former_coworker`). 슬롯이 없는 유형(친구, 가족,
   동문 등)은 M1 규칙만 적용한다.
-- 슬롯 안의 상태 변화(연인→전 연인)는 새 관계 추가가 아니라 기존 관계의 정정(`correct`)이다. 이전
-  관계는 `superseded`와 대체 관계 링크로 남아 이력이 된다.
-- DB 보장: 관계 행에 정의에서 파생한 `slot` 열(FK로 일관성 보장)을 두고, `(from, to, slot) WHERE slot IS
-  NOT NULL AND status IN (현재)` 부분 유니크 인덱스를 만든다.
+- 슬롯 안의 관계 변화는 기존 exact ref를 지정한 작업으로 처리한다. 단순 오기 정정은 supersession,
+  실제 시간에 따른 변화는 이전 기간 종료와 새 기간을 함께 기록한다. 두 경우를 구별하고, 참이었던
+  과거 관계를 틀린 사실로 덮어쓰거나 현재 관계와 기간이 겹친 채 방치하지 않는다.
+- DB 보장: 정의와 행에 NOT NULL 파생 `slot_key`를 두고 복합 FK로 일치시킨다. 슬롯 없음은
+  내부 `none`으로 표시하고 이 경우 슬롯 겹침 제약만 제외한다. NULL 복합 FK 우회는 허용하지 않는다.
+  같은 슬롯의 가능한 유효기간 중복을 공통 계약 5–6절에 따라 검사한다.
 - 관계 온톨로지 계획에서 보류한 "구조화된 충돌·해결 모델"과는 다르다. 동시 현재 관계 하나만 막고,
   충돌 해결 절차는 만들지 않는다(Q2).
 
 ### M3 정의 저장소 단일화 (S3)
 
 - 관계 유형의 원본은 버전이 붙은 코드 정의 하나로 한다. DB에는 시드가 매번 upsert하는 테이블 하나만
-  둔다: `relation_type`, `label`, `inverse_label`, `directed`, `slot`, `category`, `support_level`,
+  둔다: `relation_type`, `label`, `inverse_label`, `directed`, `slot_key`, `category`, `support_level`,
   `ontology_version`.
 - `ontology_registry_values`의 `edge_type`·`observation_type` 범주를 제거한다. 관찰 유형 정의 테이블의
   내용은 observation-v1 3.1이 정한다. 이 항목은 저장 위치와 시드 방식만 통일한다.
@@ -95,11 +116,15 @@
   `self_unnamed`를 보고한다. Self의 표시 이름과 별칭은 웹 설정에서 바꿀 수 있다.
 - **이름도 별칭으로 관리:** 표시 이름과 정규화 이름을 별칭 행으로도 저장해, 인물 조회와 중복 판정이
   한 인덱스를 쓴다.
-- **서버 측 식별 강제:** `POST /api/entities`와 `/api/memories`의 인물 생성은 정규화 이름·별칭이
+- **서버 측 식별 강제:** `POST /api/entities`와 후보 accept 등 실제 인물 생성 경로는 정규화 이름·별칭이
   활성 인물(Self 포함)과 정확히 일치하면 409 `entity_identity_conflict`를 반환하고, 일치한 인물 ID를
   알려 준다. 동명이인이면 `homonym_confirmed=true`로 명시해야 만들 수 있다. 에이전트는 기존
   `/api/entities/resolve`로 먼저 조회한다. 웹 인물 추가 화면은 이 409를 받으면 기존 인물을
   보여 주고, 사용자가 동명이인이라고 확인하면 다시 보낸다.
+- **보호 상태와 해석:** Self는 항상 active이며 generic PATCH로 merged/disputed 등으로 바꿀 수 없다.
+  일반 인물도 merged 전이는 정식 병합 작업만 허용한다. 이름·별칭 변경 시에도 같은 충돌 검사를
+  적용한다. 모든 조회는 공통 canonical resolver를 사용하고 유효하지 않은 검색 힌트를 신원 확인으로
+  사용하지 않는다. 구체적인 회귀 수정은 runtime 계획이 소유한다.
 - **근거 화자를 구조화:** `episodes`에 `actor_kind`(`self`·`person`·`agent`·`system`)와 nullable
   `actor_entity_id` FK를 추가한다. 기존 `actor` 문자열은 표시용으로 보존한다. 사용자 본인의 발화는
   `actor_kind=self`가 되어 표현 차이(`나`·`user`·실명)가 사라진다. 관찰 본문 속 사용자 지칭은
@@ -111,12 +136,13 @@
   네 가지로 정하고 CHECK 제약을 건다. 인물은 `active`·`merged`·`deleted`로 정한다. `deprecated`를
   쓰는 코드는 `superseded`로 바꾼다. 인물의 `confirmation_status`는 `status`와 정보가 중복되므로
   제거한다(읽기 호환 필드로 일정 기간 계산해 반환).
-- **대체 링크 통일:** 관계·관찰·프로필 사실에 같은 이름의 self-FK `superseded_by_id`를 둔다
-  (관계의 `invalidated_by_edge_id`는 이 열로 옮긴다). `/api/memories`의 correct·reattribute,
-  병합, 이관이 모두 이 열을 채운다. CHECK 조건: `status='superseded'`인 새 기록은 링크가 있어야 한다
-  (기존 행은 전환으로 채우고, 채울 수 없는 행은 예외 목록으로 남긴다).
-- **변경 이력 참조 구조화:** `memory_changes`의 `old_record_ref`·`new_record_ref` 문자열 옆에
-  `record_type`·`record_id` 열을 두고, 테스트와 진단으로 없는 행을 가리키는 참조가 없는지 확인한다.
+- **대체 계보 통일:** 공통 record identity와 replacement 연결을 사용해 교차 유형·1:N·N:1을
+  표현한다. 기존 `invalidated_by_edge_id`는 대응 계보로 이관한다. 단일 self-FK를 필수화하지 않는다.
+  새 superseded revision의 후속 링크 존재·순환 금지는 커밋 시 보장하고, 복원 불가능한 과거 계보는
+  DB에 추적 가능한 migration 예외로 남긴다. 철회에는 가짜 후속 기록을 만들지 않는다.
+- **변경 이력 참조 구조화:** `memory_changes`를 공통 identity·작업에 FK로 연결하고 기존 문자열
+  ref 응답과 재시도를 보존한다. 여러 후속 기록을 빠짐없이 반환한다. 병합은 원본 의미 필드를
+  덮어쓰지 않고 정체성 매핑과 변경 audit를 남긴다. 세부 계약은 공통 기록 계약 2–3절을 따른다.
 
 ### M6 근거 불변식과 쓰기 경로 단일화 (S7)
 
@@ -124,8 +150,12 @@
   `/api/episodes`의 쓰기는 410을 반환한다(또는 같은 서비스로 `/api/memories` 계약에 위임한다, Q4).
   읽기는 유지한다. 웹은 관계·관찰·사실을 이미 `/api/memories`로만 쓴다(2026-10-19 코드 확인).
   인물·별칭 CRUD는 근거 대상이 아니므로 유지한다.
-- **불변식:** `/api/memories`가 만드는 현재 기록은 근거 링크가 최소 하나 있어야 한다. 쓰기
-  트랜잭션 끝에서 검사하고, 진단 API가 근거 없는 현재 기록 수를 보고한다.
+- **내부 쓰기 포함:** 후보 accept/edit-accept, correction, curation, reconciliation, enrichment,
+  import v1/v2와 migration까지 목록화해 공통 writer로 위임한다. 보안·승인·스냅샷 검증은 유지한다.
+  일반 CRUD만 410으로 바꾼 뒤 단일화 완료를 선언하지 않는다.
+- **불변식:** 모든 새 canonical revision의 episode·evidence·change가 같은 트랜잭션에 있어야 한다.
+  공통 계약 4절의 FK/CHECK/커밋 시 evidence 검사로 보장하고, 연결 삭제도 검사한다. 단순 서비스
+  검사나 진단 집계만으로 DB 보장을 대신하지 않는다.
 - **근거 없는 기존 기록:** 출처를 만들어 내지 않는다. `evidence_status=missing_legacy` 같은 명시적
   표시를 둬서 "근거 없음"이 오류가 아니라 알려진 상태임을 구분한다. 처리 방식은 observation-v1
   5.2(이관 관찰 94건)와 같은 결정을 따른다.
@@ -135,23 +165,26 @@
 - 사실 유형 정의에 `cardinality`(`single`·`multi`)를 둔다. 예: `birth_date`는 single,
   `email`·`phone`·`location_hint`·`job`은 multi. 실제 값은 observation-v1 Q4·Q5와 함께 정한다.
 - `entity_facts`에 정규화 값 키 `value_key`를 둔다(구조화 값의 정규형 또는 정규화한 본문).
-- DB 보장: single은 `(entity_id, fact_type) WHERE status IN (현재)`, multi는 `(entity_id, fact_type,
-  value_key) WHERE status IN (현재)` 부분 유니크 인덱스. 위반은 409와 기존 기록 참조로 돌려준다.
+- DB 보장: NOT NULL 파생 cardinality를 정의와 FK로 일치시키고, single/multi predicate를 분리한다.
+  single 키는 canonical 인물+유형, multi는 여기에 비어 있지 않은 value_key를 더한다. 공통 계약의
+  기간 겹침 규칙을 적용하며, multi의 다른 값이나 겹치지 않는 과거 경력을 single 제약으로 막지 않는다.
+  위반은 409와 기존 ref를 반환한다.
 - 같은 장소를 다르게 쓴 경우처럼 정규화로 잡히지 않는 의미 중복은 막지 않는다. 진단 목록에만
   보고한다.
 
 ### M8 관계 평가 모델 분리 (S11)
 
-- 관계 평가를 관찰에서 분리해 `relationship_assessments` 테이블로 옮긴다. 열은 `perspective_entity_id`,
-  `subject_entity_id`, `axis`, `value`, `status`, `superseded_by_id`, `created_by`, `created_at`이고
-  근거 링크도 둔다. 축과 값은 인라인 CHECK가 아니라 정의 테이블 FK로 검증한다.
+- 관계 평가를 `relationship_assessments` payload로 분리하고 공통 record identity·근거·계보에
+  연결한다. perspective/subject, axis/value와 함께 reported basis, confidence, 실제 평가/유효 시점,
+  created_at/updated_at, created_by를 보존한다. 축·값은 정의 테이블 FK로 검증한다.
 - 관찰 테이블에서 `perspective_entity_id`·`relationship_axis`·`relationship_value`와 인라인 CHECK를
   제거한다. 검색·컨텍스트·조회의 예외 처리도 없앤다. 평가는 임베딩하지 않는다.
 - 프로필 조회는 축마다 기록 시점을 함께 반환한다. 웹은 오래된 축을 표시한다. 한 축(특히
   `connection_state`)을 바꾸면 응답에 `review_axes`로 다른 축을 다시 보라는 신호를 준다. 자동으로
   바꾸지는 않는다.
-- API 계약(`/api/memories`의 `relationship_assessment` 쓰기)은 전환 기간 동안 그대로 받아 새 테이블에
-  쓴다. 외부 계약 변화를 최소화한다.
+- 기존 observation ref·v2 쓰기·정정·철회·receipt를 어댑터로 해석한다. 물리 이동만으로 정정 토큰을
+  바꾸지 않는다. observation-v1의 일반 관찰 assertion_mode 검증에서 평가를 분리하며 evaluation
+  의미는 유지한다. 공통 계약 7절의 additive 배포→소비자 갱신→전환→검증→제거 순서를 따른다.
 
 ### M9 퇴역 열 제거 (S12)
 
@@ -159,6 +192,16 @@
   계산(reconciliation commitment 등)이 이 열을 읽는지 확인한다. 읽는다면 digest 버전을 올리거나
   보관 테이블로 옮긴다(Q5).
 - API 노출 정리는 observation-v1 F13과 함께 처리한다.
+
+### M10 스키마 검증 기반 (2026-10-22 추가)
+
+- ORM create_all과 Alembic로 생성한 DB의 차이를 비교한다. timestamp nullable 30개 차이는 원본을
+  점검한 뒤 보정하고, 없는 과거 시각을 현재 시각으로 채우지 않는다. 확정 불가능한 값은 명시적인
+  legacy null 계약으로 조회/정정 버전 처리를 정한 후 제약을 적용한다.
+- SQLite 테스트의 FK를 켜고 대상 없는 reconciliation 요청의 flush 순서를 고친다. PostgreSQL
+  전용 trigram 인덱스 등 의도적 차이는 비교 예외로 설명한다. RC 계획의 검증 기반과 공유한다.
+- 최종 제약은 create_all 기반 단위 테스트뿐 아니라 Alembic upgrade, 실제 PostgreSQL FK·기간
+  겹침·트리거·동시성 및 복원 리허설로 검증한다.
 
 ## 3. 기존 데이터 전환
 
@@ -168,14 +211,15 @@
 
 | 제약 | 전환 대상(2026-10-19) | 처리 |
 | --- | --- | --- |
-| M1 정규 순서·유일성 | 무방향 현재 관계 7건, 그중 중복 2쌍 | 순서만 정렬한다(의미 불변, 이력 기록). 중복은 먼저 생긴 기록을 남기고 나중 기록의 근거를 복사한 뒤 `superseded`로 바꾼다. |
+| M1 정규 순서·유일성 | 무방향 현재 관계 7건, 그중 중복 2쌍 | 원본 payload·source를 보존하고 canonical 키를 정규화한다. 새 revision이 필요하면 대체 계보를 남긴다. 확인된 중복은 원본별 근거·import 증명을 보존해 통합한다. |
 | M2 슬롯 | 위반 0건 | 마이그레이션 사전 검사만 한다. |
-| M4 Self | 사용자 본인으로 확인된 별도 인물 1명(관찰 5, 사실 2, 링크 3) | Self로 재귀속한 뒤 삭제한다. Self 이름·별칭을 설정한다. |
+| M4 Self | 사용자 본인으로 확인된 별도 인물 1명(관찰 5, 사실 2, 링크 3) | migration 전용 정체성 매핑으로 Self에 귀속한다. 원본 refs를 보존하고 Self는 active로 유지한다. 이름·별칭을 설정한다. 일반 Self 병합 금지를 해제하지 않는다. |
 | M4 근거 화자 | episode 215건 | `actor` 값으로 판정 가능한 것만 `actor_kind`·`actor_entity_id`를 채우고 나머지는 null로 둔다. |
-| M5 상태·계보 | 대체 링크 없는 superseded 관계 3건, 관찰 27건, 사실 12건 | `memory_changes`로 대체 기록이 확인되는 것만 링크를 채운다. |
+| M5 상태·계보 | 대체 링크 없는 superseded 관계 3건, 관찰 27건, 사실 12건 | 모든 확인 가능한 교차 유형·복수 후속 링크를 채운다. 복원 불가능한 것은 DB의 migration 예외로 추적한다. |
 | M6 근거 | 근거 없는 현재 기록 102건 | `missing_legacy` 표시만 한다. |
 | M7 값 개수 | 같은 유형·같은 키 현재 사실 | 정규화 키가 같은 것만 하나로 합친다. 의미만 같은 것은 진단 목록으로 보낸다. |
-| M8 평가 분리 | 현재 평가 11건과 이력 | 새 테이블로 복사하고 근거를 옮긴다. 관찰 쪽 행은 제거 전 검증한다. |
+| M8 평가 분리 | 현재 평가 11건과 이력 | 공통 identity에 연결해 payload를 이동한다. 기존 ref·토큰·시점·근거·receipt 호환을 검증한 뒤에만 구 저장 구조를 제거한다. |
+| M10 timestamp | 생성 DDL과 ORM의 nullable 차이 30개 | 실제 null 여부를 전환 직전 조사한다. 과거 시각을 조작하지 않고 정한 legacy 계약에 따라 보정/예외 처리한다. |
 
 절차: 백업 → 격리 복사본 복원 → 스키마 마이그레이션(제약 없이 열 추가) → manifest dry-run·적용 →
 제약 활성화 마이그레이션 → readback(제약 위반 0, 근거·이력 수 보존, 인물·기억 화면, context card) →
@@ -186,39 +230,52 @@
 
 | ID | 완료 조건 |
 | --- | --- |
-| MI01 | 무방향 관계를 어느 방향으로 다시 만들어도 409 `relationship_edge_conflict`이고, DB에 직접 넣어도 제약 위반이 난다. 방향 관계는 반대 방향을 허용한다. |
-| MI02 | 관계 행의 `directed`·`slot`은 유형 정의와 어긋날 수 없다(FK). |
-| MI03 | 같은 슬롯의 두 번째 현재 관계는 409이고, 슬롯 안 상태 변화는 `correct`로 이전 기록에 `superseded_by_id`를 남긴다. |
+| MI01 | 기간이 겹치는 같은 무방향 관계의 반대 방향 입력은 409이고 DB도 거절한다. 방향 관계의 반대 방향과 겹치지 않는 과거 기간은 허용한다. |
+| MI02 | 관계의 directed·NOT NULL slot_key는 정의와 FK로 일치하고 NULL 슬롯 우회는 거절된다. |
+| MI03 | 같은 슬롯의 기간 중복은 409다. 정정과 실제 관계 변화를 구별하며 원본·대체 계보·과거 기간을 보존한다. |
 | MI04 | 관계·관찰 유형 정의는 저장소가 하나이며, 시드 재실행 시 갱신된다. |
 | MI05 | Self 이름이나 별칭과 같은 인물 생성은 409 `entity_identity_conflict`이고, `homonym_confirmed`로만 우회된다. |
 | MI06 | 새 episode는 `actor_kind`를 갖고, 사용자 본인의 발화는 경로와 관계없이 `self`다. |
-| MI07 | 핵심 테이블의 상태 값은 CHECK로 제한되고, superseded로 바뀐 새 기록은 모두 `superseded_by_id`를 갖는다. |
-| MI08 | 호환 CRUD로 쓰기를 하면 410(또는 Q4 결정대로 위임)이 되고, `/api/memories`로 만든 현재 기록은 모두 근거가 있다. |
-| MI09 | single 사실 유형의 두 번째 현재 값, multi 유형의 같은 키 값은 409다. |
+| MI07 | 상태 CHECK와 공통 계보가 교차 유형·분할·통합을 지원하며 새 superseded revision의 후속 링크 누락/순환은 커밋되지 않는다. |
+| MI08 | 호환 CRUD는 410 또는 공통 writer로 위임되고, 후보·내부 executor·import까지 새 canonical 기록의 근거·이력을 DB 커밋 시 보장한다. |
+| MI09 | 기간이 겹치는 single 값·multi 같은 키는 409다. multi 다른 키와 겹치지 않는 기간은 허용하고 틀린 cardinality/빈 value_key는 거절한다. |
 | MI10 | 관계 평가는 별도 테이블에 있고 임베딩되지 않는다. 프로필 조회가 축별 기록 시점을 주고, 웹은 오래된 축을 표시한다. |
 | MI11 | 전환은 복원 리허설, dry-run, 재실행 멱등성, 원본·근거·이력 보존을 만족하고, 제약 활성화 후 위반 0건이다. |
 | MI12 | 백엔드·프런트엔드 테스트, lint, 빌드, 브라우저 확인과 Hermes 계약 갱신 확인을 통과한다. |
+| MI13 | 병합 후 import 원본 payload·authorization 검증·이전 refs가 보존되고 canonical 대상 기준의 충돌은 원자적으로 처리한다. |
+| MI14 | Self 비활성화와 generic merged 전이는 거절되고, A→B→C 조회가 공통 canonical 대상에 도달한다. |
+| MI15 | 모든 후보 상태 전이는 잠금 후 최신 상태를 검사하고 accept와 stale reject 경합이 canonical/audit 불일치를 만들지 않는다. |
+| MI16 | SQLite FK ON과 PostgreSQL에서 missing-target 요청이 정해진 404/409로 종료되며 부분 ledger/record가 남지 않는다. |
+| MI17 | Alembic/ORM nullable 차이와 의도적 전용 인덱스 차이를 설명하고 실제 migration DB에서 제약을 검증한다. |
+| MI18 | assessment old ref·v2 재시도·시점·정정 토큰·원본 근거가 물리 이동 뒤 보존되고 일반 관찰과 중복 저장되지 않는다. |
+| MI19 | 부분 날짜 경계의 uncertain 판정이 목록·카드·검색·DB 겹침 검사에 일치하며 날짜를 발명하지 않는다. |
+| MI20 | 기존 소비자 호환과 복원 리허설을 통과한 후에만 구 열·ref 어댑터를 제거한다. |
 
 ## 5. 실행 단위
 
-1. **PR A — 관계 정체성·슬롯·정의 단일화:** M1, M2, M3. 제약은 전환 후 켜는 두 번째 마이그레이션으로
-   분리한다.
-2. **PR B — 생애주기·쓰기 경로·근거:** M5, M6.
-3. **PR C — 인물 정체성·근거 화자:** M4.
-4. **PR D — 사실 값 개수:** M7. observation-v1의 사실 유형 정리와 같은 PR로 합칠 수 있다.
-5. **PR E — 관계 평가 분리:** M8, 웹 표시 포함.
-6. **PR F — 퇴역 열 제거:** M9. digest 확인 후 진행한다.
-7. **전환 도구와 라이브(각각 별도 승인):** manifest 연산 추가 → 복사본 리허설 → 라이브 전환 →
-   제약 활성화 → Hermes 계약 갱신 확인.
+2026-10-22 변경: 기존 PR A–F 이름을 유지하지만 **B를 A보다 먼저** 수행한다. 계보와 원본
+보존 기반 없이 관계를 정규화하거나 이전 writer를 종료하지 않는다.
+
+1. **선행 RC 안전 수정·검증:** Self·후보 경합·FK 순서·공통 resolver, M10의 검증 기반.
+2. **PR B — 생애주기·쓰기 경로·근거:** M5, M6와 공통 계약 LC01–LC04, RC 병합/provenance 수정.
+3. **PR A — 관계 정체성·슬롯·정의 단일화:** M1, M2, M3와 LC05–LC06. 제약 활성화는 전환 뒤로 분리한다.
+4. **PR C — 인물 정체성·근거 화자:** M4. 선행 안전 수정 위에 충돌 UX·actor 구조화를 추가한다.
+5. **PR D — 사실 값 개수:** M7. observation-v1의 사실 유형 정리와 같은 PR로 합칠 수 있다.
+6. **PR E — 관계 평가 분리:** M8, 웹·소비자 호환 포함. observation-v1 2단계와 공동 배포한다.
+7. **PR F — 퇴역 열 제거:** M9. 과거 digest 검증·소비자 호환 확인 후 진행한다.
+8. **전환 도구와 라이브(각각 별도 승인):** manifest 연산 추가 → 복사본 전체 리허설 → additive
+   서버/어댑터 배포 → 웹·CLI/helper·Hermes 갱신 및 구/신 계약 호환 확인 → 라이브 자료 전환 →
+   제약 활성화 → 모든 소비자·근거·계보 readback → 구 저장 구조/어댑터 제거 조건 판정.
 
 ## 6. 구현 전 확정할 결정
 
 | ID | 질문 | 이 계획의 권장안 |
 | --- | --- | --- |
-| Q1 | 무방향 관계 정규 순서를 기존 행에도 적용할지 | 적용한다. 의미가 바뀌지 않고, 단순한 유니크 인덱스 하나로 끝난다. |
+| Q1 | 무방향 관계 정규 순서를 기존 기록에도 적용할지 | 현재 canonical 키에 적용한다. 원본 payload·digest를 직접 바꾸지 않고 필요한 교체는 계보를 남긴다. |
 | Q2 | 관계 슬롯(상호 배타성)을 도입할지 | 도입한다. 동시 현재 관계만 막고 충돌 해결 모델은 계속 보류한다. |
 | Q3 | 동명이인 인물 생성 방식 | `homonym_confirmed=true` 명시를 요구한다. |
-| Q4 | 호환 CRUD 쓰기 경로 | 종료(410). 위임하면 쓰기 계약이 둘로 남는다. |
+| Q4 | 호환 CRUD 쓰기 경로 | 일반 저수준 CRUD는 종료(410)를 권장한다. 유지되는 후보·import·실행 경로는 기존 인증을 유지하며 공통 writer로 위임한다. |
 | Q5 | 퇴역 열이 digest에 쓰일 때 | digest 버전을 올리고 열을 제거한다. 이전 digest 검증이 필요하면 보관 테이블로 옮긴다. |
 | Q6 | 관계 평가 분리 시점 | observation-v1 2단계 스키마 변경과 같은 배포 창에서 한다. 관찰 테이블 변경이 두 번 일어나지 않게 하기 위해서다. |
+| Q7 | 공통 정체성·근거·기간 제약의 물리 DDL | 공통 기록 계약의 테이블/FK/커밋 트리거/배제 제약 안을 격리 PostgreSQL에서 검증한 뒤 구현 PR에 확정한다. |
 | 확정 | 사용자 이름으로 만들어진 별도 인물이 본인인지 | **2026-10-19 사용자 확인:** 본인이다. M4 전환에서 Self로 합친다. |

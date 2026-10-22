@@ -1,5 +1,14 @@
 # Relationship Reconciliation & Clarification Cycle
 
+> **2026-10-22 review delta:** [Record lifecycle contract](record-lifecycle-contract.md) owns the
+> common evidence/history writer, original attribution and current identity projection.
+> [Runtime correctness](runtime-correctness.md) owns locked state reloads, target validation before
+> ledger FK insertion, import-attestation preservation and readback regressions;
+> [data model integrity](data-model-integrity.md) owns constraint rollout. This pending follow-up
+> preserves all earlier rationale, acceptance and rollout history. Authenticated reply binding,
+> commitments, bounded source admission and idempotency remain required; retired ordinary-memory
+> approval and AI-use-policy gates remain retired.
+
 > **2026-10-01 supersession:** Ordinary memory now uses immediate canonical writes through
 > `POST /api/memories`; no candidate approval or AI-use policy is required. The existing
 > candidate/curation/reconciliation material below describes retained compatibility and history,
@@ -404,6 +413,25 @@ The first real review should classify:
 - the recently consolidated canonical observation as verified and non-questionable unless a fresh audit finds an actual conflict.
 
 ## 11. Verification
+
+### 2026-10-22 follow-up acceptance — pending
+
+- Every compatibility canonical write uses the common atomic evidence/history writer, including
+  grouped observations, context additions and merge outcomes, while preserving original attribution
+  and applicable material-import authorization attestations.
+- Every state-changing path locks and reloads candidate/entity/action state before deciding the
+  transition. A valid old commitment or idempotency key cannot authorize a now-stale transition.
+- Referenced targets are validated and locked before a ledger insert can fail its foreign key;
+  the missing-target regression returns the documented 404 with no partial writes.
+- Foreign-key-enabled SQLite and migrated PostgreSQL checks cover the same rejection cases;
+  fresh-session readback verifies originals, resolved identity, canonical records, evidence,
+  lineage, candidate states and current context.
+- Existing bearer authorization, answer binding, snapshot/digest commitments, wrong-author/channel
+  rejection and replay behavior pass unchanged security regressions. Writer consolidation does not
+  make imported or assistant-generated material ordinary unrestricted human evidence.
+
+The owning follow-up plans define implementation and rollout order. These criteria do not imply
+completion of the historical live rollout or authorize sending a new review batch.
 
 ### Unit/focused
 

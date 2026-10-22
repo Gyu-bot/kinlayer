@@ -1,5 +1,13 @@
 # Periodic Relationship Curation Cycle — Implementation Plan
 
+> **2026-10-22 review delta:** Retained compatibility execution must adopt the common atomic
+> evidence/history writer and immutable-original/current-identity rules in
+> [record lifecycle contract](record-lifecycle-contract.md). Constraint rollout belongs to
+> [data model integrity](data-model-integrity.md); locked state reloads, writer coverage and FK/readback
+> regressions belong to [runtime correctness](runtime-correctness.md). These are pending follow-up
+> requirements. Preserve the original phases, acceptance history and deferred Hermes activation;
+> this does not restore candidate approval or retired policy gates for ordinary memories.
+
 > **2026-10-01 supersession:** Ordinary memory now uses immediate canonical writes through
 > `POST /api/memories`; no candidate approval or AI-use policy is required. The existing
 > candidate/curation/reconciliation material below describes retained compatibility and history,
@@ -610,6 +618,22 @@ Acceptance:
 - no raw provider request/response is persisted;
 - Kinlayer rejects malformed or over-authorized plans;
 - Gateway remains untouched until separate activation authorization.
+
+### 2026-10-22 follow-up acceptance — pending
+
+- [ ] Every canonical-producing compatibility action uses the common writer and atomically preserves
+  evidence, history, original attribution and applicable import authorization attestations.
+- [ ] Every candidate/run/decision state transition locks and reloads the persisted state before
+  deciding whether the transition is legal; concurrent accept, reject, edit and resume tests cannot
+  restore stale state or produce duplicate canonical records.
+- [ ] Validate and lock referenced entities before inserting ledger rows that depend on their foreign
+  keys. Missing targets return the documented API error with no partial ledger or canonical writes.
+- [ ] Run foreign-key-enabled SQLite tests and migrated PostgreSQL checks, then fresh-session readback
+  of candidate, canonical, original/current identity, evidence and history. Keep disabled/shadow/apply,
+  source-admission and bounded-evidence safeguards in force.
+
+Detailed algorithms and constraints are owned by the linked follow-up plans; the historical
+automatic-action policy below the supersession notice is not a new ordinary-memory approval rule.
 
 ## 16. Verification commands
 

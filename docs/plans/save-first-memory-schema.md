@@ -4,6 +4,18 @@
 **Scope:** backend, agent input contract, existing data conversion, live verification. Frontend was
 planning only at decision time; its later approved replacement is in [frontend-rebuild.md](frontend-rebuild.md).
 
+## 2026-10-22 review delta — follow-up contracts
+
+The implementation and conversion history below remains intact. The following work is planned;
+this review does not mark it implemented or authorize another live conversion.
+[Record lifecycle contract](record-lifecycle-contract.md) owns cross-type and one-to-many replacement
+lineage, immutable originals with canonical identity projection, and the common evidence/history
+writer. [Data model integrity](data-model-integrity.md) owns the corresponding constraints and migration;
+[runtime correctness](runtime-correctness.md) owns writer coverage, locking, identity resolution,
+import authorization preservation, and readback regressions. Apply these follow-up contracts when
+extending the numbered implementation contract below. Immediate storage and retired policy gates
+remain unchanged; identity merging must not rewrite the original claim or its source attribution.
+
 ## Decision and prior-plan boundary
 
 The ordinary loop is immediate canonical storage followed by correction during conversation.
@@ -102,6 +114,12 @@ and a reviewed, bounded live-data transformation are separate steps with separat
 | SF12 | Agent documentation JSON examples validate against the implemented input structure. |
 | SF13 | Existing frontend remains buildable; its redesign is a plan only, with no unrequested UI rewrite. |
 | SF14 | Every former pending item has a traceable migration, existing-record link, or invalid-source archival outcome; no pre-save approval work is left for the user. |
+| SF15 | Follow-up replacement and merge tests preserve original claim/source attribution, represent cross-type and one-to-many lineage, and resolve current identity according to the record lifecycle contract. |
+| SF16 | Every retained canonical writer creates evidence and history atomically through the common writer; retries and rejected transitions preserve original references and leave no partial writes. |
+| SF17 | Correction, reattribution, merge and migration retain applicable material-import references and authorization attestations without converting imported evidence into an unrestricted ordinary source. |
+| SF18 | Follow-up verification includes SQLite foreign keys enabled, migrated PostgreSQL constraints, and fresh-session readback of original/current references, evidence, lineage and current context. |
+
+SF15–SF18 are pending follow-up criteria, not retrospective claims about the delivered SF01–SF14 work.
 
 Record actual validation and deployment evidence separately. This document states requirements;
 its existence does not claim they have passed or that the live service has been updated.

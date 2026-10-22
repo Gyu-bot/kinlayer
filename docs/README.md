@@ -16,11 +16,15 @@ This directory keeps project documentation that should not live at the repositor
 - `plans/save-first-memory-schema.md`: current immediate-write/schema/live-conversion contract.
 - `plans/frontend-rebuild.md`: approved frontend replacement (implemented in `frontend/src/v2/`) and UI01–UI09.
 - `plans/relationship-ontology.md`: `relationship-v1` types and relationship profile axes (implemented, live).
-- `plans/embedding-auto-index.md`: **next implementation plan** — automatic observation embedding after writes.
+- `plans/runtime-correctness.md`: **next implementation scope: RC-A** — Self, state-transition, FK and canonical identity fixes; later common-writer and retrieval stages.
+- `plans/record-lifecycle-contract.md`: shared planned contract for cross-kind lineage, immutable originals, evidence, validity and compatibility.
+- `plans/data-model-integrity.md`: planned model/ontology integrity redesign; common writer/lineage precedes canonical constraints.
+- `plans/embedding-auto-index.md`: automatic observation embedding after writes, recovery and token preservation; query-side retrieval is owned by runtime correctness.
 - `plans/observation-ontology-v1.md`: following plan — observation vocabulary, participant roles, assertion mode, date precision and record conversion.
 - `specs/authorized-material-imports.md`: separately authorized material import contract.
 - `specs/sensitivity-retirement.md`: retired sensitivity metadata compatibility contract.
 - `verification/frontend-v2/README.md`: frontend replacement verification evidence.
+- `verification/schema-logic-review-2026-10-22.md`: source/schema/plan review findings, synthetic reproductions and live-verification limits.
 - `plans/relationship-curation-cycle.md`: previous curation requirements and compatibility history.
 - `plans/relationship-reconciliation-cycle.md`: previous reconciliation requirements and compatibility history.
 - `kinlayer-roadmap.md`: Korean user-facing roadmap for directing implementation.
@@ -51,5 +55,6 @@ The repository root intentionally keeps only the high-signal entry points:
 - `AGENTS.md`: local agent operating instructions.
 
 Active implementation planning lives under `plans/`. The current write contract is
-`plans/save-first-memory-schema.md`; the next implementation plan is
-`plans/embedding-auto-index.md`.
+`plans/save-first-memory-schema.md`; the next implementation scope is RC-A in
+`plans/runtime-correctness.md`. Follow `kinlayer-roadmap.md` for dependencies and order.
+New target contracts remain planned until their implementation and deployment are verified separately.
