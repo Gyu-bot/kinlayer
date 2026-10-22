@@ -5,6 +5,24 @@
 [frontend v2 verification](../verification/frontend-v2/README.md), separately from deployment.
 **Dependency:** [save-first memory schema](save-first-memory-schema.md).
 
+## 2026-10-22 review delta — schema transition compatibility
+
+The delivered frontend and earlier acceptance history remain the baseline. Follow-up implementation
+uses [record lifecycle contract](record-lifecycle-contract.md) for original/current identity and
+assessment-reference compatibility, [data model integrity](data-model-integrity.md) for assessment
+separation, and [runtime correctness](runtime-correctness.md) for server/client compatibility and
+readback. These are pending changes, not another completed frontend delivery.
+
+- Coordinate the existing strict `v2` write guard with the planned `v3` server transition. Define and
+  test the supported client/server combinations and rollout order before changing the server version,
+  so an otherwise supported deployed client does not lose the ability to save. Unsupported contracts
+  still fail explicitly; removing validation is not a compatibility strategy.
+- Assessment storage separation must preserve old and new record references across detail, source,
+  history, create, correct and retract flows. Display original attribution separately from resolved
+  current identity according to the lifecycle contract; do not silently change the claim's subject.
+- Preserve unknown and partial date components when reading, editing and saving existing facts.
+  Verify the compatibility flows directly in desktop and mobile browsers after API checks pass.
+
 ## 2026-10-01 decision delta: replace the old frontend
 
 The earlier schema-delivery request explicitly deferred frontend implementation. After reviewing
@@ -158,6 +176,12 @@ frontend/read-API work; successful checks and remaining live/deployment boundari
 | UI07 | Embeddings remain configurable and observable; an unavailable provider does not hide saved memories. |
 | UI08 | Mobile/desktop, keyboard, empty/error/loading states and Korean content pass direct browser checks. |
 | UI09 | Existing source/audit records remain accessible; no backend state is duplicated in browser storage. |
+| UI10 | The documented supported client/server combinations pass create, correct and retract through the v2-to-v3 rollout; the version guard rejects unsupported contracts without blocking supported deployed clients. |
+| UI11 | Old and new assessment references open the intended record, sources and history; edit/retract and post-merge identity display preserve original attribution and resolve current identity under the lifecycle contract. |
+| UI12 | Direct desktop/mobile browser checks cover assessment transition, history/readback, conflict/error states and an unchanged partial-date edit/save round trip; no absent date component is invented. |
+
+UI10–UI12 are pending follow-up criteria. Their evidence must identify the tested client/server
+versions and remains separate from earlier UI01–UI09 completion and deployment evidence.
 
 The original planning-only document made no frontend changes. The subsequent approved delivery
 replaces components, routes, styling and interactions in `frontend/`, while preserving this plan's
