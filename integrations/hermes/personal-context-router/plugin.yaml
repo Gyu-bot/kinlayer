@@ -1,0 +1,25 @@
+name: personal-context-router
+version: "0.15.0"
+description: "Current-agent native Kinlayer identity handoff and guarded save-first memory v2."
+author: "Gyu-bot"
+kind: standalone
+provides_tools:
+  - kinlayer_identity
+provides_hooks:
+  - post_llm_call
+  - pre_llm_call
+  - transform_llm_output
+hooks:
+  - post_llm_call
+  - pre_llm_call
+  - transform_llm_output
+requires_plugins:
+  - proactive-conversation-bridge
+  - proactive-attention-broker
+commands:
+  - pcr-status
+  - context-router-status
+config_schema:
+  runtime_context_router:
+    type: dict
+    description: "Plugin-owned runtime router settings, including Kinlayer curation."

@@ -1,0 +1,6 @@
+"""Personal context router internals."""
+from __future__ import annotations
+
+__all__ = ["__version__"]
+
+__version__ = "0.10.1"
