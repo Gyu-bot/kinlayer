@@ -1,4 +1,4 @@
-# Install / rollback — PCR 0.15.0
+# Install / rollback — PCR 0.15.1
 
 Canonical source is this repository's `integrations/hermes/` subtree. Keep the
 actual Hermes plugin/skill locations unchanged. Install only a reviewed immutable

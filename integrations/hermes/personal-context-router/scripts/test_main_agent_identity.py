@@ -232,6 +232,32 @@ class NativeTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT payload FROM identity_pending').fetchall(),[('{"synthetic":true}',)])
         self.assertEqual(len(self.transport.memory_calls),1)
 
+    def test_decide_accepts_matching_surface_echo(self):
+        # Regression: models often echo the lookup surface into decide.
+        self.assertTrue(self.decide(surface='하린이')['ok']); self.finish()
+        self.assertEqual(len(self.transport.memory_calls),1)
+
+    def test_decide_surface_mismatch_rejected_without_state_change(self):
+        lookup=self.lookup()
+        r=self.decide(lookup,surface='다른이름')
+        self.assertEqual(r['reason'],'surface_mismatch'); self.assertFalse(r['write_authorized'])
+        # The mismatched call recorded nothing; a correct decision still succeeds.
+        self.assertTrue(self.decide(lookup)['ok']); self.finish()
+        self.assertEqual(len(self.transport.memory_calls),1)
+
+    def test_unresolved_accepts_matching_surface_echo(self):
+        lookup=self.lookup()
+        self.assertTrue(self.tool({'action':'unresolved','surface':'하린이','lookup_token':lookup['lookup_token']})['ok'])
+        self.finish(); self.assertFalse(self.transport.memory_calls)
+
+    def test_invalid_arguments_names_unexpected_fields(self):
+        r=self.decide(session_id='forged')
+        self.assertEqual(r['reason'],'invalid_arguments'); self.assertEqual(r['unexpected_fields'],['session_id'])
+        r=self.tool({'action':'status','surface':'하린이'})
+        self.assertEqual(r['unexpected_fields'],['surface'])
+        self.assertTrue(self.tool({'action':'bogus'})['invalid_action'])
+        self.finish(); self.assertFalse(self.transport.memory_calls)
+
     def test_status_has_no_backend_or_write(self):
         before=len(self.transport.calls)
         r=self.tool({'action':'status'})

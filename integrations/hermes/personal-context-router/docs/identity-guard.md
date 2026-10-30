@@ -1,4 +1,4 @@
-# Current-agent identity handoff — PCR 0.15.0
+# Current-agent identity handoff — PCR 0.15.1
 
 ## Authority
 
@@ -29,6 +29,9 @@ never append questions and old pending notices do not impose a confirmation ritu
    `mention_surfaces` explicitly lists additional same-person spellings; the writer
    never expands spellings automatically. A conflict latches until the turn ends.
    `unresolved` revokes that surface. `status` performs no backend I/O or writes.
+   `decide`/`unresolved` may echo `surface`; it must equal the token's lookup
+   surface (else `surface_mismatch`, no state change) and never selects a person.
+   Rejected arguments return `invalid_arguments` with `unexpected_fields`.
 5. A successful decision rechecks the entire candidate/evidence snapshot. The
    native post hook closes the frame and signs its results with a process-local
    HMAC bound to profile/backend/session/sender/turn and current human text. The
