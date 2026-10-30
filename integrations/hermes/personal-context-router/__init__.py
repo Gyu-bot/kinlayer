@@ -40,7 +40,7 @@ def _identity_tool(params, **kwargs):
     router = get_router()
     config = router._config()
     if not config.enabled or not config.kinlayer.enabled or config.dry_run:
-        return json.dumps({"ok": False, "reason": "identity_handoff_disabled", "version": "0.15.0", "backend_queried": False, "writes": 0})
+        return json.dumps({"ok": False, "reason": "identity_handoff_disabled", "version": "0.15.1", "backend_queried": False, "writes": 0})
     return json.dumps(router._identity_state.tool(config, params, **kwargs), ensure_ascii=False)
 
 
@@ -75,7 +75,8 @@ def register(ctx):
             "parameters": {"type": "object", "additionalProperties": False,
                 "properties": {
                     "action": {"type": "string", "enum": ["lookup", "decide", "unresolved", "status"]},
-                    "surface": {"type": "string", "description": "Exact name/reference present in this conversation."},
+                    "surface": {"type": "string", "description": "Exact name/reference present in this conversation. "
+                        "Required for lookup. Optional for decide/unresolved; if sent it must equal the lookup's surface."},
                     "hint_queries": {"type": "array", "items": {"type": "string"}, "maxItems": 2},
                     "lookup_token": {"type": "string"}, "candidate_id": {"type": "string"},
                     "evidence_refs": {"type": "array", "items": {"type": "string"}},

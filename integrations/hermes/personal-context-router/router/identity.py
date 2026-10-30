@@ -371,14 +371,21 @@ class NativeIdentityState:
         if not isinstance(params, dict):
             return {"ok": False, "reason": "invalid_arguments"}
         action = params.get("action")
+        if action not in {"lookup", "decide", "unresolved", "status"}:
+            return {"ok": False, "reason": "invalid_arguments", "invalid_action": True}
+        # decide/unresolved may echo the lookup surface; it is checked against the
+        # token-bound lookup below and never selects the person by itself.
         allowed = {"action", "surface", "hint_queries"} if action == "lookup" else {"action"} if action == "status" else {
-            "action", "lookup_token", "candidate_id", "evidence_refs", "context_quotes", "excluded_candidate_ids", "reason", "mention_surfaces"}
-        if set(params) - allowed or action not in {"lookup", "decide", "unresolved", "status"}:
-            return {"ok": False, "reason": "invalid_arguments"}
+            "action", "surface", "lookup_token", "candidate_id", "evidence_refs", "context_quotes",
+            "excluded_candidate_ids", "reason", "mention_surfaces"}
+        unexpected = set(params) - allowed
+        if unexpected:
+            return {"ok": False, "reason": "invalid_arguments",
+                    "unexpected_fields": sorted(str(k)[:64] for k in unexpected)[:8]}
         with self.lock:
             frame = self.turns.get(key)
             if action == "status":
-                return {"ok": True, "authority": "current_agent", "version": "0.15.0", "native_turn_bound": True,
+                return {"ok": True, "authority": "current_agent", "version": "0.15.1", "native_turn_bound": True,
                         "decision_frame_admitted": bool(frame and not frame["invalid"] and not frame["closed"] and time.time()-frame["created"]<SESSION_TTL),
                         "backend_queried": False, "writes": 0}
             if not frame or frame["invalid"] or frame["closed"] or time.time() - frame["created"] >= SESSION_TTL:
@@ -398,6 +405,9 @@ class NativeIdentityState:
             if not lookup:
                 return {"ok": False, "reason": "lookup_token_invalid"}
             surface = lookup["surface"]
+            if "surface" in params and params["surface"] != surface:
+                # A mismatched echo is a caller error: change no decision state.
+                return {"ok": False, "reason": "surface_mismatch", "write_authorized": False}
             def reject(reason):
                 frame["results"][surface] = _result(surface, "same_turn_identity_conflict" if surface in frame["conflicts"] else reason, cause="unresolved", question=None)
                 return {"ok": False, "reason": reason, "write_authorized": False}

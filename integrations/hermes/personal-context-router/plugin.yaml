@@ -1,5 +1,5 @@
 name: personal-context-router
-version: "0.15.0"
+version: "0.15.1"
 description: "Current-agent native Kinlayer identity handoff and guarded save-first memory v2."
 author: "Gyu-bot"
 kind: standalone
